@@ -14,6 +14,8 @@
 <!-- Ambiguities, spec gaps, or missing specs that need human review. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-15 / Task 2: GitHub Actions CI] Steps 5 and 6 (verify workflow ran, test one-line install) require a GitHub remote configured and the code pushed to GitHub. The local repository has no remote configured. The infrastructure files (`.github/workflows/ci.yml` and `install.sh`) are correctly implemented and ready. To fully complete Task 2: (1) configure a GitHub remote, (2) push the commits, (3) wait for the workflow to complete via `gh run watch`, (4) verify the nightly release was created, (5) test the one-line install. These steps are deferred pending GitHub repository setup.
+
 [2026-03-15 / Task 1: Initialize Cargo project] No spec directly governs dependency versions. Versions chosen match the plan header; pin to exact versions in Cargo.lock.
 
 [2026-03-15 / Task 3: Workflow TOML parsing] `context_dir` existence and prompt file readability checks are deferred from `Workflow::validate` — per `specs/mvp.md`, these checks belong in the engine startup sequence (Task 10), not at parse time. Missing spec for a separate `specs/workflow.md` — the validation rules are sourced from `specs/mvp.md` directly.

@@ -102,6 +102,11 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
     let config = EngineConfig {
         output_dir: run_dir.clone(),
         verbose: args.verbose,
+        run_id: run_id.clone(),
+        workflow_file: std::fs::canonicalize(&args.workflow_file)
+            .unwrap_or_else(|_| PathBuf::from(&args.workflow_file))
+            .to_string_lossy()
+            .to_string(),
     };
 
     // Install Ctrl+C handler (simple: set a flag; full graceful shutdown is future work)
@@ -188,6 +193,8 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
     let config = EngineConfig {
         output_dir: run_dir.clone(),
         verbose: args.verbose,
+        run_id: args.run_id.clone(),
+        workflow_file: meta.workflow_file.clone(),
     };
 
     // Install Ctrl+C handler for resume as well

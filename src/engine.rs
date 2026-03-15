@@ -102,6 +102,8 @@ impl<'a> Iterator for RunSchedule<'a> {
 pub struct EngineConfig {
     pub output_dir: PathBuf,
     pub verbose: bool,
+    pub run_id: String,
+    pub workflow_file: String,
 }
 
 pub struct EngineResult {
@@ -198,8 +200,8 @@ pub fn run_workflow(
         if output.exit_code != 0 {
             let state = StateFile {
                 schema_version: 1,
-                run_id: String::new(), // filled by caller in full integration
-                workflow_file: String::new(),
+                run_id: config.run_id.clone(),
+                workflow_file: config.workflow_file.clone(),
                 last_completed_run: last_successful_run,
                 last_completed_cycle: run_spec.cycle,
                 last_completed_phase_index: run_spec.phase_index,
@@ -220,15 +222,15 @@ pub fn run_workflow(
         // Run succeeded — persist state with current position and advance checkpoint.
         let state = StateFile {
             schema_version: 1,
-            run_id: String::new(), // filled by caller in full integration
-            workflow_file: String::new(),
+            run_id: config.run_id.clone(),
+            workflow_file: config.workflow_file.clone(),
             last_completed_run: run_spec.global_run_number,
             last_completed_cycle: run_spec.cycle,
             last_completed_phase_index: run_spec.phase_index,
             last_completed_iteration: run_spec.phase_iteration,
             total_runs_completed: total_runs,
             cumulative_cost_usd: cumulative_cost,
-            claude_resume_commands: resume_commands,
+            claude_resume_commands: resume_commands.clone(),
             canceled_at: None,
         };
         state.write_atomic(&state_path)?;
@@ -237,6 +239,21 @@ pub fn run_workflow(
         // Check for cancellation (Ctrl+C)
         if let Some(ref canceled_flag) = canceled {
             if canceled_flag.load(Ordering::SeqCst) {
+                // Save state with canceled_at timestamp before returning
+                let state = StateFile {
+                    schema_version: 1,
+                    run_id: config.run_id.clone(),
+                    workflow_file: config.workflow_file.clone(),
+                    last_completed_run: last_successful_run,
+                    last_completed_cycle: last_cycle,
+                    last_completed_phase_index: run_spec.phase_index,
+                    last_completed_iteration: run_spec.phase_iteration,
+                    total_runs_completed: total_runs,
+                    cumulative_cost_usd: cumulative_cost,
+                    claude_resume_commands: resume_commands.clone(),
+                    canceled_at: Some(chrono::Utc::now().to_rfc3339()),
+                };
+                state.write_atomic(&state_path)?;
                 return Ok(EngineResult {
                     exit_code: 130,
                     completed_cycles: last_cycle,

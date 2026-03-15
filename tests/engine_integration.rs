@@ -1,6 +1,7 @@
 // Run with: cargo test --features testing
 use rings::engine::{run_workflow, EngineConfig};
 use rings::executor::{ExecutorOutput, MockExecutor};
+use rings::state;
 use rings::workflow::Workflow;
 use tempfile::tempdir;
 
@@ -41,6 +42,8 @@ fn engine_exits_zero_on_completion_signal() {
     let config = EngineConfig {
         output_dir: dir.path().to_path_buf(),
         verbose: false,
+        run_id: "test-run-id".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -63,6 +66,8 @@ fn engine_exits_one_when_max_cycles_reached() {
     let config = EngineConfig {
         output_dir: dir.path().to_path_buf(),
         verbose: false,
+        run_id: "test-run-id".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -80,6 +85,8 @@ fn engine_writes_run_logs() {
     let config = EngineConfig {
         output_dir: dir.path().to_path_buf(),
         verbose: false,
+        run_id: "test-run-id".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
     };
 
     run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -104,6 +111,8 @@ fn engine_writes_costs_jsonl() {
     let config = EngineConfig {
         output_dir: dir.path().to_path_buf(),
         verbose: false,
+        run_id: "test-run-id".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
     };
 
     run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -125,6 +134,8 @@ fn engine_classifies_nonzero_exit_as_error() {
     let config = EngineConfig {
         output_dir: dir.path().to_path_buf(),
         verbose: false,
+        run_id: "test-run-id".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -154,6 +165,8 @@ fn engine_saves_state_and_exits_130_on_cancel() {
     let config = EngineConfig {
         output_dir: dir.path().to_path_buf(),
         verbose: false,
+        run_id: "test-run-id".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
     };
 
     // Set the cancel flag immediately (test simplicity)
@@ -168,4 +181,11 @@ fn engine_saves_state_and_exits_130_on_cancel() {
     // state.json must exist
     let state_path = dir.path().join("state.json");
     assert!(state_path.exists(), "state.json must be saved on cancel");
+
+    // run_id must be populated correctly
+    let state = state::StateFile::read(&state_path).unwrap();
+    assert_eq!(
+        state.run_id, "test-run-id",
+        "run_id should match EngineConfig"
+    );
 }

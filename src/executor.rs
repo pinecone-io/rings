@@ -97,8 +97,14 @@ impl Executor for ClaudeExecutor {
             let _ = stdout_thread.join();
             let _ = stderr_thread.join();
 
-            let stdout_str = stdout_output.lock().unwrap().clone();
-            let stderr_str = stderr_output.lock().unwrap().clone();
+            let stdout_str = stdout_output
+                .lock()
+                .map_err(|_| anyhow::anyhow!("stdout accumulator mutex was poisoned"))?
+                .clone();
+            let stderr_str = stderr_output
+                .lock()
+                .map_err(|_| anyhow::anyhow!("stderr accumulator mutex was poisoned"))?
+                .clone();
             let combined = format!("{}\n{}", stdout_str, stderr_str);
 
             Ok(ExecutorOutput {

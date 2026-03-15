@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-15 / Task 5: Cost parsing] Implemented cost parsing using four regex patterns in priority order: (1) Full pattern with dollar amount and token counts — highest confidence, (2) "Cost: $X.XX" pattern — partial confidence, (3) "Total cost: $X.XX" pattern — partial confidence, (4) generic "$X.XX" fallback — low confidence. Uses `captures_iter().last()` to prefer the last match (e.g., if multiple cost lines present). The `ParseConfidence` enum ensures callers can choose which cost assertions to trust based on extraction confidence. `.expect()` on compile-time regex constants is acceptable per CLAUDE.md exception — regexes are validated at compile time, not runtime user input.
+
 [2026-03-15 / Task 2: GitHub Actions CI] CI targets `x86_64-unknown-linux-musl` only for now (static Linux binary). macOS targets deferred until there is a macOS runner need. `nightly` tag is force-updated on every push to main — only one nightly exists at any time. `install.sh` defaults install destination to `/usr/local/bin/rings` but accepts a path argument.
 
 [2026-03-15 / Task 3: Workflow TOML parsing] Implemented `std::str::FromStr` for `Workflow` instead of an inherent `from_str` method, to satisfy `clippy::should_implement_trait`. Tests import `std::str::FromStr` to call `Workflow::from_str`. Added `src/lib.rs` to expose modules to integration tests (binary crate integration tests require a lib target). Consulted `specs/mvp.md` as the primary spec for workflow field requirements and validation rules.

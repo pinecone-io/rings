@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "testing")]
 use std::cell::RefCell;
@@ -18,7 +19,7 @@ pub struct ExecutorOutput {
 }
 
 pub trait Executor {
-    fn run(&self, invocation: &Invocation) -> Result<ExecutorOutput>;
+    fn run(&self, invocation: &Invocation, verbose: bool) -> Result<ExecutorOutput>;
 }
 
 /// Production executor: spawns `claude --dangerously-skip-permissions -p -`
@@ -38,7 +39,7 @@ impl ClaudeExecutor {
 }
 
 impl Executor for ClaudeExecutor {
-    fn run(&self, invocation: &Invocation) -> Result<ExecutorOutput> {
+    fn run(&self, invocation: &Invocation, verbose: bool) -> Result<ExecutorOutput> {
         let mut child = Command::new("claude")
             .args(Self::build_args())
             .current_dir(&invocation.context_dir)
@@ -55,18 +56,70 @@ impl Executor for ClaudeExecutor {
             // stdin dropped here → EOF sent to claude
         }
 
-        let output = child
-            .wait_with_output()
-            .context("Failed to wait for claude subprocess")?;
+        if verbose {
+            // Live streaming mode: read lines as they come and print to stderr
+            let stdout = child.stdout.take().context("Failed to get stdout")?;
+            let stderr = child.stderr.take().context("Failed to get stderr")?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let combined = format!("{stdout}\n{stderr}");
+            let stdout_output = Arc::new(Mutex::new(String::new()));
+            let stderr_output = Arc::new(Mutex::new(String::new()));
 
-        Ok(ExecutorOutput {
-            combined,
-            exit_code: output.status.code().unwrap_or(-1),
-        })
+            let stdout_accum = Arc::clone(&stdout_output);
+            let stderr_accum = Arc::clone(&stderr_output);
+
+            let stdout_thread = std::thread::spawn(move || {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{}", line);
+                    if let Ok(mut acc) = stdout_accum.lock() {
+                        acc.push_str(&line);
+                        acc.push('\n');
+                    }
+                }
+            });
+
+            let stderr_thread = std::thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{}", line);
+                    if let Ok(mut acc) = stderr_accum.lock() {
+                        acc.push_str(&line);
+                        acc.push('\n');
+                    }
+                }
+            });
+
+            let output = child
+                .wait_with_output()
+                .context("Failed to wait for claude subprocess")?;
+
+            // Wait for threads to finish reading
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+
+            let stdout_str = stdout_output.lock().unwrap().clone();
+            let stderr_str = stderr_output.lock().unwrap().clone();
+            let combined = format!("{}\n{}", stdout_str, stderr_str);
+
+            Ok(ExecutorOutput {
+                combined,
+                exit_code: output.status.code().unwrap_or(-1),
+            })
+        } else {
+            // Non-verbose mode: capture output and return after process completes
+            let output = child
+                .wait_with_output()
+                .context("Failed to wait for claude subprocess")?;
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let combined = format!("{stdout}\n{stderr}");
+
+            Ok(ExecutorOutput {
+                combined,
+                exit_code: output.status.code().unwrap_or(-1),
+            })
+        }
     }
 }
 
@@ -88,7 +141,7 @@ impl MockExecutor {
 
 #[cfg(feature = "testing")]
 impl Executor for MockExecutor {
-    fn run(&self, _invocation: &Invocation) -> Result<ExecutorOutput> {
+    fn run(&self, _invocation: &Invocation, _verbose: bool) -> Result<ExecutorOutput> {
         self.outputs
             .borrow_mut()
             .pop()
@@ -116,8 +169,8 @@ mod tests {
             prompt: "p".to_string(),
             context_dir: ".".into(),
         };
-        assert_eq!(mock.run(&inv).unwrap().combined, "output 1");
-        assert_eq!(mock.run(&inv).unwrap().combined, "output 2");
+        assert_eq!(mock.run(&inv, false).unwrap().combined, "output 1");
+        assert_eq!(mock.run(&inv, false).unwrap().combined, "output 2");
     }
 
     #[test]
@@ -130,7 +183,7 @@ mod tests {
             prompt: "p".to_string(),
             context_dir: ".".into(),
         };
-        let out = mock.run(&inv).unwrap();
+        let out = mock.run(&inv, false).unwrap();
         assert_eq!(out.exit_code, 1);
         assert!(out.combined.contains("quota exceeded"));
     }
@@ -142,7 +195,7 @@ mod tests {
             prompt: "p".to_string(),
             context_dir: ".".into(),
         };
-        assert!(mock.run(&inv).is_err());
+        assert!(mock.run(&inv, false).is_err());
     }
 
     // Security: prompts go via stdin only (see CLAUDE.md and specs/execution/executor-integration.md).

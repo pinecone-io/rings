@@ -184,7 +184,7 @@ pub fn run_workflow(
             context_dir: PathBuf::from(&workflow.context_dir),
         };
         let run_start = std::time::Instant::now();
-        let output = executor.run(&invocation)?;
+        let output = executor.run(&invocation, config.verbose)?;
         let elapsed_secs = run_start.elapsed().as_secs();
 
         // Record cost

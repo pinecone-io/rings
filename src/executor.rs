@@ -96,7 +96,7 @@ impl Executor for MockExecutor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "testing"))]
 mod tests {
     use super::*;
 

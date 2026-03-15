@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,26 +30,27 @@ impl Default for RunCost {
     }
 }
 
-pub fn parse_cost_from_output(output: &str) -> RunCost {
+lazy_static! {
     // Pattern 1 (Full confidence): Cost: $X.XX (N,NNN input tokens, M,MMM output tokens)
-    let re_full = regex::Regex::new(
-        r"Cost: \$(\d+\.\d+)\s*\(([0-9,]+) input tokens,\s*([0-9,]+) output tokens\)",
-    )
-    .expect("cost regex is valid");
+    static ref RE_FULL: regex::Regex = regex::Regex::new(
+        r"Cost: \$(\d+\.\d+)\s*\(([0-9,]+) input tokens,\s*([0-9,]+) output tokens\)"
+    ).unwrap(); // Safe: compile-time constant regex
 
     // Pattern 2 (Partial confidence): Cost: $X.XX
-    let re_simple = regex::Regex::new(r"Cost: \$(\d+\.\d+)").expect("cost regex is valid");
+    static ref RE_SIMPLE: regex::Regex = regex::Regex::new(r"Cost: \$(\d+\.\d+)").unwrap();
 
     // Pattern 3 (Partial confidence): Total cost: $X.XX
-    let re_total = regex::Regex::new(r"[Tt]otal cost: \$(\d+\.\d+)").expect("cost regex is valid");
+    static ref RE_TOTAL: regex::Regex = regex::Regex::new(r"[Tt]otal cost: \$(\d+\.\d+)").unwrap();
 
     // Pattern 4 (Low confidence): any $X.XX
-    let re_generic = regex::Regex::new(r"\$(\d+\.\d+)").expect("cost regex is valid");
+    static ref RE_GENERIC: regex::Regex = regex::Regex::new(r"\$(\d+\.\d+)").unwrap();
+}
 
+pub fn parse_cost_from_output(output: &str) -> RunCost {
     let parse_tokens = |s: &str| -> Option<u64> { s.replace(',', "").parse().ok() };
 
     // Try patterns in order, use last match of highest-confidence pattern found
-    if let Some(caps) = re_full.captures_iter(output).last() {
+    if let Some(caps) = RE_FULL.captures_iter(output).last() {
         let raw = caps[0].to_string();
         return RunCost {
             cost_usd: caps[1].parse().ok(),
@@ -59,7 +61,7 @@ pub fn parse_cost_from_output(output: &str) -> RunCost {
         };
     }
 
-    if let Some(caps) = re_simple.captures_iter(output).last() {
+    if let Some(caps) = RE_SIMPLE.captures_iter(output).last() {
         let raw = caps[0].to_string();
         return RunCost {
             cost_usd: caps[1].parse().ok(),
@@ -70,7 +72,7 @@ pub fn parse_cost_from_output(output: &str) -> RunCost {
         };
     }
 
-    if let Some(caps) = re_total.captures_iter(output).last() {
+    if let Some(caps) = RE_TOTAL.captures_iter(output).last() {
         let raw = caps[0].to_string();
         return RunCost {
             cost_usd: caps[1].parse().ok(),
@@ -81,7 +83,7 @@ pub fn parse_cost_from_output(output: &str) -> RunCost {
         };
     }
 
-    if let Some(caps) = re_generic.captures_iter(output).last() {
+    if let Some(caps) = RE_GENERIC.captures_iter(output).last() {
         let raw = caps[0].to_string();
         return RunCost {
             cost_usd: caps[1].parse().ok(),

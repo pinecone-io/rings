@@ -1,5 +1,14 @@
 // Stub for engine module - scheduling iterator will be implemented below
+use crate::audit::{append_cost_entry, extract_resume_commands, write_run_log, CostEntry};
+use crate::completion::output_contains_signal;
+use crate::cost::parse_cost_from_output;
+use crate::executor::{Executor, Invocation};
+use crate::state::StateFile;
+use crate::template::{render_prompt, TemplateVars};
 use crate::workflow::PhaseConfig;
+use crate::workflow::Workflow;
+use anyhow::Result;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct RunSpec {
@@ -86,4 +95,160 @@ impl<'a> Iterator for RunSchedule<'a> {
 
         Some(spec)
     }
+}
+
+pub struct EngineConfig {
+    pub output_dir: PathBuf,
+    pub verbose: bool,
+}
+
+pub struct EngineResult {
+    pub exit_code: i32,
+    pub completed_cycles: u32,
+    pub total_cost_usd: f64,
+}
+
+/// Run a workflow to completion (or until max_cycles, error, or cancellation).
+/// Returns the exit code: 0 = signal detected, 1 = max_cycles, 3 = executor error.
+pub fn run_workflow(
+    workflow: &Workflow,
+    executor: &dyn Executor,
+    config: &EngineConfig,
+    resume_from_run: Option<u32>,
+) -> Result<EngineResult> {
+    let runs_dir = config.output_dir.join("runs");
+    let costs_path = config.output_dir.join("costs.jsonl");
+    let state_path = config.output_dir.join("state.json");
+
+    std::fs::create_dir_all(&config.output_dir)?;
+
+    let mut cumulative_cost = 0.0f64;
+    let mut total_runs = 0u32;
+    let mut last_cycle = 0u32;
+    let mut last_successful_run: u32 = 0;
+
+    let schedule: Box<dyn Iterator<Item = RunSpec>> = match resume_from_run {
+        None => Box::new(RunSchedule::new(&workflow.phases, workflow.max_cycles)),
+        Some(last) => Box::new(RunSchedule::resume_from(
+            &workflow.phases,
+            workflow.max_cycles,
+            last,
+        )),
+    };
+    #[allow(clippy::explicit_counter_loop)]
+    for run_spec in schedule {
+        last_cycle = run_spec.cycle;
+
+        // Resolve prompt text
+        let raw_prompt = match (
+            &workflow.phases[run_spec.phase_index].prompt_text,
+            &workflow.phases[run_spec.phase_index].prompt,
+        ) {
+            (Some(text), _) => text.clone(),
+            (None, Some(file)) => std::fs::read_to_string(file)?,
+            _ => unreachable!("workflow validation ensures one of these exists"),
+        };
+
+        let vars = TemplateVars {
+            phase_name: run_spec.phase_name.clone(),
+            cycle: run_spec.cycle,
+            max_cycles: Some(workflow.max_cycles),
+            run: run_spec.global_run_number,
+            iteration: run_spec.phase_iteration,
+            runs_per_cycle: run_spec.phase_total_iterations,
+            cost_so_far_usd: cumulative_cost,
+        };
+        let prompt = render_prompt(&raw_prompt, &vars);
+
+        let invocation = Invocation {
+            prompt,
+            context_dir: PathBuf::from(&workflow.context_dir),
+        };
+        let output = executor.run(&invocation)?;
+
+        // Record cost
+        let cost = parse_cost_from_output(&output.combined);
+        cumulative_cost += cost.cost_usd.unwrap_or(0.0);
+        total_runs += 1;
+
+        // Write run log
+        write_run_log(&runs_dir, run_spec.global_run_number, &output.combined)?;
+
+        // Append to costs.jsonl
+        append_cost_entry(
+            &costs_path,
+            &CostEntry {
+                run: run_spec.global_run_number,
+                cycle: run_spec.cycle,
+                phase: run_spec.phase_name.clone(),
+                iteration: run_spec.phase_iteration,
+                cost_usd: cost.cost_usd,
+                input_tokens: cost.input_tokens,
+                output_tokens: cost.output_tokens,
+                cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+            },
+        )?;
+
+        // Handle executor error — save state with PREVIOUS completed run so the
+        // failing run will be retried on resume.
+        let resume_commands = extract_resume_commands(&output.combined);
+        if output.exit_code != 0 {
+            let state = StateFile {
+                schema_version: 1,
+                run_id: String::new(), // filled by caller in full integration
+                workflow_file: String::new(),
+                last_completed_run: last_successful_run,
+                last_completed_cycle: run_spec.cycle,
+                last_completed_phase_index: run_spec.phase_index,
+                last_completed_iteration: run_spec.phase_iteration,
+                total_runs_completed: total_runs,
+                cumulative_cost_usd: cumulative_cost,
+                claude_resume_commands: resume_commands,
+                canceled_at: None,
+            };
+            state.write_atomic(&state_path)?;
+            return Ok(EngineResult {
+                exit_code: 3,
+                completed_cycles: last_cycle,
+                total_cost_usd: cumulative_cost,
+            });
+        }
+
+        // Run succeeded — persist state with current position and advance checkpoint.
+        let state = StateFile {
+            schema_version: 1,
+            run_id: String::new(), // filled by caller in full integration
+            workflow_file: String::new(),
+            last_completed_run: run_spec.global_run_number,
+            last_completed_cycle: run_spec.cycle,
+            last_completed_phase_index: run_spec.phase_index,
+            last_completed_iteration: run_spec.phase_iteration,
+            total_runs_completed: total_runs,
+            cumulative_cost_usd: cumulative_cost,
+            claude_resume_commands: resume_commands,
+            canceled_at: None,
+        };
+        state.write_atomic(&state_path)?;
+        last_successful_run = run_spec.global_run_number;
+
+        // Check completion
+        if output_contains_signal(&output.combined, &workflow.completion_signal) {
+            return Ok(EngineResult {
+                exit_code: 0,
+                completed_cycles: last_cycle,
+                total_cost_usd: cumulative_cost,
+            });
+        }
+
+        // Inter-run delay (skipped in tests since delay_between_runs = 0)
+        if workflow.delay_between_runs > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(workflow.delay_between_runs));
+        }
+    }
+
+    Ok(EngineResult {
+        exit_code: 1,
+        completed_cycles: last_cycle,
+        total_cost_usd: cumulative_cost,
+    })
 }

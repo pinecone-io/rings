@@ -10,6 +10,8 @@
 
 [2026-03-15 / Task 3: Workflow TOML parsing] Implemented `std::str::FromStr` for `Workflow` instead of an inherent `from_str` method, to satisfy `clippy::should_implement_trait`. Tests import `std::str::FromStr` to call `Workflow::from_str`. Added `src/lib.rs` to expose modules to integration tests (binary crate integration tests require a lib target). Consulted `specs/mvp.md` as the primary spec for workflow field requirements and validation rules.
 
+[2026-03-15 / Task 11: Engine integration] Engine loop uses Box<dyn Iterator> to dispatch between fresh and resume schedules. State is written after successful run only; failed run retains last_successful_run checkpoint so it is retried on resume. Spec consulted: `specs/execution/engine.md`. Five integration tests pass: completion signal detection, max_cycles limit, run logs written, costs.jsonl written, error classification. Suppressed clippy::explicit_counter_loop for total_runs counter (it must persist across resume operations, not reset per-iterator). No unwrap() or expect() in production code.
+
 ## Conflicts
 <!-- Cases where code and spec disagreed; what was changed and why. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->

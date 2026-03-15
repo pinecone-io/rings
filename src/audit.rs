@@ -1,7 +1,15 @@
 use anyhow::{Context, Result};
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
+
+lazy_static! {
+    // Pattern to extract resume commands from executor output
+    static ref RE_RESUME: regex::Regex = regex::Regex::new(
+        r"claude resume [a-zA-Z0-9_-]+"
+    ).unwrap(); // Safe: compile-time constant regex
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CostEntry {
@@ -39,8 +47,8 @@ pub fn write_run_log(runs_dir: &Path, run_number: u32, output: &str) -> Result<(
 
 /// Extract `claude resume <id>` commands from executor output.
 pub fn extract_resume_commands(output: &str) -> Vec<String> {
-    let re = regex::Regex::new(r"claude resume [a-zA-Z0-9_-]+").expect("resume regex is valid");
-    re.find_iter(output)
+    RE_RESUME
+        .find_iter(output)
         .map(|m| m.as_str().to_string())
         .collect()
 }

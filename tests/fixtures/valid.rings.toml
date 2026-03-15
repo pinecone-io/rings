@@ -1,0 +1,13 @@
+[workflow]
+completion_signal = "RINGS_DONE"
+context_dir = "."
+max_cycles = 10
+
+[[phases]]
+name = "builder"
+prompt_text = "Build something."
+runs_per_cycle = 3
+
+[[phases]]
+name = "reviewer"
+prompt_text = "Review it."

@@ -1,3 +1,1 @@
 pub mod workflow;
-
-fn main() {}

@@ -1,0 +1,8 @@
+[workflow]
+completion_signal = "RINGS_DONE"
+context_dir = "."
+max_cycles = 5
+
+[[phases]]
+name = "builder"
+prompt_text = "No signal mentioned here."

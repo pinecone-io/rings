@@ -28,3 +28,8 @@ testing = []
 
 [dev-dependencies]
 tempfile = "3"
+
+[[test]]
+name = "engine_integration"
+path = "tests/engine_integration.rs"
+required-features = ["testing"]

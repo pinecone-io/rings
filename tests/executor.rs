@@ -2,7 +2,7 @@
 // Tests will be moved inline in src/executor.rs after compilation
 #[cfg(test)]
 mod tests {
-    use rings::executor::{ClaudeExecutor, ExecutorOutput, Invocation};
+    use rings::executor::ClaudeExecutor;
 
     #[test]
     fn claude_executor_never_puts_prompt_in_args() {

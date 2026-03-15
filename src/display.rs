@@ -41,7 +41,6 @@ pub fn print_completion(
     total_cost_usd: f64,
     total_runs: u32,
     elapsed_secs: u64,
-    run_id: &str,
     output_dir: &str,
 ) {
     eprintln!("✓  Completed on cycle {cycle}, run {run_number} (phase: {phase_name})");
@@ -50,7 +49,7 @@ pub fn print_completion(
         elapsed_secs / 60,
         elapsed_secs % 60,
     );
-    eprintln!("   Audit log: {output_dir}/{run_id}/");
+    eprintln!("   Audit log: {output_dir}/");
 }
 
 /// Print the cancellation summary.

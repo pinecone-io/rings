@@ -146,7 +146,6 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
                     result.total_cost_usd,
                     result.total_runs,
                     total_elapsed_secs,
-                    &run_id,
                     &run_dir.to_string_lossy(),
                 );
             }
@@ -290,7 +289,6 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
                     result.total_cost_usd,
                     result.total_runs,
                     total_elapsed_secs,
-                    &args.run_id,
                     &run_dir.to_string_lossy(),
                 );
             }

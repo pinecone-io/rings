@@ -59,6 +59,24 @@ If `REVIEW.md` does not exist, create it with the three section headers before a
 
 When no relevant spec exists for a decision being made, record the decision under **Decisions** *and* note the missing spec under **Open Questions**.
 
+## Pre-Commit Checklist
+
+Before every commit, verify and record the following. Copy this block into your working notes and check each item:
+
+```
+Pre-commit checklist
+--------------------
+[ ] cargo test — all tests pass
+[ ] cargo fmt --check — no formatting violations
+[ ] cargo clippy -- -D warnings — zero warnings
+[ ] No unwrap()/expect() added to production code
+[ ] Relevant spec in specs/ consulted; implementation is consistent
+[ ] REVIEW.md updated with decisions, conflicts, or open questions from this task
+[ ] Commit message uses a conventional commit prefix (feat/fix/test/refactor/chore/docs)
+```
+
+Do not commit until every item is checked. If an item cannot be satisfied, record why in `REVIEW.md` under Open Questions before proceeding.
+
 ## Security
 
 - Prompts must be passed to `claude` via **stdin**, not as CLI arguments. Passing prompts as CLI arguments exposes them in `ps aux` output, which is readable by any user on the system.

@@ -9,6 +9,8 @@ use crate::workflow::PhaseConfig;
 use crate::workflow::Workflow;
 use anyhow::Result;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct RunSpec {
@@ -109,12 +111,13 @@ pub struct EngineResult {
 }
 
 /// Run a workflow to completion (or until max_cycles, error, or cancellation).
-/// Returns the exit code: 0 = signal detected, 1 = max_cycles, 3 = executor error.
+/// Returns the exit code: 0 = signal detected, 1 = max_cycles, 3 = executor error, 130 = canceled.
 pub fn run_workflow(
     workflow: &Workflow,
     executor: &dyn Executor,
     config: &EngineConfig,
     resume_from_run: Option<u32>,
+    canceled: Option<Arc<AtomicBool>>,
 ) -> Result<EngineResult> {
     let runs_dir = config.output_dir.join("runs");
     let costs_path = config.output_dir.join("costs.jsonl");
@@ -230,6 +233,17 @@ pub fn run_workflow(
         };
         state.write_atomic(&state_path)?;
         last_successful_run = run_spec.global_run_number;
+
+        // Check for cancellation (Ctrl+C)
+        if let Some(ref canceled_flag) = canceled {
+            if canceled_flag.load(Ordering::SeqCst) {
+                return Ok(EngineResult {
+                    exit_code: 130,
+                    completed_cycles: last_cycle,
+                    total_cost_usd: cumulative_cost,
+                });
+            }
+        }
 
         // Check completion
         if output_contains_signal(&output.combined, &workflow.completion_signal) {

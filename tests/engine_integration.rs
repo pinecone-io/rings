@@ -43,7 +43,7 @@ fn engine_exits_zero_on_completion_signal() {
         verbose: false,
     };
 
-    let result = run_workflow(&workflow, &executor, &config, None).unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.completed_cycles, 2);
 }
@@ -65,7 +65,7 @@ fn engine_exits_one_when_max_cycles_reached() {
         verbose: false,
     };
 
-    let result = run_workflow(&workflow, &executor, &config, None).unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
     assert_eq!(result.exit_code, 1);
 }
 
@@ -82,7 +82,7 @@ fn engine_writes_run_logs() {
         verbose: false,
     };
 
-    run_workflow(&workflow, &executor, &config, None).unwrap();
+    run_workflow(&workflow, &executor, &config, None, None).unwrap();
 
     // Log file for run 1 must exist
     let log_path = dir.path().join("runs").join("001.log");
@@ -106,7 +106,7 @@ fn engine_writes_costs_jsonl() {
         verbose: false,
     };
 
-    run_workflow(&workflow, &executor, &config, None).unwrap();
+    run_workflow(&workflow, &executor, &config, None, None).unwrap();
 
     let costs_path = dir.path().join("costs.jsonl");
     assert!(costs_path.exists());
@@ -127,6 +127,45 @@ fn engine_classifies_nonzero_exit_as_error() {
         verbose: false,
     };
 
-    let result = run_workflow(&workflow, &executor, &config, None).unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
     assert_eq!(result.exit_code, 3);
+}
+
+#[test]
+fn engine_saves_state_and_exits_130_on_cancel() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 10);
+    // First run succeeds, second run triggers cancellation
+    let executor = MockExecutor::new(vec![
+        ExecutorOutput {
+            combined: "run 1 output".to_string(),
+            exit_code: 0,
+        },
+        ExecutorOutput {
+            combined: "run 2 output".to_string(),
+            exit_code: 0,
+        },
+    ]);
+    let canceled = Arc::new(AtomicBool::new(false));
+    let canceled_clone = canceled.clone();
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+    };
+
+    // Set the cancel flag immediately (test simplicity)
+    canceled_clone.store(true, Ordering::SeqCst);
+
+    let result = run_workflow(&workflow, &executor, &config, None, Some(canceled)).unwrap();
+    assert_eq!(
+        result.exit_code, 130,
+        "exit code should be 130 on cancellation"
+    );
+
+    // state.json must exist
+    let state_path = dir.path().join("state.json");
+    assert!(state_path.exists(), "state.json must be saved on cancel");
 }

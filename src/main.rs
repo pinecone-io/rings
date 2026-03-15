@@ -114,14 +114,32 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
         .context("Failed to install Ctrl+C handler")?;
     }
 
-    let result = run_workflow(&workflow, &executor, &config, None)?;
+    let result = run_workflow(&workflow, &executor, &config, None, Some(canceled))?;
 
     let final_status = match result.exit_code {
         0 => "completed",
         1 => "incomplete", // max_cycles reached without completion signal
+        130 => "canceled",
         _ => "failed",
     };
     meta.update_status(&run_dir.join("run.toml"), final_status)?;
+
+    // Print cancellation summary if canceled
+    if result.exit_code == 130 {
+        // Load the state that was saved during cancellation to get last run position
+        let state_path = run_dir.join("state.json");
+        if let Ok(state) = state::StateFile::read(&state_path) {
+            let phase = workflow.phases.get(state.last_completed_phase_index);
+            let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+            display::print_cancellation(
+                &run_id,
+                state.last_completed_cycle,
+                phase_name,
+                state.cumulative_cost_usd,
+                &state.claude_resume_commands,
+            );
+        }
+    }
 
     Ok(result.exit_code)
 }
@@ -145,7 +163,7 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
 
     let saved_state = state::StateFile::read(&state_path)
         .with_context(|| format!("Cannot read state for run {}", args.run_id))?;
-    let meta = state::RunMeta::read(&meta_path)
+    let mut meta = state::RunMeta::read(&meta_path)
         .with_context(|| format!("Cannot read run.toml for run {}", args.run_id))?;
 
     // Reload workflow
@@ -172,13 +190,49 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
         verbose: args.verbose,
     };
 
+    // Install Ctrl+C handler for resume as well
+    let canceled = Arc::new(AtomicBool::new(false));
+    {
+        let canceled = canceled.clone();
+        ctrlc::set_handler(move || {
+            canceled.store(true, Ordering::SeqCst);
+        })
+        .context("Failed to install Ctrl+C handler")?;
+    }
+
     // Use RunSchedule::resume_from to skip already-completed runs
     let result = run_workflow(
         &workflow,
         &executor,
         &config,
         Some(saved_state.last_completed_run),
+        Some(canceled),
     )?;
+
+    // Update run.toml status based on exit code
+    let final_status = match result.exit_code {
+        0 => "completed",
+        1 => "incomplete",
+        130 => "canceled",
+        _ => "failed",
+    };
+    meta.update_status(&meta_path, final_status)?;
+
+    // Print cancellation summary if canceled
+    if result.exit_code == 130 {
+        let state_path = run_dir.join("state.json");
+        if let Ok(state) = state::StateFile::read(&state_path) {
+            let phase = workflow.phases.get(state.last_completed_phase_index);
+            let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+            display::print_cancellation(
+                &args.run_id,
+                state.last_completed_cycle,
+                phase_name,
+                state.cumulative_cost_usd,
+                &state.claude_resume_commands,
+            );
+        }
+    }
 
     Ok(result.exit_code)
 }

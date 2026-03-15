@@ -14,6 +14,8 @@
 <!-- Ambiguities, spec gaps, or missing specs that need human review. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-15 / Task 4: Prompt template rendering] `specs/execution/prompt-templating.md` requires that unknown template variables produce a startup advisory warning. The current `render_prompt` implementation silently passes unknown variables through unchanged. This behavior is correct for render_prompt itself (it is not responsible for warnings), but the engine startup sequence must call a validator that scans prompt text for unrecognized `{{...}}` patterns and emits a warning. Track this in the engine task.
+
 [2026-03-15 / Task 2: GitHub Actions CI] Steps 5 and 6 (verify workflow ran, test one-line install) require a GitHub remote configured and the code pushed to GitHub. The local repository has no remote configured. The infrastructure files (`.github/workflows/ci.yml` and `install.sh`) are correctly implemented and ready. To fully complete Task 2: (1) configure a GitHub remote, (2) push the commits, (3) wait for the workflow to complete via `gh run watch`, (4) verify the nightly release was created, (5) test the one-line install. These steps are deferred pending GitHub repository setup.
 
 [2026-03-15 / Task 1: Initialize Cargo project] No spec directly governs dependency versions. Versions chosen match the plan header; pin to exact versions in Cargo.lock.

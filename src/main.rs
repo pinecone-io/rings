@@ -119,7 +119,9 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
         .context("Failed to install Ctrl+C handler")?;
     }
 
+    let run_start = std::time::Instant::now();
     let result = run_workflow(&workflow, &executor, &config, None, Some(canceled))?;
+    let total_elapsed_secs = run_start.elapsed().as_secs();
 
     let final_status = match result.exit_code {
         0 => "completed",
@@ -129,21 +131,67 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
     };
     meta.update_status(&run_dir.join("run.toml"), final_status)?;
 
-    // Print cancellation summary if canceled
-    if result.exit_code == 130 {
-        // Load the state that was saved during cancellation to get last run position
-        let state_path = run_dir.join("state.json");
-        if let Ok(state) = state::StateFile::read(&state_path) {
-            let phase = workflow.phases.get(state.last_completed_phase_index);
-            let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
-            display::print_cancellation(
+    // Print completion, error, or max-cycles summary based on exit code
+    match result.exit_code {
+        0 => {
+            // Completion: read state.json to get last cycle/phase/run
+            let state_path = run_dir.join("state.json");
+            if let Ok(state) = state::StateFile::read(&state_path) {
+                let phase = workflow.phases.get(state.last_completed_phase_index);
+                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                display::print_completion(
+                    state.last_completed_cycle,
+                    state.last_completed_run,
+                    phase_name,
+                    result.total_cost_usd,
+                    result.total_runs,
+                    total_elapsed_secs,
+                    &run_id,
+                    &run_dir.to_string_lossy(),
+                );
+            }
+        }
+        1 => {
+            // Max cycles reached
+            display::print_max_cycles(
+                workflow.max_cycles,
+                result.total_cost_usd,
+                result.total_runs,
                 &run_id,
-                state.last_completed_cycle,
-                phase_name,
-                state.cumulative_cost_usd,
-                &state.claude_resume_commands,
             );
         }
+        3 => {
+            // Executor error: read state.json to determine which run failed and get log path
+            let state_path = run_dir.join("state.json");
+            if let Ok(state) = state::StateFile::read(&state_path) {
+                let failed_run_number = state.last_completed_run + 1;
+                let log_path = run_dir
+                    .join("runs")
+                    .join(format!("{:03}.log", failed_run_number));
+                display::print_executor_error(
+                    failed_run_number,
+                    3,
+                    &run_id,
+                    &log_path.to_string_lossy(),
+                );
+            }
+        }
+        130 => {
+            // Cancellation: load the state that was saved during cancellation to get last run position
+            let state_path = run_dir.join("state.json");
+            if let Ok(state) = state::StateFile::read(&state_path) {
+                let phase = workflow.phases.get(state.last_completed_phase_index);
+                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                display::print_cancellation(
+                    &run_id,
+                    state.last_completed_cycle,
+                    phase_name,
+                    state.cumulative_cost_usd,
+                    &state.claude_resume_commands,
+                );
+            }
+        }
+        _ => {}
     }
 
     Ok(result.exit_code)
@@ -208,6 +256,7 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
     }
 
     // Use RunSchedule::resume_from to skip already-completed runs
+    let run_start = std::time::Instant::now();
     let result = run_workflow(
         &workflow,
         &executor,
@@ -215,6 +264,7 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
         Some(saved_state.last_completed_run),
         Some(canceled),
     )?;
+    let total_elapsed_secs = run_start.elapsed().as_secs();
 
     // Update run.toml status based on exit code
     let final_status = match result.exit_code {
@@ -225,20 +275,67 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
     };
     meta.update_status(&meta_path, final_status)?;
 
-    // Print cancellation summary if canceled
-    if result.exit_code == 130 {
-        let state_path = run_dir.join("state.json");
-        if let Ok(state) = state::StateFile::read(&state_path) {
-            let phase = workflow.phases.get(state.last_completed_phase_index);
-            let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
-            display::print_cancellation(
+    // Print completion, error, or max-cycles summary based on exit code
+    match result.exit_code {
+        0 => {
+            // Completion: read state.json to get last cycle/phase/run
+            let state_path = run_dir.join("state.json");
+            if let Ok(state) = state::StateFile::read(&state_path) {
+                let phase = workflow.phases.get(state.last_completed_phase_index);
+                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                display::print_completion(
+                    state.last_completed_cycle,
+                    state.last_completed_run,
+                    phase_name,
+                    result.total_cost_usd,
+                    result.total_runs,
+                    total_elapsed_secs,
+                    &args.run_id,
+                    &run_dir.to_string_lossy(),
+                );
+            }
+        }
+        1 => {
+            // Max cycles reached
+            display::print_max_cycles(
+                workflow.max_cycles,
+                result.total_cost_usd,
+                result.total_runs,
                 &args.run_id,
-                state.last_completed_cycle,
-                phase_name,
-                state.cumulative_cost_usd,
-                &state.claude_resume_commands,
             );
         }
+        3 => {
+            // Executor error: read state.json to determine which run failed and get log path
+            let state_path = run_dir.join("state.json");
+            if let Ok(state) = state::StateFile::read(&state_path) {
+                let failed_run_number = state.last_completed_run + 1;
+                let log_path = run_dir
+                    .join("runs")
+                    .join(format!("{:03}.log", failed_run_number));
+                display::print_executor_error(
+                    failed_run_number,
+                    3,
+                    &args.run_id,
+                    &log_path.to_string_lossy(),
+                );
+            }
+        }
+        130 => {
+            // Cancellation: load the state that was saved during cancellation to get last run position
+            let state_path = run_dir.join("state.json");
+            if let Ok(state) = state::StateFile::read(&state_path) {
+                let phase = workflow.phases.get(state.last_completed_phase_index);
+                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                display::print_cancellation(
+                    &args.run_id,
+                    state.last_completed_cycle,
+                    phase_name,
+                    state.cumulative_cost_usd,
+                    &state.claude_resume_commands,
+                );
+            }
+        }
+        _ => {}
     }
 
     Ok(result.exit_code)

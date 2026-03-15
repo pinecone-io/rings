@@ -1,4 +1,3 @@
-// Stub for engine module - scheduling iterator will be implemented below
 use crate::audit::{append_cost_entry, extract_resume_commands, write_run_log, CostEntry};
 use crate::completion::output_contains_signal;
 use crate::cost::parse_cost_from_output;
@@ -110,6 +109,7 @@ pub struct EngineResult {
     pub exit_code: i32,
     pub completed_cycles: u32,
     pub total_cost_usd: f64,
+    pub total_runs: u32,
 }
 
 /// Run a workflow to completion (or until max_cycles, error, or cancellation).
@@ -131,6 +131,8 @@ pub fn run_workflow(
     let mut total_runs = 0u32;
     let mut last_cycle = 0u32;
     let mut last_successful_run: u32 = 0;
+    let mut current_display_cycle = 0u32;
+    let mut cycle_cost = 0.0f64;
 
     let schedule: Box<dyn Iterator<Item = RunSpec>> = match resume_from_run {
         None => Box::new(RunSchedule::new(&workflow.phases, workflow.max_cycles)),
@@ -143,6 +145,18 @@ pub fn run_workflow(
     #[allow(clippy::explicit_counter_loop)]
     for run_spec in schedule {
         last_cycle = run_spec.cycle;
+
+        // Check if entering a new cycle
+        if run_spec.cycle != current_display_cycle {
+            // Print cost for previous cycle if not the first one
+            if current_display_cycle > 0 {
+                crate::display::print_cycle_cost(cycle_cost);
+            }
+            // Print header for new cycle
+            crate::display::print_cycle_header(run_spec.cycle, workflow.max_cycles);
+            cycle_cost = 0.0;
+            current_display_cycle = run_spec.cycle;
+        }
 
         // Resolve prompt text
         let raw_prompt = match (
@@ -169,12 +183,20 @@ pub fn run_workflow(
             prompt,
             context_dir: PathBuf::from(&workflow.context_dir),
         };
+        let run_start = std::time::Instant::now();
         let output = executor.run(&invocation)?;
+        let elapsed_secs = run_start.elapsed().as_secs();
 
         // Record cost
         let cost = parse_cost_from_output(&output.combined);
         cumulative_cost += cost.cost_usd.unwrap_or(0.0);
         total_runs += 1;
+
+        // Print per-run result
+        crate::display::print_run_result(&run_spec, cost.cost_usd.unwrap_or(0.0), elapsed_secs);
+
+        // Accumulate cycle cost
+        cycle_cost += cost.cost_usd.unwrap_or(0.0);
 
         // Write run log
         write_run_log(&runs_dir, run_spec.global_run_number, &output.combined)?;
@@ -198,6 +220,10 @@ pub fn run_workflow(
         // failing run will be retried on resume.
         let resume_commands = extract_resume_commands(&output.combined);
         if output.exit_code != 0 {
+            // Print final cycle cost before returning
+            if current_display_cycle > 0 {
+                crate::display::print_cycle_cost(cycle_cost);
+            }
             let state = StateFile {
                 schema_version: 1,
                 run_id: config.run_id.clone(),
@@ -216,6 +242,7 @@ pub fn run_workflow(
                 exit_code: 3,
                 completed_cycles: last_cycle,
                 total_cost_usd: cumulative_cost,
+                total_runs,
             });
         }
 
@@ -239,6 +266,10 @@ pub fn run_workflow(
         // Check for cancellation (Ctrl+C)
         if let Some(ref canceled_flag) = canceled {
             if canceled_flag.load(Ordering::SeqCst) {
+                // Print final cycle cost before returning
+                if current_display_cycle > 0 {
+                    crate::display::print_cycle_cost(cycle_cost);
+                }
                 // Save state with canceled_at timestamp before returning
                 let state = StateFile {
                     schema_version: 1,
@@ -258,16 +289,22 @@ pub fn run_workflow(
                     exit_code: 130,
                     completed_cycles: last_cycle,
                     total_cost_usd: cumulative_cost,
+                    total_runs,
                 });
             }
         }
 
         // Check completion
         if output_contains_signal(&output.combined, &workflow.completion_signal) {
+            // Print final cycle cost before returning
+            if current_display_cycle > 0 {
+                crate::display::print_cycle_cost(cycle_cost);
+            }
             return Ok(EngineResult {
                 exit_code: 0,
                 completed_cycles: last_cycle,
                 total_cost_usd: cumulative_cost,
+                total_runs,
             });
         }
 
@@ -277,9 +314,15 @@ pub fn run_workflow(
         }
     }
 
+    // Print final cycle cost before returning
+    if current_display_cycle > 0 {
+        crate::display::print_cycle_cost(cycle_cost);
+    }
+
     Ok(EngineResult {
         exit_code: 1,
         completed_cycles: last_cycle,
         total_cost_usd: cumulative_cost,
+        total_runs,
     })
 }

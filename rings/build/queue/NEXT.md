@@ -62,15 +62,15 @@
 **Files:** `src/executor.rs`
 
 **Steps:**
-- [ ] Add `RunHandle` trait with methods: `wait() -> Result<ExecutorOutput>`, `pid() -> u32`, `send_sigterm() -> Result<()>`, `send_sigkill() -> Result<()>`, `partial_output() -> Result<String>`
-- [ ] Add `spawn(&self, invocation: &Invocation, verbose: bool) -> Result<Box<dyn RunHandle>>` to `Executor` trait; add `Send + Sync` bounds
-- [ ] Implement `ClaudeRunHandle` wrapping `std::process::Child`:
+- [x] Add `RunHandle` trait with methods: `wait() -> Result<ExecutorOutput>`, `pid() -> u32`, `send_sigterm() -> Result<()>`, `send_sigkill() -> Result<()>`, `partial_output() -> Result<String>`
+- [x] Add `spawn(&self, invocation: &Invocation, verbose: bool) -> Result<Box<dyn RunHandle>>` to `Executor` trait; add `Send + Sync` bounds
+- [x] Implement `ClaudeRunHandle` wrapping `std::process::Child`:
   - Use `CommandExt::process_group(0)` so signals reach the whole process group
   - `child.id()` serves as both PID and PGID
   - `ESRCH` on signal calls → treat as success (process already gone)
   - Wait loop uses `try_wait()` in 100ms slices (never blocking `child.wait()`)
   - In verbose mode: use `child.wait()` path, join reader threads after wait
-- [ ] Implement `MockRunHandle`:
+- [x] Implement `MockRunHandle`:
   ```rust
   pub struct MockRunHandle {
       pub output: ExecutorOutput,
@@ -80,8 +80,8 @@
       pub sigkill_called: Arc<AtomicBool>,
   }
   ```
-- [ ] Change `MockExecutor` from `RefCell` to `Mutex<Vec<ExecutorOutput>>`
-- [ ] Keep existing `run()` method as a thin wrapper over `spawn()` + `wait()`
+- [x] Change `MockExecutor` from `RefCell` to `Mutex<Vec<ExecutorOutput>>`
+- [x] Keep existing `run()` method as a thin wrapper over `spawn()` + `wait()`
 
 ---
 

@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "testing")]
-use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Invocation {
     pub prompt: String,
@@ -18,9 +18,217 @@ pub struct ExecutorOutput {
     pub exit_code: i32,
 }
 
-pub trait Executor {
-    fn run(&self, invocation: &Invocation, verbose: bool) -> Result<ExecutorOutput>;
+/// A handle to a running executor subprocess.
+pub trait RunHandle: Send {
+    fn wait(&mut self) -> Result<ExecutorOutput>;
+    fn pid(&self) -> u32;
+    fn send_sigterm(&self) -> Result<()>;
+    fn send_sigkill(&self) -> Result<()>;
+    fn partial_output(&self) -> Result<String>;
 }
+
+pub trait Executor: Send + Sync {
+    fn spawn(&self, invocation: &Invocation, verbose: bool) -> Result<Box<dyn RunHandle>>;
+
+    /// Convenience wrapper: spawn and wait for completion.
+    fn run(&self, invocation: &Invocation, verbose: bool) -> Result<ExecutorOutput> {
+        let mut handle = self.spawn(invocation, verbose)?;
+        handle.wait()
+    }
+}
+
+// ─── Signal helpers ────────────────────────────────────────────────────────
+
+enum SignalKind {
+    Term,
+    Kill,
+}
+
+#[cfg(unix)]
+fn send_signal(pid: u32, kind: SignalKind) -> Result<()> {
+    use nix::sys::signal::{kill, Signal};
+    use nix::unistd::Pid;
+    let sig = match kind {
+        SignalKind::Term => Signal::SIGTERM,
+        SignalKind::Kill => Signal::SIGKILL,
+    };
+    match kill(Pid::from_raw(pid as i32), sig) {
+        Ok(_) => Ok(()),
+        Err(nix::errno::Errno::ESRCH) => Ok(()), // process already gone
+        Err(e) => Err(anyhow::anyhow!("Failed to send signal: {e}")),
+    }
+}
+
+#[cfg(not(unix))]
+fn send_signal(_pid: u32, _kind: SignalKind) -> Result<()> {
+    Ok(())
+}
+
+// ─── ClaudeRunHandle ───────────────────────────────────────────────────────
+
+pub struct ClaudeRunHandle {
+    child: std::process::Child,
+    stdout_output: Arc<Mutex<String>>,
+    stderr_output: Arc<Mutex<String>>,
+    stdout_thread: Option<std::thread::JoinHandle<()>>,
+    stderr_thread: Option<std::thread::JoinHandle<()>>,
+    verbose: bool,
+}
+
+impl RunHandle for ClaudeRunHandle {
+    fn wait(&mut self) -> Result<ExecutorOutput> {
+        let exit_code = if self.verbose {
+            // Blocking wait; reader threads drain output concurrently.
+            let status = self.child.wait().context("Failed to wait for subprocess")?;
+            // Join reader threads after the process exits so all buffered data is consumed.
+            if let Some(t) = self.stdout_thread.take() {
+                let _ = t.join();
+            }
+            if let Some(t) = self.stderr_thread.take() {
+                let _ = t.join();
+            }
+            status.code().unwrap_or(-1)
+        } else {
+            // Non-blocking poll in 100ms slices so future tasks can check cancel flags.
+            loop {
+                match self.child.try_wait().context("Failed to poll subprocess")? {
+                    Some(status) => {
+                        if let Some(t) = self.stdout_thread.take() {
+                            let _ = t.join();
+                        }
+                        if let Some(t) = self.stderr_thread.take() {
+                            let _ = t.join();
+                        }
+                        break status.code().unwrap_or(-1);
+                    }
+                    None => std::thread::sleep(std::time::Duration::from_millis(100)),
+                }
+            }
+        };
+
+        let stdout_str = self
+            .stdout_output
+            .lock()
+            .map_err(|_| anyhow::anyhow!("stdout mutex poisoned"))?
+            .clone();
+        let stderr_str = self
+            .stderr_output
+            .lock()
+            .map_err(|_| anyhow::anyhow!("stderr mutex poisoned"))?
+            .clone();
+
+        Ok(ExecutorOutput {
+            combined: format!("{stdout_str}\n{stderr_str}"),
+            exit_code,
+        })
+    }
+
+    fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    fn send_sigterm(&self) -> Result<()> {
+        send_signal(self.child.id(), SignalKind::Term)
+    }
+
+    fn send_sigkill(&self) -> Result<()> {
+        send_signal(self.child.id(), SignalKind::Kill)
+    }
+
+    fn partial_output(&self) -> Result<String> {
+        let stdout = self
+            .stdout_output
+            .lock()
+            .map_err(|_| anyhow::anyhow!("stdout mutex poisoned"))?
+            .clone();
+        let stderr = self
+            .stderr_output
+            .lock()
+            .map_err(|_| anyhow::anyhow!("stderr mutex poisoned"))?
+            .clone();
+        Ok(format!("{stdout}\n{stderr}"))
+    }
+}
+
+// ─── Shared spawn helper ───────────────────────────────────────────────────
+
+fn spawn_child(
+    binary: &str,
+    args: &[String],
+    context_dir: &PathBuf,
+    prompt: &str,
+    verbose: bool,
+) -> Result<ClaudeRunHandle> {
+    let mut cmd = Command::new(binary);
+    cmd.args(args)
+        .current_dir(context_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("Failed to spawn subprocess: {binary}"))?;
+
+    // Write prompt to stdin then drop (→ EOF to subprocess).
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(prompt.as_bytes())
+            .context("Failed to write prompt to stdin")?;
+    }
+
+    let stdout = child.stdout.take().context("Failed to get stdout")?;
+    let stderr = child.stderr.take().context("Failed to get stderr")?;
+
+    let stdout_output = Arc::new(Mutex::new(String::new()));
+    let stderr_output = Arc::new(Mutex::new(String::new()));
+
+    let stdout_accum = Arc::clone(&stdout_output);
+    let stderr_accum = Arc::clone(&stderr_output);
+
+    let stdout_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            if verbose {
+                eprintln!("{}", line);
+            }
+            if let Ok(mut acc) = stdout_accum.lock() {
+                acc.push_str(&line);
+                acc.push('\n');
+            }
+        }
+    });
+
+    let stderr_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines().map_while(Result::ok) {
+            if verbose {
+                eprintln!("{}", line);
+            }
+            if let Ok(mut acc) = stderr_accum.lock() {
+                acc.push_str(&line);
+                acc.push('\n');
+            }
+        }
+    });
+
+    Ok(ClaudeRunHandle {
+        child,
+        stdout_output,
+        stderr_output,
+        stdout_thread: Some(stdout_thread),
+        stderr_thread: Some(stderr_thread),
+        verbose,
+    })
+}
+
+// ─── ClaudeExecutor ────────────────────────────────────────────────────────
 
 /// Production executor: spawns `claude --dangerously-skip-permissions -p -`
 /// and writes the prompt to stdin.
@@ -39,95 +247,18 @@ impl ClaudeExecutor {
 }
 
 impl Executor for ClaudeExecutor {
-    fn run(&self, invocation: &Invocation, verbose: bool) -> Result<ExecutorOutput> {
-        let mut child = Command::new("claude")
-            .args(Self::build_args())
-            .current_dir(&invocation.context_dir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to spawn claude subprocess")?;
-
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(invocation.prompt.as_bytes())
-                .context("Failed to write prompt to claude stdin")?;
-            // stdin dropped here → EOF sent to claude
-        }
-
-        if verbose {
-            // Live streaming mode: read lines as they come and print to stderr
-            let stdout = child.stdout.take().context("Failed to get stdout")?;
-            let stderr = child.stderr.take().context("Failed to get stderr")?;
-
-            let stdout_output = Arc::new(Mutex::new(String::new()));
-            let stderr_output = Arc::new(Mutex::new(String::new()));
-
-            let stdout_accum = Arc::clone(&stdout_output);
-            let stderr_accum = Arc::clone(&stderr_output);
-
-            let stdout_thread = std::thread::spawn(move || {
-                let reader = BufReader::new(stdout);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{}", line);
-                    if let Ok(mut acc) = stdout_accum.lock() {
-                        acc.push_str(&line);
-                        acc.push('\n');
-                    }
-                }
-            });
-
-            let stderr_thread = std::thread::spawn(move || {
-                let reader = BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{}", line);
-                    if let Ok(mut acc) = stderr_accum.lock() {
-                        acc.push_str(&line);
-                        acc.push('\n');
-                    }
-                }
-            });
-
-            let output = child
-                .wait_with_output()
-                .context("Failed to wait for claude subprocess")?;
-
-            // Wait for threads to finish reading
-            let _ = stdout_thread.join();
-            let _ = stderr_thread.join();
-
-            let stdout_str = stdout_output
-                .lock()
-                .map_err(|_| anyhow::anyhow!("stdout accumulator mutex was poisoned"))?
-                .clone();
-            let stderr_str = stderr_output
-                .lock()
-                .map_err(|_| anyhow::anyhow!("stderr accumulator mutex was poisoned"))?
-                .clone();
-            let combined = format!("{}\n{}", stdout_str, stderr_str);
-
-            Ok(ExecutorOutput {
-                combined,
-                exit_code: output.status.code().unwrap_or(-1),
-            })
-        } else {
-            // Non-verbose mode: capture output and return after process completes
-            let output = child
-                .wait_with_output()
-                .context("Failed to wait for claude subprocess")?;
-
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let combined = format!("{stdout}\n{stderr}");
-
-            Ok(ExecutorOutput {
-                combined,
-                exit_code: output.status.code().unwrap_or(-1),
-            })
-        }
+    fn spawn(&self, invocation: &Invocation, verbose: bool) -> Result<Box<dyn RunHandle>> {
+        Ok(Box::new(spawn_child(
+            "claude",
+            &Self::build_args(),
+            &invocation.context_dir,
+            &invocation.prompt,
+            verbose,
+        )?))
     }
 }
+
+// ─── ConfigurableExecutor ──────────────────────────────────────────────────
 
 /// Configurable executor: spawns an arbitrary binary with caller-supplied args,
 /// writing the prompt to stdin. Used when `[executor]` is set in the workflow TOML.
@@ -145,96 +276,62 @@ impl ConfigurableExecutor {
 }
 
 impl Executor for ConfigurableExecutor {
-    fn run(&self, invocation: &Invocation, verbose: bool) -> Result<ExecutorOutput> {
-        let mut child = Command::new(&self.binary)
-            .args(&self.args)
-            .current_dir(&invocation.context_dir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| format!("Failed to spawn executor: {}", self.binary))?;
-
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(invocation.prompt.as_bytes())
-                .context("Failed to write prompt to executor stdin")?;
-        }
-
-        if verbose {
-            let stdout = child.stdout.take().context("Failed to get stdout")?;
-            let stderr = child.stderr.take().context("Failed to get stderr")?;
-
-            let stdout_output = Arc::new(Mutex::new(String::new()));
-            let stderr_output = Arc::new(Mutex::new(String::new()));
-
-            let stdout_accum = Arc::clone(&stdout_output);
-            let stderr_accum = Arc::clone(&stderr_output);
-
-            let stdout_thread = std::thread::spawn(move || {
-                let reader = BufReader::new(stdout);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{}", line);
-                    if let Ok(mut acc) = stdout_accum.lock() {
-                        acc.push_str(&line);
-                        acc.push('\n');
-                    }
-                }
-            });
-
-            let stderr_thread = std::thread::spawn(move || {
-                let reader = BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("{}", line);
-                    if let Ok(mut acc) = stderr_accum.lock() {
-                        acc.push_str(&line);
-                        acc.push('\n');
-                    }
-                }
-            });
-
-            let output = child
-                .wait_with_output()
-                .context("Failed to wait for executor subprocess")?;
-
-            let _ = stdout_thread.join();
-            let _ = stderr_thread.join();
-
-            let stdout_str = stdout_output
-                .lock()
-                .map_err(|_| anyhow::anyhow!("stdout accumulator mutex was poisoned"))?
-                .clone();
-            let stderr_str = stderr_output
-                .lock()
-                .map_err(|_| anyhow::anyhow!("stderr accumulator mutex was poisoned"))?
-                .clone();
-            let combined = format!("{}\n{}", stdout_str, stderr_str);
-
-            Ok(ExecutorOutput {
-                combined,
-                exit_code: output.status.code().unwrap_or(-1),
-            })
-        } else {
-            let output = child
-                .wait_with_output()
-                .context("Failed to wait for executor subprocess")?;
-
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let combined = format!("{stdout}\n{stderr}");
-
-            Ok(ExecutorOutput {
-                combined,
-                exit_code: output.status.code().unwrap_or(-1),
-            })
-        }
+    fn spawn(&self, invocation: &Invocation, verbose: bool) -> Result<Box<dyn RunHandle>> {
+        Ok(Box::new(spawn_child(
+            &self.binary,
+            &self.args,
+            &invocation.context_dir,
+            &invocation.prompt,
+            verbose,
+        )?))
     }
 }
+
+// ─── MockRunHandle (test-only) ─────────────────────────────────────────────
+
+#[cfg(feature = "testing")]
+pub struct MockRunHandle {
+    pub output: ExecutorOutput,
+    pub wait_delay_ms: u64,
+    pub ignores_sigterm: bool,
+    pub sigterm_called: Arc<AtomicBool>,
+    pub sigkill_called: Arc<AtomicBool>,
+}
+
+#[cfg(feature = "testing")]
+impl RunHandle for MockRunHandle {
+    fn wait(&mut self) -> Result<ExecutorOutput> {
+        if self.wait_delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(self.wait_delay_ms));
+        }
+        Ok(self.output.clone())
+    }
+
+    fn pid(&self) -> u32 {
+        0
+    }
+
+    fn send_sigterm(&self) -> Result<()> {
+        self.sigterm_called.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn send_sigkill(&self) -> Result<()> {
+        self.sigkill_called.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn partial_output(&self) -> Result<String> {
+        Ok(self.output.combined.clone())
+    }
+}
+
+// ─── MockExecutor (test-only) ──────────────────────────────────────────────
 
 /// Test-only executor: returns pre-configured outputs in sequence.
 #[cfg(feature = "testing")]
 pub struct MockExecutor {
-    outputs: RefCell<Vec<ExecutorOutput>>,
+    outputs: Mutex<Vec<ExecutorOutput>>,
 }
 
 #[cfg(feature = "testing")]
@@ -242,18 +339,27 @@ impl MockExecutor {
     pub fn new(mut outputs: Vec<ExecutorOutput>) -> Self {
         outputs.reverse(); // pop from back = FIFO
         Self {
-            outputs: RefCell::new(outputs),
+            outputs: Mutex::new(outputs),
         }
     }
 }
 
 #[cfg(feature = "testing")]
 impl Executor for MockExecutor {
-    fn run(&self, _invocation: &Invocation, _verbose: bool) -> Result<ExecutorOutput> {
-        self.outputs
-            .borrow_mut()
+    fn spawn(&self, _invocation: &Invocation, _verbose: bool) -> Result<Box<dyn RunHandle>> {
+        let output = self
+            .outputs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("MockExecutor mutex poisoned"))?
             .pop()
-            .ok_or_else(|| anyhow::anyhow!("MockExecutor: no more outputs configured"))
+            .ok_or_else(|| anyhow::anyhow!("MockExecutor: no more outputs configured"))?;
+        Ok(Box::new(MockRunHandle {
+            output,
+            wait_delay_ms: 0,
+            ignores_sigterm: false,
+            sigterm_called: Arc::new(AtomicBool::new(false)),
+            sigkill_called: Arc::new(AtomicBool::new(false)),
+        }))
     }
 }
 

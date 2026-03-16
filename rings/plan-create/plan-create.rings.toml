@@ -1,0 +1,20 @@
+[workflow]
+# Reads queues/SELECTED_FEATURES.md, dispatches 3 core technical agents in parallel,
+# and appends a [DRAFT] plan entry to queues/PLAN_DRAFTS.md.
+#
+# Run with: rings run rings/plan-create/plan-create.rings.toml
+# Resume with: rings resume <run-id>
+
+completion_signal = "PLAN_DRAFT_DONE"
+completion_signal_mode = "line"
+completion_signal_phases = ["draft"]
+context_dir = "."
+max_cycles = 1
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "draft"
+prompt = "rings/plan-create/prompts/draft.md"

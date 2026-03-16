@@ -10,6 +10,8 @@ fn phases(specs: &[(&str, u32)]) -> Vec<PhaseConfig> {
             prompt: None,
             prompt_text: Some("p".to_string()),
             runs_per_cycle: *runs,
+            budget_cap_usd: None,
+            timeout_per_run_secs: None,
         })
         .collect()
 }

@@ -36,10 +36,10 @@
 **Files:** `src/workflow.rs`
 
 **Steps:**
-- [ ] Add to `WorkflowConfig`: `budget_cap_usd: Option<f64>`, `timeout_per_run_secs: Option<DurationField>`
-- [ ] Add to `PhaseConfig`: `budget_cap_usd: Option<f64>`, `timeout_per_run_secs: Option<DurationField>`
-- [ ] In `Workflow::validate`: resolve `DurationField` to `u64` seconds; validate `budget_cap > 0` if set
-- [ ] In `Workflow::validate`: add `context_dir` existence check
+- [x] Add to `WorkflowConfig`: `budget_cap_usd: Option<f64>`, `timeout_per_run_secs: Option<DurationField>`
+- [x] Add to `PhaseConfig`: `budget_cap_usd: Option<f64>`, `timeout_per_run_secs: Option<DurationField>`
+- [x] In `Workflow::validate`: resolve `DurationField` to `u64` seconds; validate `budget_cap > 0` if set
+- [x] In `Workflow::validate`: add `context_dir` existence check
 
 ---
 

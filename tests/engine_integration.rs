@@ -16,6 +16,8 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
         output_dir: None,
         delay_between_runs: 0,
         executor: None,
+        budget_cap_usd: None,
+        timeout_per_run_secs: None,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {
@@ -23,6 +25,8 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
                 prompt: None,
                 prompt_text: Some(format!("do work, signal={signal}")),
                 runs_per_cycle: *runs,
+                budget_cap_usd: None,
+                timeout_per_run_secs: None,
             })
             .collect(),
     }
@@ -208,24 +212,32 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
         output_dir: None,
         delay_between_runs: 0,
         executor: None,
+        budget_cap_usd: None,
+        timeout_per_run_secs: None,
         phases: vec![
             PhaseConfig {
                 name: "phase_a".to_string(),
                 prompt: None,
                 prompt_text: Some("p".to_string()),
                 runs_per_cycle: 1,
+                budget_cap_usd: None,
+                timeout_per_run_secs: None,
             },
             PhaseConfig {
                 name: "phase_b".to_string(),
                 prompt: None,
                 prompt_text: Some("p".to_string()),
                 runs_per_cycle: 1,
+                budget_cap_usd: None,
+                timeout_per_run_secs: None,
             },
             PhaseConfig {
                 name: "phase_c".to_string(),
                 prompt: None,
                 prompt_text: Some("p".to_string()),
                 runs_per_cycle: 1,
+                budget_cap_usd: None,
+                timeout_per_run_secs: None,
             },
         ],
     };
@@ -279,18 +291,24 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
         output_dir: None,
         delay_between_runs: 0,
         executor: None,
+        budget_cap_usd: None,
+        timeout_per_run_secs: None,
         phases: vec![
             PhaseConfig {
                 name: "review".to_string(),
                 prompt: None,
                 prompt_text: Some("p".to_string()),
                 runs_per_cycle: 1,
+                budget_cap_usd: None,
+                timeout_per_run_secs: None,
             },
             PhaseConfig {
                 name: "synthesize".to_string(),
                 prompt: None,
                 prompt_text: Some("p".to_string()),
                 runs_per_cycle: 1,
+                budget_cap_usd: None,
+                timeout_per_run_secs: None,
             },
         ],
     };
@@ -331,11 +349,15 @@ fn line_mode_completion_requires_signal_on_own_line() {
         output_dir: None,
         delay_between_runs: 0,
         executor: None,
+        budget_cap_usd: None,
+        timeout_per_run_secs: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
             prompt_text: Some("p".to_string()),
             runs_per_cycle: 1,
+            budget_cap_usd: None,
+            timeout_per_run_secs: None,
         }],
     };
     // First output: "DONE" embedded mid-line (should NOT fire in line mode)

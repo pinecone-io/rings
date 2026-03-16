@@ -60,8 +60,12 @@ Give it this prompt, substituting actual feature and draft content:
 
 *The following features have been selected for the next implementation batch. A draft
 technical plan has already been produced. Do a full implementation review from your
-area of expertise. For each feature, identify concerns, risks, design decisions, and
-anything that must be resolved before coding begins.*
+area of expertise. For each feature, identify:*
+
+*1. **Prerequisite work** — things that must be implemented before other steps can proceed (missing abstractions, missing dependencies, data model changes, etc.). These will become early steps in the implementation plan.*
+*2. **Design decisions** — explicit choices where there are meaningful tradeoffs. Include a recommended default.*
+*3. **Test cases** — specific cases that must be covered.*
+*4. **Spec gaps** — ambiguities in the spec that would affect implementation.*
 
 *Selected features and their specs:*
 *[list F-NNN · Name · spec file for each]*
@@ -69,7 +73,7 @@ anything that must be resolved before coding begins.*
 *Draft plan:*
 *[full draft plan content]*
 
-*Return numbered findings with severity (nit / concern / blocker) and concrete suggestions."*
+*Return numbered findings grouped by the four categories above. Skip categories with no findings."*
 
 ---
 

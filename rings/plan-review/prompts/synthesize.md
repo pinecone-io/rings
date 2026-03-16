@@ -20,16 +20,22 @@ findings from the 12 reviewer agents.
 
 ## Synthesize
 
-Group findings from all reviewers into these categories:
+Consolidate all reviewer findings. Discard findings that are inapplicable or already
+addressed in the draft. When multiple reviewers raise the same issue, consolidate into
+one entry.
 
-- **Blockers** — must be resolved before implementation begins; include the recommended resolution
-- **Open Decisions** — explicit choices to make, each with a recommended default and tradeoffs
-- **Test Requirements** — specific test cases called out by reviewers
-- **Spec Gaps** — ambiguities that would affect implementation
-- **Nits** — minor suggestions; include only the most impactful ones
+Produce four sections:
 
-Discard findings that are inapplicable or already addressed in the draft. When multiple
-reviewers raise the same issue, consolidate into one entry and note the reviewers involved.
+- **Implementation Steps** — an ordered, dependency-aware list of concrete steps to
+  execute. Prerequisite work (missing abstractions, new dependencies, data model
+  changes) goes first as early steps, then per-feature work. Each step names the
+  files to touch, the types/traits/functions to add or change, and the test cases
+  required for that step. Cross-step dependencies are noted inline.
+- **Open Decisions** — explicit choices with meaningful tradeoffs; include a
+  recommended default for each.
+- **Test Requirements** — any test cases not already captured in the steps above.
+- **Spec Gaps** — ambiguities in the specs that the implementer should note or
+  resolve during implementation.
 
 ## Write output
 
@@ -40,20 +46,35 @@ Append the following entry to `queues/READY_TO_IMPLEMENT.md`:
 ```markdown
 ## Batch: <batch name> — <date>
 
-### Blockers
-[each blocker with recommended resolution]
-
-### Open Decisions
-[each decision as a question with recommended answer and tradeoffs]
-
-### Test Requirements
-[specific test cases required]
-
-### Spec Gaps
-[ambiguities to resolve during implementation]
+**Features:** [F-NNN list with names]
 
 ### Implementation Steps
-[for each feature: source files, key types/traits, test cases, cross-feature dependencies]
+
+#### Step N: <short title>
+
+**Files:** <files to create or modify>
+
+<what to implement, including key types/traits/functions>
+
+**Tests:** <test cases required for this step>
+
+[repeat for each step]
+
+---
+
+### Open Decisions
+
+| ID | Decision | Recommendation |
+|----|----------|----------------|
+[one row per decision]
+
+### Test Requirements
+
+[any test cases not already captured in the steps above]
+
+### Spec Gaps
+
+[ambiguities to note or resolve during implementation]
 ```
 
 ### Step 2: Mark the draft as reviewed

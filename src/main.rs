@@ -203,6 +203,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     let final_status = match result.exit_code {
         0 => "completed",
         1 => "incomplete", // max_cycles reached without completion signal
+        4 => "stopped",    // budget cap reached
         130 => "canceled",
         _ => "failed",
     };
@@ -250,6 +251,12 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
                     &run_id,
                     &log_path.to_string_lossy(),
                 );
+            }
+        }
+        4 => {
+            // Budget cap reached: read state.json to get budget cap value from workflow
+            if let Some(cap) = workflow.budget_cap_usd {
+                display::print_budget_cap_reached(cap, result.total_cost_usd);
             }
         }
         130 => {
@@ -381,6 +388,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     let final_status = match result.exit_code {
         0 => "completed",
         1 => "incomplete",
+        4 => "stopped", // budget cap reached
         130 => "canceled",
         _ => "failed",
     };
@@ -428,6 +436,12 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                     &args.run_id,
                     &log_path.to_string_lossy(),
                 );
+            }
+        }
+        4 => {
+            // Budget cap reached: read state.json to get budget cap value from workflow
+            if let Some(cap) = workflow.budget_cap_usd {
+                display::print_budget_cap_reached(cap, result.total_cost_usd);
             }
         }
         130 => {

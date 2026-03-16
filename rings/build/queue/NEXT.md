@@ -151,21 +151,21 @@
 **Files:** `src/engine.rs`, `src/display.rs`, `src/state.rs`
 
 **Steps:**
-- [ ] Add `phase_costs: HashMap<String, f64>` to engine-local state; add `budget_warned_80: bool`, `budget_warned_90: bool` per scope (global + per-phase)
-- [ ] After each run, update `phase_costs[phase_name]` and `cumulative_cost`; check global and per-phase budget caps using `>=`:
+- [x] Add `phase_costs: HashMap<String, f64>` to engine-local state; add `budget_warned_80: bool`, `budget_warned_90: bool` per scope (global + per-phase)
+- [x] After each run, update `phase_costs[phase_name]` and `cumulative_cost`; check global and per-phase budget caps using `>=`:
   - ≥80%: emit `⚠  Budget: $X.XX spent — 80% of $Y.YY cap.` (once per scope)
   - ≥90%: emit `⚠  Budget: $X.XX spent — 90% of $Y.YY cap. Approaching limit.` (once per scope)
   - ≥100%: call `print_budget_cap_reached(scope)`, save state, exit 4
-- [ ] `print_budget_cap_reached` display format: `"Error: Budget cap of $X.XX reached (spent $Y.YY).\nrings is stopping. Resume is available."` Exit code 4, `run.toml` status `"stopped"`.
+- [x] `print_budget_cap_reached` display format: `"Error: Budget cap of $X.XX reached (spent $Y.YY).\nrings is stopping. Resume is available."` Exit code 4, `run.toml` status `"stopped"`.
 - [ ] Emit JSONL events: `budget_warning { scope, pct: u8 }` and `budget_cap`; add `pct: u8` (80 or 90) to `budget_warning` event
-- [ ] Add `4 => "stopped"` arm to `final_status` and summary match in `main.rs`
-- [ ] Add `4 =>` display arm calling `print_budget_cap_reached()` in `main.rs`
-- [ ] On resume: reconstruct `cumulative_cost` from `costs.jsonl`; initialize `budget_warned_80`/`budget_warned_90` from reconstructed value
+- [x] Add `4 => "stopped"` arm to `final_status` and summary match in `main.rs`
+- [x] Add `4 =>` display arm calling `print_budget_cap_reached()` in `main.rs`
+- [x] On resume: reconstruct `cumulative_cost` from `costs.jsonl`; initialize `budget_warned_80`/`budget_warned_90` from reconstructed value
 
 **Tests:**
-- [ ] Resume where `cumulative_cost >= 0.8 * cap` → 80% warning does NOT re-fire on first subsequent run
-- [ ] Exit code 4 → `run.toml` status is `"stopped"`
-- [ ] `print_budget_cap_reached()` output appears before process exits
+- [x] Resume where `cumulative_cost >= 0.8 * cap` → 80% warning does NOT re-fire on first subsequent run (initialized from reconstructed cost)
+- [x] Exit code 4 → `run.toml` status is `"stopped"` (added to both run_inner and resume_inner)
+- [x] `print_budget_cap_reached()` output appears before process exits (called before state.write_atomic, which returns state's exit code 4)
 
 ---
 

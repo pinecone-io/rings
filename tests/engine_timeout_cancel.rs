@@ -1,7 +1,7 @@
 // tests/engine_timeout_cancel.rs
 use rings::cancel::CancelState;
 use rings::engine::{run_workflow, EngineConfig};
-use rings::executor::{ExecutorOutput, MockExecutor, MockRunHandle};
+use rings::executor::{ExecutorOutput, MockExecutor};
 use rings::state::StateFile;
 use rings::workflow::Workflow;
 use std::sync::Arc;

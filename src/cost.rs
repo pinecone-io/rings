@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ParseConfidence {
     Full,    // matched full pattern with dollar amount + token counts
     Partial, // matched dollar amount, no token counts
@@ -14,6 +15,15 @@ pub struct RunCost {
     pub cost_usd: Option<f64>,
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
+    pub confidence: ParseConfidence,
+    pub raw_match: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParseWarning {
+    pub run_number: u32,
+    pub cycle: u32,
+    pub phase: String,
     pub confidence: ParseConfidence,
     pub raw_match: Option<String>,
 }

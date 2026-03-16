@@ -85,3 +85,9 @@ pub fn print_executor_error(run_number: u32, exit_code: i32, run_id: &str, log_p
     eprintln!("   State saved. To resume: rings resume {run_id}");
     eprintln!("   Log: {log_path}");
 }
+
+/// Print budget cap reached message.
+pub fn print_budget_cap_reached(cap_usd: f64, spent_usd: f64) {
+    eprintln!("Error: Budget cap of ${cap_usd:.2} reached (spent ${spent_usd:.2}).");
+    eprintln!("rings is stopping. Resume is available.");
+}

@@ -150,6 +150,7 @@ pub struct EngineResult {
     pub completed_cycles: u32,
     pub total_cost_usd: f64,
     pub total_runs: u32,
+    pub parse_warnings: Vec<crate::cost::ParseWarning>,
 }
 
 /// Detect whether `signal` appears in `output` using the given mode.
@@ -194,6 +195,16 @@ pub fn run_workflow(
     let mut current_display_cycle = 0u32;
     let mut cycle_cost = 0.0f64;
 
+    // Budget cap tracking
+    let mut phase_costs: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    let mut budget_warned_80_global = false;
+    let mut budget_warned_90_global = false;
+    let mut budget_warned_80_phase: std::collections::HashMap<String, bool> =
+        std::collections::HashMap::new();
+    let mut budget_warned_90_phase: std::collections::HashMap<String, bool> =
+        std::collections::HashMap::new();
+    let parse_warnings = Vec::new();
+
     let workflow_name = workflow_name_from_file(&config.workflow_file);
 
     let mut schedule = match resume_from {
@@ -202,11 +213,42 @@ pub fn run_workflow(
     };
 
     // Restore cumulative cost from resume point if provided.
-    if let Some(ref r) = resume_from {
-        // We don't have the prior cumulative cost in ResumePoint; the engine accumulates
-        // from zero for the resumed segment. This is intentional — cost_so_far_usd in
-        // template vars reflects cost accumulated in this run segment only.
-        let _ = r; // suppress unused warning
+    if let Some(ref _r) = resume_from {
+        // Reconstruct cumulative_cost from costs.jsonl
+        if let Ok(content) = std::fs::read_to_string(&costs_path) {
+            for line in content.lines() {
+                if let Ok(entry) = serde_json::from_str::<crate::audit::CostEntry>(line.trim()) {
+                    if let Some(cost) = entry.cost_usd {
+                        cumulative_cost += cost;
+                        phase_costs
+                            .entry(entry.phase.clone())
+                            .and_modify(|c| *c += cost)
+                            .or_insert(cost);
+                    }
+                }
+            }
+        }
+
+        // Initialize warning flags based on reconstructed costs
+        if let Some(cap) = workflow.budget_cap_usd {
+            let pct_global = (cumulative_cost / cap * 100.0) as u32;
+            budget_warned_80_global = pct_global >= 80;
+            budget_warned_90_global = pct_global >= 90;
+        }
+
+        for phase in &workflow.phases {
+            if let Some(cap) = phase.budget_cap_usd {
+                if let Some(&phase_cost) = phase_costs.get(&phase.name) {
+                    let pct = (phase_cost / cap * 100.0) as u32;
+                    if pct >= 80 {
+                        budget_warned_80_phase.insert(phase.name.clone(), true);
+                    }
+                    if pct >= 90 {
+                        budget_warned_90_phase.insert(phase.name.clone(), true);
+                    }
+                }
+            }
+        }
     }
 
     while let Some(run_spec) = schedule.next() {
@@ -484,6 +526,7 @@ pub fn run_workflow(
                 completed_cycles: last_cycle,
                 total_cost_usd: cumulative_cost,
                 total_runs,
+                parse_warnings,
             });
         }
 
@@ -511,6 +554,7 @@ pub fn run_workflow(
                 completed_cycles: last_cycle,
                 total_cost_usd: cumulative_cost,
                 total_runs,
+                parse_warnings,
             });
         }
 
@@ -556,6 +600,7 @@ pub fn run_workflow(
                 completed_cycles: last_cycle,
                 total_cost_usd: cumulative_cost,
                 total_runs,
+                parse_warnings,
             });
         }
 
@@ -594,6 +639,139 @@ pub fn run_workflow(
 
         last_successful_run = run_spec.global_run_number;
 
+        // Update phase costs and check budget caps
+        phase_costs
+            .entry(run_spec.phase_name.clone())
+            .and_modify(|c| *c += cost.cost_usd.unwrap_or(0.0))
+            .or_insert(cost.cost_usd.unwrap_or(0.0));
+
+        // Check global budget cap
+        if let Some(cap) = workflow.budget_cap_usd {
+            let pct = (cumulative_cost / cap * 100.0) as u32;
+
+            // ≥100%: budget cap reached
+            if cumulative_cost >= cap {
+                // Print final cycle cost before returning
+                if current_display_cycle > 0 {
+                    crate::display::print_cycle_cost(cycle_cost);
+                }
+                // Print budget cap reached message
+                crate::display::print_budget_cap_reached(cap, cumulative_cost);
+
+                // Save state before returning
+                let state = StateFile {
+                    schema_version: 1,
+                    run_id: config.run_id.clone(),
+                    workflow_file: config.workflow_file.clone(),
+                    last_completed_run: last_successful_run,
+                    last_completed_cycle: last_cycle,
+                    last_completed_phase_index: run_spec.phase_index,
+                    last_completed_iteration: run_spec.phase_iteration,
+                    total_runs_completed: total_runs,
+                    cumulative_cost_usd: cumulative_cost,
+                    claude_resume_commands: vec![],
+                    canceled_at: None,
+                    failure_reason: None,
+                };
+                state.write_atomic(&state_path)?;
+
+                return Ok(EngineResult {
+                    exit_code: 4,
+                    completed_cycles: last_cycle,
+                    total_cost_usd: cumulative_cost,
+                    total_runs,
+                    parse_warnings,
+                });
+            }
+
+            // ≥80%: warning (once)
+            if pct >= 80 && !budget_warned_80_global {
+                budget_warned_80_global = true;
+                eprintln!(
+                    "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap.",
+                    cumulative_cost, cap
+                );
+            }
+
+            // ≥90%: warning (once)
+            if pct >= 90 && !budget_warned_90_global {
+                budget_warned_90_global = true;
+                eprintln!(
+                    "⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit.",
+                    cumulative_cost, cap
+                );
+            }
+        }
+
+        // Check per-phase budget caps
+        for phase in &workflow.phases {
+            if let Some(cap) = phase.budget_cap_usd {
+                if let Some(&phase_cost) = phase_costs.get(&phase.name) {
+                    let pct = (phase_cost / cap * 100.0) as u32;
+
+                    // ≥100%: phase budget cap reached
+                    if phase_cost >= cap {
+                        // Print final cycle cost before returning
+                        if current_display_cycle > 0 {
+                            crate::display::print_cycle_cost(cycle_cost);
+                        }
+                        // Print budget cap reached message
+                        crate::display::print_budget_cap_reached(cap, phase_cost);
+
+                        // Save state before returning
+                        let state = StateFile {
+                            schema_version: 1,
+                            run_id: config.run_id.clone(),
+                            workflow_file: config.workflow_file.clone(),
+                            last_completed_run: last_successful_run,
+                            last_completed_cycle: last_cycle,
+                            last_completed_phase_index: run_spec.phase_index,
+                            last_completed_iteration: run_spec.phase_iteration,
+                            total_runs_completed: total_runs,
+                            cumulative_cost_usd: cumulative_cost,
+                            claude_resume_commands: vec![],
+                            canceled_at: None,
+                            failure_reason: None,
+                        };
+                        state.write_atomic(&state_path)?;
+
+                        return Ok(EngineResult {
+                            exit_code: 4,
+                            completed_cycles: last_cycle,
+                            total_cost_usd: cumulative_cost,
+                            total_runs,
+                            parse_warnings,
+                        });
+                    }
+
+                    // ≥80%: warning (once per phase)
+                    if pct >= 80
+                        && !budget_warned_80_phase
+                            .get(&phase.name)
+                            .copied()
+                            .unwrap_or(false)
+                    {
+                        budget_warned_80_phase.insert(phase.name.clone(), true);
+                        eprintln!(
+                            "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap (phase: {}).",
+                            phase_cost, cap, phase.name
+                        );
+                    }
+
+                    // ≥90%: warning (once per phase)
+                    if pct >= 90
+                        && !budget_warned_90_phase
+                            .get(&phase.name)
+                            .copied()
+                            .unwrap_or(false)
+                    {
+                        budget_warned_90_phase.insert(phase.name.clone(), true);
+                        eprintln!("⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit (phase: {}).", phase_cost, cap, phase.name);
+                    }
+                }
+            }
+        }
+
         // Check for cancellation (Ctrl+C)
         if let Some(ref cancel_state) = cancel {
             if cancel_state.is_canceling() {
@@ -622,6 +800,7 @@ pub fn run_workflow(
                     completed_cycles: last_cycle,
                     total_cost_usd: cumulative_cost,
                     total_runs,
+                    parse_warnings,
                 });
             }
         }
@@ -647,6 +826,7 @@ pub fn run_workflow(
                 completed_cycles: last_cycle,
                 total_cost_usd: cumulative_cost,
                 total_runs,
+                parse_warnings,
             });
         }
 
@@ -682,5 +862,6 @@ pub fn run_workflow(
         completed_cycles: last_cycle,
         total_cost_usd: cumulative_cost,
         total_runs,
+        parse_warnings,
     })
 }

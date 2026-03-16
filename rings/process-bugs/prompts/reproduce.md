@@ -2,21 +2,21 @@
 
 You are the **reproduce** phase of the **bug-fixing** rings workflow.
 
-Your job is to confirm the bug described in `rings/process-bugs/wip/bug-working.md` is reproducible before
+Your job is to confirm the bug described in `rings/{{workflow_name}}/wip/bug-working.md` is reproducible before
 any fix is attempted.
 
 ---
 
 ## Step 1: Load context
 
-Read `rings/process-bugs/wip/bug-working.md` in full to understand the bug title, description, and severity.
+Read `rings/{{workflow_name}}/wip/bug-working.md` in full to understand the bug title, description, and severity.
 
 ---
 
 ## Step 2: Locate the relevant code
 
 Find the code path most likely responsible for the described behavior. Read the relevant
-files. Note the file paths and function names involved in `rings/process-bugs/wip/bug-working.md`.
+files. Note the file paths and function names involved in `rings/{{workflow_name}}/wip/bug-working.md`.
 
 ---
 
@@ -30,7 +30,7 @@ condition under which the incorrect behavior occurs.
 
 ## Step 4: Document results and decide next step
 
-Under `## Reproduction Steps` in `rings/process-bugs/wip/bug-working.md`, record:
+Under `## Reproduction Steps` in `rings/{{workflow_name}}/wip/bug-working.md`, record:
 - How you attempted to reproduce it
 - Whether reproduction succeeded
 - The exact code path or test that demonstrates the failure (file:line if applicable)
@@ -43,15 +43,15 @@ Reproduced: "<title>" — succeeded
 ```
 
 **If reproduction failed:** do not proceed to fix. Remove the bug entry from `## Open`
-in `rings/process-bugs/queue/BUG_REPORT.md`. Append to
-`rings/process-bugs/queue/NEEDS_INFO.md` (create the file if absent):
+in `rings/{{workflow_name}}/queue/BUG_REPORT.md`. Append to
+`rings/{{workflow_name}}/queue/NEEDS_INFO.md` (create the file if absent):
 
 ```
 - [ ] **<title>**: <original description>
   → Could not reproduce: <one sentence on what was tried and why it may be environment-specific>
 ```
 
-Delete `rings/process-bugs/wip/bug-working.md`. Then print exactly:
+Delete `rings/{{workflow_name}}/wip/bug-working.md`. Then print exactly:
 
 ```
 RINGS_CONTINUE

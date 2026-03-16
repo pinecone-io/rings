@@ -10,12 +10,12 @@ write it to the ready-to-implement queue.
 
 ### Step 1: Read the current draft
 
-Find the first entry in `rings/plan-review/queue/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
+Find the first entry in `rings/{{workflow_name}}/queue/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
 Read that entry in full, noting the batch name and date.
 
 ### Step 2: Read all reviewer findings
 
-Read all files in `rings/plan-review/wip/` matching `review-*.md`. These are the
+Read all files in `rings/{{workflow_name}}/wip/` matching `review-*.md`. These are the
 findings from the 12 reviewer agents.
 
 ## Synthesize
@@ -82,11 +82,11 @@ Append the following entry to `rings/build/queue/READY_TO_IMPLEMENT.md`:
 **Do this BEFORE marking the draft as reviewed** — deleting wip files first ensures stale
 reviewer output cannot be confused with output for the next draft if interrupted.
 
-Delete all files in `rings/plan-review/wip/`.
+Delete all files in `rings/{{workflow_name}}/wip/`.
 
 ### Step 3: Mark the draft reviewed
 
-In `rings/plan-review/queue/PLAN_DRAFTS.md`, change the status heading of the current draft
+In `rings/{{workflow_name}}/queue/PLAN_DRAFTS.md`, change the status heading of the current draft
 from `## [DRAFT]` to `## [REVIEWED]`. Do not delete the entry — preserving it provides an
 audit trail.
 

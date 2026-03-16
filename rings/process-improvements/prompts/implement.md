@@ -2,27 +2,27 @@
 
 You are the **implement** phase of the **technical improvements** rings workflow.
 
-Your job is to execute the implementation plan in `rings/process-improvements/wip/improvement-working.md`.
+Your job is to execute the implementation plan in `rings/{{workflow_name}}/wip/improvement-working.md`.
 
 ---
 
 ## Step 1: Load context
 
-Read `rings/process-improvements/wip/improvement-working.md` in full, paying close attention to
+Read `rings/{{workflow_name}}/wip/improvement-working.md` in full, paying close attention to
 `## Implementation Plan` and `## Spec Impact Check`.
 
 Before touching any code, re-confirm the spec impact check conclusion: this change
 must not alter any user-observable behavior. If you discover mid-implementation that
-a behavioral change is unavoidable, stop, record the finding under `## Changes Made` in `rings/process-improvements/wip/improvement-working.md`.
-Remove the item from `## Unprocessed` in `rings/process-improvements/queue/TECH_DEBT.md`.
-Append to `rings/process-improvements/queue/BLOCKED.md` (create the file if absent):
+a behavioral change is unavoidable, stop, record the finding under `## Changes Made` in `rings/{{workflow_name}}/wip/improvement-working.md`.
+Remove the item from `## Unprocessed` in `rings/{{workflow_name}}/queue/TECH_DEBT.md`.
+Append to `rings/{{workflow_name}}/queue/BLOCKED.md` (create the file if absent):
 
 ```
 - [ ] **<title>**: <original description>
   → Blocked: spec impact discovered during implementation — <one sentence on what would change>
 ```
 
-Delete `rings/process-improvements/wip/improvement-working.md`. Then print exactly:
+Delete `rings/{{workflow_name}}/wip/improvement-working.md`. Then print exactly:
 
 ```
 RINGS_CONTINUE

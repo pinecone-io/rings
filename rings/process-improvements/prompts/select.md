@@ -2,22 +2,22 @@
 
 You are the **select** phase of the **technical improvements** rings workflow.
 
-Your job is to select the next unprocessed item from `rings/process-improvements/queue/TECH_DEBT.md`, classify it,
+Your job is to select the next unprocessed item from `rings/{{workflow_name}}/queue/TECH_DEBT.md`, classify it,
 and either resolve it immediately (trivial cases) or prepare it for planning.
 
 ---
 
 ## Step 0: First-cycle cleanup
 
-Delete any files in `rings/process-improvements/wip/`. Also reset any items marked `[~]`
-(in-progress) back to `[ ]` in `rings/process-improvements/queue/TECH_DEBT.md` under `## Unprocessed`.
+Delete any files in `rings/{{workflow_name}}/wip/`. Also reset any items marked `[~]`
+(in-progress) back to `[ ]` in `rings/{{workflow_name}}/queue/TECH_DEBT.md` under `## Unprocessed`.
 This clears state from any previously interrupted run.
 
 ---
 
 ## Step 1: Load context
 
-Read `rings/process-improvements/queue/TECH_DEBT.md`. Find the `## Unprocessed` section.
+Read `rings/{{workflow_name}}/queue/TECH_DEBT.md`. Find the `## Unprocessed` section.
 
 If the `## Unprocessed` section is empty or absent (no `[ ]` entries), print exactly:
 
@@ -34,7 +34,7 @@ and stop.
 Take the first entry in `## Unprocessed` with status `[ ]`. One item per cycle — do not process multiple.
 
 Mark the selected entry as in-progress by changing `[ ]` to `[~]` in
-`rings/process-improvements/queue/TECH_DEBT.md`. **Do this before writing the wip file.**
+`rings/{{workflow_name}}/queue/TECH_DEBT.md`. **Do this before writing the wip file.**
 
 ---
 
@@ -57,9 +57,9 @@ Classify the item as exactly one of:
 
 ## Step 4a: If Already done or Out of scope — resolve immediately
 
-Remove the item from `## Unprocessed` in `rings/process-improvements/queue/TECH_DEBT.md`.
+Remove the item from `## Unprocessed` in `rings/{{workflow_name}}/queue/TECH_DEBT.md`.
 
-Append the following to `rings/process-improvements/activities/TECH_DEBT_RESOLVED.md` (create the file if absent):
+Append the following to `rings/{{workflow_name}}/activities/TECH_DEBT_RESOLVED.md` (create the file if absent):
 
 ```
 [YYYY-MM-DD] <original item text>
@@ -75,13 +75,13 @@ Then print exactly:
 RINGS_CONTINUE
 ```
 
-and stop. Do not create `rings/process-improvements/wip/improvement-working.md`.
+and stop. Do not create `rings/{{workflow_name}}/wip/improvement-working.md`.
 
 ---
 
 ## Step 4b: If Valid — prepare for planning
 
-Write `rings/process-improvements/wip/improvement-working.md` with this structure:
+Write `rings/{{workflow_name}}/wip/improvement-working.md` with this structure:
 
 ```markdown
 # Improvement Working File

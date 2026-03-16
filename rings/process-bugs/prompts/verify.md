@@ -3,14 +3,14 @@
 You are the **verify** phase of the **bug-fixing** rings workflow.
 
 Your job is to verify the fix from the previous phase is correct, then remove the bug
-from `## Open` in `rings/process-bugs/queue/BUG_REPORT.md` and record it in the
+from `## Open` in `rings/{{workflow_name}}/queue/BUG_REPORT.md` and record it in the
 activity log.
 
 ---
 
 ## Step 1: Load context
 
-Read `rings/process-bugs/wip/bug-working.md` in full, paying attention to `## Fix Applied`.
+Read `rings/{{workflow_name}}/wip/bug-working.md` in full, paying attention to `## Fix Applied`.
 
 ---
 
@@ -18,16 +18,16 @@ Read `rings/process-bugs/wip/bug-working.md` in full, paying attention to `## Fi
 
 Run `just validate`. If any checks fail, do **not** attempt further fixes. Instead:
 
-1. Record the failure output under `## Verification` in `rings/process-bugs/wip/bug-working.md`.
-2. Remove the bug entry from `## Open` in `rings/process-bugs/queue/BUG_REPORT.md`.
-   Append to `rings/process-bugs/queue/BLOCKED.md` (create the file if absent):
+1. Record the failure output under `## Verification` in `rings/{{workflow_name}}/wip/bug-working.md`.
+2. Remove the bug entry from `## Open` in `rings/{{workflow_name}}/queue/BUG_REPORT.md`.
+   Append to `rings/{{workflow_name}}/queue/BLOCKED.md` (create the file if absent):
 
    ```
    - [ ] **<title>**: <original description>
      → Blocked: tests failed after fix — see git log for details
    ```
 
-3. Delete `rings/process-bugs/wip/bug-working.md`.
+3. Delete `rings/{{workflow_name}}/wip/bug-working.md`.
 4. Print exactly:
 
    ```
@@ -43,17 +43,17 @@ Run `just validate`. If any checks fail, do **not** attempt further fixes. Inste
 Confirm that:
 - The specific behavior described in the bug no longer occurs
 - No regressions were introduced (the test suite is clean)
-- The fix matches the stated root cause in `rings/process-bugs/wip/bug-working.md`
+- The fix matches the stated root cause in `rings/{{workflow_name}}/wip/bug-working.md`
 
-Document your verification result under `## Verification` in `rings/process-bugs/wip/bug-working.md`.
+Document your verification result under `## Verification` in `rings/{{workflow_name}}/wip/bug-working.md`.
 
 ---
 
 ## Step 4: Close the bug
 
-Remove the bug entry from `## Open` in `rings/process-bugs/queue/BUG_REPORT.md`.
+Remove the bug entry from `## Open` in `rings/{{workflow_name}}/queue/BUG_REPORT.md`.
 
-Append the following to `rings/process-bugs/activities/BUGS_RESOLVED.md` (create the file if absent):
+Append the following to `rings/{{workflow_name}}/activities/BUGS_RESOLVED.md` (create the file if absent):
 
 ```
 - [x] [YYYY-MM-DD] **<title>**: <original description>
@@ -64,7 +64,7 @@ Append the following to `rings/process-bugs/activities/BUGS_RESOLVED.md` (create
 
 ## Step 5: Clean up
 
-Delete `rings/process-bugs/wip/bug-working.md` — it is no longer needed.
+Delete `rings/{{workflow_name}}/wip/bug-working.md` — it is no longer needed.
 
 Print a one-line summary:
 

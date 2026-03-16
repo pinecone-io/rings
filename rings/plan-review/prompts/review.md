@@ -32,7 +32,7 @@ Assert that `{{max_cycles}}` equals 12 (the number of reviewers in the roster). 
 does not, stop and note the mismatch in `REVIEW.md` — misconfigured `max_cycles` causes
 synthesize to run too early or too late.
 
-If `{{cycle}}` == 1, unconditionally delete **all** files in `rings/plan-review/wip/`
+If `{{cycle}}` == 1, unconditionally delete **all** files in `rings/{{workflow_name}}/wip/`
 before proceeding. This clears stale state from any previously interrupted run,
 regardless of what files are present. A prior synthesize interrupted before wip cleanup
 would leave stale review files that look like current-draft findings — unconditional
@@ -40,15 +40,15 @@ cleanup on cycle 1 prevents this.
 
 ### Step 2: Determine which reviewer to run next
 
-Check `rings/plan-review/wip/` for existing `review-{persona}.md` files. Any file
+Check `rings/{{workflow_name}}/wip/` for existing `review-{persona}.md` files. Any file
 found is treated as complete regardless of how it was produced (supports resume).
 
 Iterate the roster in order. Pick the first reviewer whose
-`rings/plan-review/wip/review-{persona}.md` does not exist.
+`rings/{{workflow_name}}/wip/review-{persona}.md` does not exist.
 
 ### Step 3: Read the current draft
 
-Find the first entry in `rings/plan-review/queue/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
+Find the first entry in `rings/{{workflow_name}}/queue/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
 Read that entry in full.
 
 For each spec file referenced in the draft's feature table, read the spec file.
@@ -86,13 +86,13 @@ area of expertise. For each feature, identify:*
 
 ### Step 5: Write findings
 
-Write the agent's full output to `rings/plan-review/wip/review-{persona}.md` where
+Write the agent's full output to `rings/{{workflow_name}}/wip/review-{persona}.md` where
 `{persona}` is the reviewer's name (e.g. `review-impl-testing.md`).
 
 ### Step 6: Signal
 
 Check whether all 12 reviewers now have a `review-{persona}.md` file in
-`rings/plan-review/wip/`.
+`rings/{{workflow_name}}/wip/`.
 
 **If any reviewers remain:**
 

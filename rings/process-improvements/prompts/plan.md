@@ -3,14 +3,14 @@
 You are the **plan** phase of the **technical improvements** rings workflow.
 
 Your job is to design a concrete implementation plan for the improvement in
-`rings/process-improvements/wip/improvement-working.md` and confirm it does not touch any product behavior
+`rings/{{workflow_name}}/wip/improvement-working.md` and confirm it does not touch any product behavior
 described in `specs/`.
 
 ---
 
 ## Step 1: Load context
 
-Read `rings/process-improvements/wip/improvement-working.md` in full. Read `specs/feature_inventory.md` to orient
+Read `rings/{{workflow_name}}/wip/improvement-working.md` in full. Read `specs/feature_inventory.md` to orient
 yourself on what is specified. Read any spec files directly relevant to the area
 being changed.
 
@@ -22,15 +22,15 @@ Carefully determine whether the proposed change would alter, add, or remove any
 behavior that a user of rings could observe — CLI output, file formats, exit codes,
 configuration fields, signal semantics, or anything else described in `specs/`.
 
-Record your findings under `## Spec Impact Check` in `rings/process-improvements/wip/improvement-working.md`:
+Record your findings under `## Spec Impact Check` in `rings/{{workflow_name}}/wip/improvement-working.md`:
 
 - **No spec impact** — describe in one sentence why the change is purely internal.
 - **Spec impact detected** — describe exactly which spec behavior would be affected.
 
 If spec impact is detected, this improvement is out of scope for this workflow. Remove
-the item from `## Unprocessed` in `rings/process-improvements/queue/TECH_DEBT.md`.
+the item from `## Unprocessed` in `rings/{{workflow_name}}/queue/TECH_DEBT.md`.
 
-Append the following to `rings/process-improvements/activities/TECH_DEBT_RESOLVED.md` (create the file if absent):
+Append the following to `rings/{{workflow_name}}/activities/TECH_DEBT_RESOLVED.md` (create the file if absent):
 
 ```
 [YYYY-MM-DD] <original item text>
@@ -38,7 +38,7 @@ Append the following to `rings/process-improvements/activities/TECH_DEBT_RESOLVE
 → Suggest filing in rings/process-ideas/queue/IDEAS.md if a product change is desired.
 ```
 
-Delete `rings/process-improvements/wip/improvement-working.md`. Then print exactly:
+Delete `rings/{{workflow_name}}/wip/improvement-working.md`. Then print exactly:
 
 ```
 RINGS_CONTINUE
@@ -50,7 +50,7 @@ and stop.
 
 ## Step 3: Write the implementation plan
 
-Under `## Implementation Plan` in `rings/process-improvements/wip/improvement-working.md`, write a step-by-step
+Under `## Implementation Plan` in `rings/{{workflow_name}}/wip/improvement-working.md`, write a step-by-step
 plan covering:
 
 - Which files will be changed and why

@@ -1,14 +1,14 @@
 # Select and Classify One Idea
 
-Your job is to select the next unprocessed idea from rings/process-ideas/queue/IDEAS.md, classify it against the existing
+Your job is to select the next unprocessed idea from rings/{{workflow_name}}/queue/IDEAS.md, classify it against the existing
 specification, and either resolve it immediately (trivial cases) or prepare it for the review panel.
 
 ---
 
 ## Step 0: First-cycle cleanup
 
-Delete any files in `rings/process-ideas/wip/`. Also reset any items marked `[~]`
-(in-progress) back to `[ ]` in `rings/process-ideas/queue/IDEAS.md` under `## Unprocessed`.
+Delete any files in `rings/{{workflow_name}}/wip/`. Also reset any items marked `[~]`
+(in-progress) back to `[ ]` in `rings/{{workflow_name}}/queue/IDEAS.md` under `## Unprocessed`.
 This clears state from any previously interrupted run.
 
 ---
@@ -17,7 +17,7 @@ This clears state from any previously interrupted run.
 
 Read the following files:
 
-- `rings/process-ideas/queue/IDEAS.md` — find the `## Unprocessed` section
+- `rings/{{workflow_name}}/queue/IDEAS.md` — find the `## Unprocessed` section
 - `specs/feature_inventory.md` — understand what is already specified
 - `specs/overview.md` — design principles and target user
 - `specs/mvp.md` — original scope
@@ -37,7 +37,7 @@ and stop.
 Take the first item in the `## Unprocessed` section with status `[ ]`. One idea per cycle — do not process multiple ideas.
 
 Mark the selected entry as in-progress by changing `[ ]` to `[~]` in
-`rings/process-ideas/queue/IDEAS.md`. **Do this before writing the wip file.**
+`rings/{{workflow_name}}/queue/IDEAS.md`. **Do this before writing the wip file.**
 
 ---
 
@@ -54,9 +54,9 @@ Classify it as exactly one of:
 
 ## Step 4a: If Already covered or Out of scope / conflict — resolve immediately
 
-Remove the idea from `## Unprocessed` in `rings/process-ideas/queue/IDEAS.md`.
+Remove the idea from `## Unprocessed` in `rings/{{workflow_name}}/queue/IDEAS.md`.
 
-Append the following to `rings/process-ideas/activities/IDEAS_PROCESSED.md` (create the file if absent):
+Append the following to `rings/{{workflow_name}}/activities/IDEAS_PROCESSED.md` (create the file if absent):
 
 ```
 [YYYY-MM-DD] <original idea text>
@@ -71,13 +71,13 @@ Then print exactly:
 RINGS_CONTINUE
 ```
 
-and stop. Do not create `rings/process-ideas/wip/idea-working.md`.
+and stop. Do not create `rings/{{workflow_name}}/wip/idea-working.md`.
 
 ---
 
 ## Step 4b: If Extension or New feature — prepare for review
 
-Write `rings/process-ideas/wip/idea-working.md` with the following structure:
+Write `rings/{{workflow_name}}/wip/idea-working.md` with the following structure:
 
 ```markdown
 # Idea Working File

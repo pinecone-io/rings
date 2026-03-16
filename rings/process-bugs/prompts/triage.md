@@ -2,22 +2,22 @@
 
 You are the **triage** phase of the **bug-fixing** rings workflow.
 
-Your job is to select the next open bug from `rings/process-bugs/queue/BUG_REPORT.md` and prepare it for
+Your job is to select the next open bug from `rings/{{workflow_name}}/queue/BUG_REPORT.md` and prepare it for
 investigation. One bug per cycle — do not triage multiple bugs.
 
 ---
 
 ## Step 0: First-cycle cleanup
 
-Delete any files in `rings/process-bugs/wip/`. Also reset any items marked `[~]`
-(in-progress) back to `[ ]` in `rings/process-bugs/queue/BUG_REPORT.md` under `## Open`.
+Delete any files in `rings/{{workflow_name}}/wip/`. Also reset any items marked `[~]`
+(in-progress) back to `[ ]` in `rings/{{workflow_name}}/queue/BUG_REPORT.md` under `## Open`.
 This clears state from any previously interrupted run.
 
 ---
 
 ## Step 1: Load context
 
-Read `rings/process-bugs/queue/BUG_REPORT.md`. Find the `## Open` section.
+Read `rings/{{workflow_name}}/queue/BUG_REPORT.md`. Find the `## Open` section.
 
 If the `## Open` section is empty or absent (no `[ ]` or `[~]` entries), print exactly:
 
@@ -36,13 +36,13 @@ Take the first entry in the `## Open` section with status `[ ]`. Skip entries ma
 unless this is a mid-cycle resume. One bug per cycle — do not triage multiple bugs.
 
 Mark the selected entry as in-progress by changing `[ ]` to `[~]` in
-`rings/process-bugs/queue/BUG_REPORT.md`. **Do this before writing the wip file.**
+`rings/{{workflow_name}}/queue/BUG_REPORT.md`. **Do this before writing the wip file.**
 
 ---
 
-## Step 3: Write rings/process-bugs/wip/bug-working.md
+## Step 3: Write rings/{{workflow_name}}/wip/bug-working.md
 
-Write `rings/process-bugs/wip/bug-working.md` with this structure:
+Write `rings/{{workflow_name}}/wip/bug-working.md` with this structure:
 
 ```markdown
 # Bug Working File

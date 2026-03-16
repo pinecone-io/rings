@@ -10,8 +10,8 @@ IMPORTANT: Complete a maximum of ONE task per run.
 
 - **Language**: Rust 2021
 - **Repository root**: `/home/jhamon/code/rings`
-- **Active work**: `rings/build/queue/NEXT.md`
-- **Upcoming work**: `rings/build/queue/READY_TO_IMPLEMENT.md`
+- **Active work**: `rings/{{workflow_name}}/queue/NEXT.md`
+- **Upcoming work**: `rings/{{workflow_name}}/queue/READY_TO_IMPLEMENT.md`
 - **Specs** (source of truth): `specs/`
 - **Quality gates and commit rules**: `CLAUDE.md`
 
@@ -19,7 +19,7 @@ IMPORTANT: Complete a maximum of ONE task per run.
 
 ### Step 1: Check for active work
 
-Read `rings/build/queue/NEXT.md`.
+Read `rings/{{workflow_name}}/queue/NEXT.md`.
 
 If it has any unchecked tasks (`- [ ]`), skip directly to **Step 3: Choose a task**.
 
@@ -29,11 +29,11 @@ NEXT.md has no unchecked tasks. Archive and refill:
 
 1. If NEXT.md has any content (completed tasks):
    - **First**, append its entire content to
-     `rings/build/activities/BATCHES_COMPLETED.md` (create the file if absent).
+     `rings/{{workflow_name}}/activities/BATCHES_COMPLETED.md` (create the file if absent).
    - **Then** overwrite `NEXT.md` with empty content.
    (Archive before clearing — if interrupted mid-clear, the completed work is preserved.)
 
-2. Read `rings/build/queue/READY_TO_IMPLEMENT.md`. Find the first batch — it starts
+2. Read `rings/{{workflow_name}}/queue/READY_TO_IMPLEMENT.md`. Find the first batch — it starts
    with a `## Batch:` heading.
 
 3. **If there are no batches**, print exactly:

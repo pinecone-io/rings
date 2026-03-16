@@ -48,12 +48,12 @@
 **Files:** `src/cli.rs`
 
 **Steps:**
-- [ ] Add `RunArgs::budget_cap: Option<f64>` (`--budget-cap <DOLLARS>`)
-- [ ] Add `RunArgs::timeout_per_run: Option<String>` (`--timeout-per-run <DURATION>`)
-- [ ] Add `RunArgs::force_lock: bool` (`--force-lock`)
-- [ ] Add same three fields to `ResumeArgs`
-- [ ] Validate `budget_cap > 0` in `run_inner`/`resume_inner`
-- [ ] Wire CLI overrides: CLI `budget_cap` and `timeout_per_run` take precedence over TOML values
+- [x] Add `RunArgs::budget_cap: Option<f64>` (`--budget-cap <DOLLARS>`)
+- [x] Add `RunArgs::timeout_per_run: Option<String>` (`--timeout-per-run <DURATION>`)
+- [x] Add `RunArgs::force_lock: bool` (`--force-lock`)
+- [x] Add same three fields to `ResumeArgs`
+- [x] Validate `budget_cap > 0` in `run_inner`/`resume_inner`
+- [x] Wire CLI overrides: CLI `budget_cap` and `timeout_per_run` take precedence over TOML values
 
 ---
 

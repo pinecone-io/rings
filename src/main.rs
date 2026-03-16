@@ -10,7 +10,7 @@ pub mod state;
 pub mod template;
 pub mod workflow;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -53,6 +53,17 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
     }
     if let Some(delay) = args.delay {
         workflow.delay_between_runs = delay;
+    }
+    if let Some(cap) = args.budget_cap {
+        if cap <= 0.0 {
+            bail!("--budget-cap must be greater than zero");
+        }
+        workflow.budget_cap_usd = Some(cap);
+    }
+    if let Some(ref timeout_str) = args.timeout_per_run {
+        let secs = duration::parse_duration_secs(timeout_str)
+            .with_context(|| format!("invalid --timeout-per-run value: {timeout_str:?}"))?;
+        workflow.timeout_per_run_secs = Some(secs);
     }
 
     // Check executor is available
@@ -251,6 +262,17 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
     }
     if let Some(delay) = args.delay {
         workflow.delay_between_runs = delay;
+    }
+    if let Some(cap) = args.budget_cap {
+        if cap <= 0.0 {
+            bail!("--budget-cap must be greater than zero");
+        }
+        workflow.budget_cap_usd = Some(cap);
+    }
+    if let Some(ref timeout_str) = args.timeout_per_run {
+        let secs = duration::parse_duration_secs(timeout_str)
+            .with_context(|| format!("invalid --timeout-per-run value: {timeout_str:?}"))?;
+        workflow.timeout_per_run_secs = Some(secs);
     }
 
     eprintln!("Resuming {}", args.run_id);

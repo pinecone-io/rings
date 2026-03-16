@@ -43,6 +43,18 @@ pub struct RunArgs {
     /// Skip the startup warning if completion signal not found in prompts
     #[arg(long)]
     pub no_completion_check: bool,
+
+    /// Stop execution when cumulative cost reaches this amount (USD)
+    #[arg(long, value_name = "DOLLARS")]
+    pub budget_cap: Option<f64>,
+
+    /// Per-run timeout (e.g. 30s, 5m, 1h)
+    #[arg(long, value_name = "DURATION")]
+    pub timeout_per_run: Option<String>,
+
+    /// Override an existing lock on context_dir
+    #[arg(long)]
+    pub force_lock: bool,
 }
 
 #[derive(Args, Debug)]
@@ -65,4 +77,16 @@ pub struct ResumeArgs {
     /// Stream executor output live to terminal
     #[arg(long, short)]
     pub verbose: bool,
+
+    /// Stop execution when cumulative cost reaches this amount (USD)
+    #[arg(long, value_name = "DOLLARS")]
+    pub budget_cap: Option<f64>,
+
+    /// Per-run timeout (e.g. 30s, 5m, 1h)
+    #[arg(long, value_name = "DURATION")]
+    pub timeout_per_run: Option<String>,
+
+    /// Override an existing lock on context_dir
+    #[arg(long)]
+    pub force_lock: bool,
 }

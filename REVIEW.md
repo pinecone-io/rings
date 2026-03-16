@@ -24,6 +24,8 @@
 
 [2026-03-15 / Task 11: Engine integration] Engine loop uses Box<dyn Iterator> to dispatch between fresh and resume schedules. State is written after successful run only; failed run retains last_successful_run checkpoint so it is retried on resume. Spec consulted: `specs/execution/engine.md`. Five integration tests pass: completion signal detection, max_cycles limit, run logs written, costs.jsonl written, error classification. Suppressed clippy::explicit_counter_loop for total_runs counter (it must persist across resume operations, not reset per-iterator). No unwrap() or expect() in production code.
 
+[2026-03-16 / Task 1: nix + duration parser] Added `nix = { version = "0.29", features = ["signal", "process"] }` under `[target.'cfg(unix)'.dependencies]`. Moved `tempfile` from `[dev-dependencies]` to `[dependencies]` because downstream tasks (lock file, working-file writes) will use it in production code. Implemented `parse_duration_secs` and `DurationField` enum in `src/duration.rs`. The overflow test case value in NEXT.md (`5165088294h`) does not actually overflow u64 — 5_165_088_294 * 3_600 ≈ 1.86×10^13 which is well within u64::MAX (1.84×10^19). Used `9999999999999999h` instead, which does overflow. Filed under Decisions because the spec test vector is wrong rather than spec/code conflict.
+
 ## Conflicts
 <!-- Cases where code and spec disagreed; what was changed and why. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->

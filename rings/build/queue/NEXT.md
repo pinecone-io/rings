@@ -9,10 +9,10 @@
 **Files:** `Cargo.toml`, new `src/duration.rs`
 
 **Steps:**
-- [ ] Add `nix = { version = "0.29", features = ["signal", "process"] }` under `[target.'cfg(unix)'.dependencies]` in `Cargo.toml`
-- [ ] Move `tempfile = "3"` from `[dev-dependencies]` to `[dependencies]`
-- [ ] Implement `pub fn parse_duration_secs(s: &str) -> anyhow::Result<u64>` in `src/duration.rs`. Accepts integer seconds or single-char suffix strings (`"30s"`, `"5m"`, `"1h"`). All other forms are errors.
-- [ ] Add `DurationField` untagged enum to support both integer and string TOML values:
+- [x] Add `nix = { version = "0.29", features = ["signal", "process"] }` under `[target.'cfg(unix)'.dependencies]` in `Cargo.toml`
+- [x] Move `tempfile = "3"` from `[dev-dependencies]` to `[dependencies]`
+- [x] Implement `pub fn parse_duration_secs(s: &str) -> anyhow::Result<u64>` in `src/duration.rs`. Accepts integer seconds or single-char suffix strings (`"30s"`, `"5m"`, `"1h"`). All other forms are errors.
+- [x] Add `DurationField` untagged enum to support both integer and string TOML values:
   ```rust
   #[derive(Deserialize)]
   #[serde(untagged)]
@@ -21,13 +21,13 @@
   Verify `toml::from_str("timeout_per_run_secs = 300")` produces `DurationField::Secs(300)`; if `i64`→`u64` coercion fails, use `Secs(i64)` and validate `>= 0`.
 
 **Tests:**
-- [ ] `"30s"` → 30, `"5m"` → 300, `"1h"` → 3600
-- [ ] `"0"` / `"0s"` → `Err` (zero timeout fires immediately)
-- [ ] `"5min"` / `"1h30m"` / `""` → `Err`
-- [ ] `"  30s  "` (leading/trailing spaces) → 30 (trim before parse)
-- [ ] `"30S"` (uppercase suffix) → `Err`
-- [ ] `"5165088294h"` (overflow) → `Err` (use `checked_mul`)
-- [ ] `toml::from_str("timeout_per_run_secs = 300")` → `DurationField::Secs(300)`
+- [x] `"30s"` → 30, `"5m"` → 300, `"1h"` → 3600
+- [x] `"0"` / `"0s"` → `Err` (zero timeout fires immediately)
+- [x] `"5min"` / `"1h30m"` / `""` → `Err`
+- [x] `"  30s  "` (leading/trailing spaces) → 30 (trim before parse)
+- [x] `"30S"` (uppercase suffix) → `Err`
+- [x] `"5165088294h"` (overflow) → `Err` (use `checked_mul`) [Note: used `9999999999999999h` — original value doesn't overflow u64]
+- [x] `toml::from_str("timeout_per_run_secs = 300")` → `DurationField::Secs(300)`
 
 ---
 

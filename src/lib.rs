@@ -3,6 +3,7 @@ pub mod cli;
 pub mod completion;
 pub mod cost;
 pub mod display;
+pub mod duration;
 pub mod engine;
 pub mod executor;
 pub mod state;

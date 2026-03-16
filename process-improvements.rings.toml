@@ -1,0 +1,35 @@
+[workflow]
+# Processes one technical improvement per cycle from TECH_DEBT.md.
+# Each cycle: select one unprocessed item → plan the approach (with spec safety
+# check) → implement → verify. Items that are already done, out of scope, or
+# fail validation are handled with RINGS_CONTINUE rather than blocking the queue.
+#
+# Run with:    rings run process-improvements.rings.toml
+# Resume with: rings resume <run-id>
+
+completion_signal = "ALL_IMPROVEMENTS_PROCESSED"
+completion_signal_mode = "line"
+completion_signal_phases = ["select"]
+continue_signal = "RINGS_CONTINUE"
+context_dir = "."
+max_cycles = 100
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "select"
+prompt = "process-improvements/select.md"
+
+[[phases]]
+name = "plan"
+prompt = "process-improvements/plan.md"
+
+[[phases]]
+name = "implement"
+prompt = "process-improvements/implement.md"
+
+[[phases]]
+name = "verify"
+prompt = "process-improvements/verify.md"

@@ -31,6 +31,22 @@ Conventional commit prefixes are required:
 
 Scopes are optional (e.g., `feat(executor): ...`). No PRs. No branches. Commit directly to `main`.
 
+## Filing Technical Improvements
+
+If you notice an opportunity to improve the codebase internally — a refactor, duplicate
+code, a dependency that could be simplified, a performance issue, better test coverage,
+or anything else that makes rings easier to work on — add an entry to `TECH_DEBT.md`
+under `## Unprocessed`:
+
+```
+- [ ] **<short title>**: <what to change and why it's better>
+```
+
+Only file items that do not add, remove, or change any product behavior described in
+`specs/`. If the change would alter observable behavior, file it in `IDEAS.md` instead.
+
+The `process-improvements.rings.toml` workflow will pick it up in a future run.
+
 ## Filing Bug Reports
 
 If you encounter a bug — unexpected behavior, a crash, a spec violation, or a broken test you cannot fix within your task scope — add an entry to `BUG_REPORT.md` under `## Open`:

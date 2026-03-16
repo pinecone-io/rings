@@ -48,17 +48,21 @@ Append the following entry to `queues/READY_TO_IMPLEMENT.md`:
 
 **Features:** [F-NNN list with names]
 
-### Implementation Steps
-
-#### Step N: <short title>
+### Task 1: <short title>
 
 **Files:** <files to create or modify>
 
 <what to implement, including key types/traits/functions>
 
-**Tests:** <test cases required for this step>
+**Tests:**
+- [ ] <test case>
+- [ ] <test case>
 
-[repeat for each step]
+**Steps:**
+- [ ] <concrete implementation step>
+- [ ] <concrete implementation step>
+
+[repeat Task N blocks for each logical unit of work; prerequisite tasks come first]
 
 ---
 
@@ -66,15 +70,11 @@ Append the following entry to `queues/READY_TO_IMPLEMENT.md`:
 
 | ID | Decision | Recommendation |
 |----|----------|----------------|
-[one row per decision]
-
-### Test Requirements
-
-[any test cases not already captured in the steps above]
+[one row per decision; include tradeoffs in a Notes column if needed]
 
 ### Spec Gaps
 
-[ambiguities to note or resolve during implementation]
+[ambiguities to note or resolve during implementation; omit section if none]
 ```
 
 ### Step 2: Mark the draft as reviewed

@@ -35,7 +35,7 @@ Scopes are optional (e.g., `feat(executor): ...`). No PRs. No branches. Commit d
 
 If you notice an opportunity to improve the codebase internally — a refactor, duplicate
 code, a dependency that could be simplified, a performance issue, better test coverage,
-or anything else that makes rings easier to work on — add an entry to `queues/TECH_DEBT.md`
+or anything else that makes rings easier to work on — add an entry to `rings/process-improvements/queue/TECH_DEBT.md`
 under `## Unprocessed`:
 
 ```
@@ -43,13 +43,13 @@ under `## Unprocessed`:
 ```
 
 Only file items that do not add, remove, or change any product behavior described in
-`specs/`. If the change would alter observable behavior, file it in `queues/IDEAS.md` instead.
+`specs/`. If the change would alter observable behavior, file it in `rings/process-ideas/queue/IDEAS.md` instead.
 
 The `rings/process-improvements/process-improvements.rings.toml` workflow will pick it up in a future run.
 
 ## Filing Bug Reports
 
-If you encounter a bug — unexpected behavior, a crash, a spec violation, or a broken test you cannot fix within your task scope — add an entry to `queues/BUG_REPORT.md` under `## Open`:
+If you encounter a bug — unexpected behavior, a crash, a spec violation, or a broken test you cannot fix within your task scope — add an entry to `rings/process-bugs/queue/BUG_REPORT.md` under `## Open`:
 
 ```
 - [ ] **<short title>**: <what happened> — <what was expected instead>
@@ -61,14 +61,14 @@ The `rings/process-bugs/process-bugs.rings.toml` workflow will pick it up in a f
 
 ## Rings Workflow File Organization
 
-When writing or modifying rings workflows, follow these conventions:
+Each workflow owns its files under `rings/<workflow-name>/`. When writing or modifying rings workflows, follow these conventions:
 
-- **`queues/`** — files intended to be consumed by other workflows. Each queue file holds an ordered list of entries that workflows process and produce. Examples: `queues/IDEAS.md`, `queues/PLAN_DRAFTS.md`. Contains only unprocessed and in-flight items — never completed ones.
-- **`activities/`** — permanent records of completed work. Workflows append here when closing an item; nothing reads these files as input. Examples: `activities/BUGS_RESOLVED.md`, `activities/IDEAS_PROCESSED.md`, `activities/TECH_DEBT_RESOLVED.md`.
+- **`rings/<workflow-name>/queue/`** — input files for this workflow. Contains only unprocessed and in-flight items. When another workflow produces output that this workflow consumes, it writes directly into this workflow's `queue/` directory (consumer-owns). Examples: `rings/process-bugs/queue/BUG_REPORT.md`, `rings/build/queue/READY_TO_IMPLEMENT.md`.
+- **`rings/<workflow-name>/activities/`** — permanent records of completed work produced by this workflow. Nothing reads these as input; they are append-only audit logs. Examples: `rings/process-bugs/activities/BUGS_RESOLVED.md`, `rings/prioritize/activities/PRIORITIZED_FEATURES.md`.
 - **`rings/<workflow-name>/wip/`** — ephemeral state internal to a workflow's cycles. These files are scratch space for intermediate outputs within a run and must never be treated as durable. They should be cleaned up by the workflow itself (typically in the final synthesizing phase).
 - **First-phase cleanup** — the first phase of a cycle should delete any stale debris in its `wip/` directory before beginning new work. This prevents leftover files from an interrupted prior run from corrupting the current run's state detection logic.
 
-Never write ephemeral state to the repository root or to `queues/`. If a file is only meaningful within a single workflow run, it belongs in `rings/<workflow-name>/wip/`. If a file records completed work for audit purposes, it belongs in `activities/`.
+Never write ephemeral state to the repository root. If a file is only meaningful within a single workflow run, it belongs in `rings/<workflow-name>/wip/`. If it is input to a workflow, it belongs in that workflow's `queue/`. If it records completed work, it belongs in the producing workflow's `activities/`.
 
 ## Agent Behavior
 

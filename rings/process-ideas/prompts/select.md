@@ -1,6 +1,6 @@
 # Select and Classify One Idea
 
-Your job is to select the next unprocessed idea from queues/IDEAS.md, classify it against the existing
+Your job is to select the next unprocessed idea from rings/process-ideas/queue/IDEAS.md, classify it against the existing
 specification, and either resolve it immediately (trivial cases) or prepare it for the review panel.
 
 ---
@@ -9,7 +9,7 @@ specification, and either resolve it immediately (trivial cases) or prepare it f
 
 Read the following files:
 
-- `queues/IDEAS.md` — find the `## Unprocessed` section
+- `rings/process-ideas/queue/IDEAS.md` — find the `## Unprocessed` section
 - `specs/feature_inventory.md` — understand what is already specified
 - `specs/overview.md` — design principles and target user
 - `specs/mvp.md` — original scope
@@ -43,8 +43,9 @@ Classify it as exactly one of:
 
 ## Step 4a: If Already covered or Out of scope / conflict — resolve immediately
 
-Move the idea from `## Unprocessed` to `## Resolved` in `queues/IDEAS.md` (create the section if absent).
-Format the entry as:
+Remove the idea from `## Unprocessed` in `rings/process-ideas/queue/IDEAS.md`.
+
+Append the following to `rings/process-ideas/activities/IDEAS_PROCESSED.md` (create the file if absent):
 
 ```
 [YYYY-MM-DD] <original idea text>

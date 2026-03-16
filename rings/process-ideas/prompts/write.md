@@ -1,7 +1,7 @@
 # Write Idea into Specification
 
 Your job is to write the reviewed idea into the appropriate spec file and feature inventory,
-then mark it as processed in queues/IDEAS.md.
+then mark it as processed in rings/process-ideas/queue/IDEAS.md.
 
 ---
 
@@ -53,9 +53,9 @@ The summary must be written from the user's perspective in the style of existing
 
 ## Step 5: Record the processed idea
 
-Remove the original idea text from `## Unprocessed` in `queues/IDEAS.md`.
+Remove the original idea text from `## Unprocessed` in `rings/process-ideas/queue/IDEAS.md`.
 
-Append the following to `activities/IDEAS_PROCESSED.md` (create the file if absent):
+Append the following to `rings/process-ideas/activities/IDEAS_PROCESSED.md` (create the file if absent):
 
 ```
 [YYYY-MM-DD] <original idea text>

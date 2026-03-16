@@ -27,13 +27,15 @@ Record your findings under `## Spec Impact Check` in `improvement-working.md`:
 - **No spec impact** — describe in one sentence why the change is purely internal.
 - **Spec impact detected** — describe exactly which spec behavior would be affected.
 
-If spec impact is detected, this improvement is out of scope for this workflow. Move
-the item from `## Unprocessed` to `## Resolved` in `queues/TECH_DEBT.md`:
+If spec impact is detected, this improvement is out of scope for this workflow. Remove
+the item from `## Unprocessed` in `rings/process-improvements/queue/TECH_DEBT.md`.
+
+Append the following to `rings/process-improvements/activities/TECH_DEBT_RESOLVED.md` (create the file if absent):
 
 ```
 [YYYY-MM-DD] <original item text>
 → Out of scope (spec impact): <one-sentence explanation of what would change>
-→ Suggest filing in queues/IDEAS.md if a product change is desired.
+→ Suggest filing in rings/process-ideas/queue/IDEAS.md if a product change is desired.
 ```
 
 Delete `improvement-working.md`. Then print exactly:

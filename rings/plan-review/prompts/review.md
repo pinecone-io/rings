@@ -41,7 +41,7 @@ Iterate the roster in order. Pick the first reviewer whose
 
 ### Step 3: Read the current draft
 
-Find the first entry in `queues/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
+Find the first entry in `rings/plan-review/queue/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
 Read that entry in full.
 
 For each spec file referenced in the draft's feature table, read the spec file.

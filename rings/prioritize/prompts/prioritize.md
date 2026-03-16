@@ -55,9 +55,9 @@ For each elected feature, change its status from `BACKLOG` to `PRIORITIZED` in
 
 ---
 
-## Step 4: Append to queues/PRIORITIZED_FEATURES.md
+## Step 4: Append to rings/prioritize/activities/PRIORITIZED_FEATURES.md
 
-Read `queues/PRIORITIZED_FEATURES.md` to find the current highest priority number N (look for the
+Read `rings/prioritize/activities/PRIORITIZED_FEATURES.md` to find the current highest priority number N (look for the
 last `### Priority N:` heading). If the file has no entries yet, start at N = 0.
 
 Append each elected feature as a new entry, incrementing N for each:

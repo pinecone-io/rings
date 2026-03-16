@@ -14,7 +14,7 @@ Read `improvement-working.md` in full, paying close attention to
 Before touching any code, re-confirm the spec impact check conclusion: this change
 must not alter any user-observable behavior. If you discover mid-implementation that
 a behavioral change is unavoidable, stop, record the finding under `## Changes Made`
-in `improvement-working.md`, and move the item to `## Blocked` in `queues/TECH_DEBT.md`:
+in `improvement-working.md`, and move the item to `## Blocked` in `rings/process-improvements/queue/TECH_DEBT.md`:
 
 ```
 - [ ] **<title>**: <original description>

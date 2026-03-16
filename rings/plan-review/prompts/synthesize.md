@@ -10,7 +10,7 @@ write it to the ready-to-implement queue.
 
 ### Step 1: Read the current draft
 
-Find the first entry in `queues/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
+Find the first entry in `rings/plan-review/queue/PLAN_DRAFTS.md` whose status line begins `## [DRAFT]`.
 Read that entry in full, noting the batch name and date.
 
 ### Step 2: Read all reviewer findings
@@ -41,7 +41,7 @@ Produce four sections:
 
 ### Step 1: Append to READY_TO_IMPLEMENT.md
 
-Append the following entry to `queues/READY_TO_IMPLEMENT.md`:
+Append the following entry to `rings/build/queue/READY_TO_IMPLEMENT.md`:
 
 ```markdown
 ## Batch: <batch name> — <date>
@@ -79,7 +79,7 @@ Append the following entry to `queues/READY_TO_IMPLEMENT.md`:
 
 ### Step 2: Mark the draft as reviewed
 
-In `queues/PLAN_DRAFTS.md`, find the entry that begins `## [DRAFT] Batch: <batch name>`.
+In `rings/plan-review/queue/PLAN_DRAFTS.md`, find the entry that begins `## [DRAFT] Batch: <batch name>`.
 Replace `[DRAFT]` with `[REVIEWED]` in that heading line only.
 
 ### Step 3: Clean up wip files

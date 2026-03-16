@@ -10,7 +10,7 @@ IMPORTANT: You should complete a maximum of ONE task per run.
 
 - **Language**: Rust 2021
 - **Repository root**: `/home/jhamon/code/rings`
-- **Queue file**: `queues/READY_TO_IMPLEMENT.md`
+- **Queue file**: `rings/build/queue/READY_TO_IMPLEMENT.md`
 - **Specs** (source of truth): `specs/`
 - **Quality gates and commit rules**: `CLAUDE.md`
 
@@ -20,7 +20,7 @@ IMPORTANT: You should complete a maximum of ONE task per run.
 
 0. Read `specs/mvp.md` to understand the large-scale goal.
 
-1. Read `queues/READY_TO_IMPLEMENT.md`. Find the first batch that has any unchecked steps (`- [ ]`).
+1. Read `rings/build/queue/READY_TO_IMPLEMENT.md`. Find the first batch that has any unchecked steps (`- [ ]`).
 
 2. **If there are no unchecked steps in any batch**, print exactly:
 

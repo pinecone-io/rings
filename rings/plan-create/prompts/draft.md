@@ -39,7 +39,7 @@ Agents: `impl-rust`, `impl-architecture`, `impl-deps`
 
 ## Record draft
 
-Collect the three agents' outputs. Append the following to `queues/PLAN_DRAFTS.md`:
+Collect the three agents' outputs. Append the following to `rings/plan-review/queue/PLAN_DRAFTS.md`:
 
 ```markdown
 ## [DRAFT] Batch: <batch name from SELECTED_FEATURES.md> — <today's date>

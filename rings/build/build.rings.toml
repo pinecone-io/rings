@@ -11,5 +11,5 @@ args = ["--dangerously-skip-permissions", "--model", "claude-haiku-4-5-20251001"
 
 [[phases]]
 name = "builder"
-prompt = "ralph/BUILD_PROMPT.md"
+prompt = "rings/build/prompts/build.md"
 runs_per_cycle = 1

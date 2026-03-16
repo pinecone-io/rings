@@ -1,10 +1,14 @@
-Produce a prioritized feature selection by running a user-perspective voting round on all unblocked backlog features.
+You are running the feature election for the plan-create workflow.
 
-## Steps
+## Phase identity
 
-### 1. Orient yourself
+You are the `elect` phase of `plan-create`.
 
-Read the following to build a complete picture of the project:
+## Setup
+
+First, delete any stale files in `rings/plan-create/wip/` before starting new work.
+
+Then read the following to build a complete picture of the project:
 - `specs/index.md` — what rings is and core concepts
 - `specs/overview.md` — design principles and target user
 - `specs/mvp.md` — original scope and what was built first
@@ -12,13 +16,17 @@ Read the following to build a complete picture of the project:
 
 Identify all `BACKLOG` features whose prerequisites are all `COMPLETE`. These are the candidates eligible for voting. For each candidate, note its F-NNN, name, one-line summary, spec file, and any dependency notes.
 
----
+If there are no eligible candidates, print:
 
-## Wave 1: Feature Selection (User Perspective Voting)
+```
+PLAN_DRAFT_DONE
+```
 
-### 2. Dispatch review panel for voting — in parallel
+and stop.
 
-Using the Agent tool, launch ALL of the following agents simultaneously. Give each the same task prompt:
+## Dispatch voting panel — in parallel
+
+Using the Agent tool, launch ALL of the following agents simultaneously in a single message. Give each the same task prompt:
 
 ---
 *"You are a member of the rings project review panel. Before voting, orient yourself by reading these files:*
@@ -54,7 +62,7 @@ Agents to dispatch:
 - `review-agent-ux`
 - `review-workflow-author`
 
-### 3. Tally votes and select the batch
+## Tally votes and select the batch
 
 Read all 15 voting responses. Build a ranked table:
 
@@ -68,19 +76,16 @@ Rank  F-NNN  Feature Name                  Votes  Voters
 
 For each feature, note the condensed reasons across voters — patterns in why people voted for something are as important as the count.
 
-Then select a batch of 5–10 features using votes as the primary signal, also considering:
+Select a batch of 5–10 features using votes as the primary signal, also considering:
 - **Logical grouping** — features that share a spec file or implementation surface
 - **Coherent scope** — a batch that can be reviewed and implemented together
 - **Niche but critical** — a feature with few votes from a high-priority persona (e.g. `review-workflow-author`) may outrank one with many votes from lower-priority personas
 
 Document any overrides to the raw vote ranking with explicit rationale.
 
----
+## Write wip/SELECTED_FEATURES.md
 
-## Write queues/SELECTED_FEATURES.md
-
-Overwrite `queues/SELECTED_FEATURES.md` (this file holds one batch at a time; the
-vote tally is printed to stdout and captured in the rings run log):
+Write `rings/plan-create/wip/SELECTED_FEATURES.md`:
 
 ```markdown
 ## Batch: [batch name] — [date]
@@ -91,7 +96,3 @@ vote tally is printed to stdout and captured in the rings run log):
 
 Notes: [any ranking overrides with rationale, if any]
 ```
-
-Do not begin implementation. Run `rings run rings/plan-create/plan-create.rings.toml`
-to produce an initial draft, then `rings run rings/plan-review/plan-review.rings.toml`
-to review it.

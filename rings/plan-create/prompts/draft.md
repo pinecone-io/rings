@@ -6,11 +6,11 @@ You are the `draft` phase of `plan-create`.
 
 ## Setup
 
-Read `queues/SELECTED_FEATURES.md`. Find the batch header (`## Batch: ...`) and extract the feature table (F-NNN, feature name, spec file path).
+Read `rings/plan-create/wip/SELECTED_FEATURES.md`. Find the batch header (`## Batch: ...`) and extract the feature table (F-NNN, feature name, spec file path).
 
 For each selected feature, read its spec file in full.
 
-If `queues/SELECTED_FEATURES.md` is empty or contains no batch header, stop immediately and print:
+If `rings/plan-create/wip/SELECTED_FEATURES.md` is empty or contains no batch header, stop immediately and print:
 
 ```
 PLAN_DRAFT_DONE

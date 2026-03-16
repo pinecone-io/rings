@@ -1,6 +1,7 @@
 [workflow]
-# Reads queues/SELECTED_FEATURES.md, dispatches 3 core technical agents in parallel,
-# and appends a [DRAFT] plan entry to queues/PLAN_DRAFTS.md.
+# Elects the highest-priority unblocked backlog features via a 15-agent voting
+# round, then dispatches 3 core technical agents to produce an initial draft plan.
+# Appends a [DRAFT] plan entry to queues/PLAN_DRAFTS.md.
 #
 # Run with: rings run rings/plan-create/plan-create.rings.toml
 # Resume with: rings resume <run-id>
@@ -14,6 +15,10 @@ max_cycles = 1
 [executor]
 binary = "claude"
 args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "elect"
+prompt = "rings/plan-create/prompts/elect.md"
 
 [[phases]]
 name = "draft"

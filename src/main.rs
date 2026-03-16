@@ -10,6 +10,8 @@ pub mod display;
 pub mod duration;
 pub mod engine;
 pub mod executor;
+#[cfg(unix)]
+pub mod lock;
 pub mod state;
 pub mod template;
 pub mod workflow;
@@ -24,6 +26,8 @@ use std::sync::Arc;
 use cli::{Cli, Command};
 use engine::{run_workflow, EngineConfig, ResumePoint};
 use executor::{ClaudeExecutor, ConfigurableExecutor};
+#[cfg(unix)]
+use lock::ContextLock;
 
 fn main() {
     // Ignore SIGPIPE so that broken pipe errors (e.g., when piping rings output
@@ -147,6 +151,19 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     }
 
     display::print_run_header(&run_id, &args.workflow_file);
+
+    // Acquire context directory lock
+    #[cfg(unix)]
+    let _lock = {
+        let context_dir = PathBuf::from(&workflow.context_dir);
+        match ContextLock::acquire(&context_dir, &run_id, args.force_lock) {
+            Ok(lock) => lock,
+            Err(e) => {
+                eprintln!("{}", e);
+                return Ok(2);
+            }
+        }
+    };
 
     let config = EngineConfig {
         output_dir: run_dir.clone(),
@@ -305,6 +322,19 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     eprintln!("Workflow:  {}", meta.workflow_file);
     eprintln!("Previous cost: ${:.3}", saved_state.cumulative_cost_usd);
     eprintln!();
+
+    // Acquire context directory lock
+    #[cfg(unix)]
+    let _lock = {
+        let context_dir = PathBuf::from(&workflow.context_dir);
+        match ContextLock::acquire(&context_dir, &args.run_id, args.force_lock) {
+            Ok(lock) => lock,
+            Err(e) => {
+                eprintln!("{}", e);
+                return Ok(2);
+            }
+        }
+    };
 
     // Build a resume-aware engine config (reuse same run_dir)
     let config = EngineConfig {

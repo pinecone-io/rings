@@ -2,7 +2,7 @@ use crate::audit::{append_cost_entry, extract_resume_commands, write_run_log, Co
 use crate::cancel::CancelState;
 use crate::completion::{output_contains_signal, output_line_contains_signal};
 use crate::cost::parse_cost_from_output;
-use crate::executor::{Executor, Invocation};
+use crate::executor::{extract_response_text, Executor, Invocation};
 use crate::state::StateFile;
 use crate::template::{render_prompt, TemplateVars};
 use crate::workflow::PhaseConfig;
@@ -255,6 +255,11 @@ pub fn run_workflow(
         let output = executor.run(&invocation, config.verbose)?;
         let elapsed_secs = run_start.elapsed().as_secs();
 
+        // When --output-format json is used, cost lives in the JSON object and
+        // the text response is in the `result` field. Extract the text for
+        // signal matching and resume command detection.
+        let response_text = extract_response_text(&output.combined);
+
         // Record cost
         let cost = parse_cost_from_output(&output.combined);
         cumulative_cost += cost.cost_usd.unwrap_or(0.0);
@@ -271,7 +276,7 @@ pub fn run_workflow(
 
         // Handle executor error — save state with PREVIOUS completed run so the
         // failing run will be retried on resume.
-        let resume_commands = extract_resume_commands(&output.combined);
+        let resume_commands = extract_resume_commands(&response_text);
         if output.exit_code != 0 {
             // Print final cycle cost before returning
             if current_display_cycle > 0 {
@@ -385,7 +390,7 @@ pub fn run_workflow(
                 .contains(&run_spec.phase_name);
         if completion_eligible
             && signal_matches(
-                &output.combined,
+                &response_text,
                 &workflow.completion_signal,
                 &workflow.completion_signal_mode,
             )
@@ -404,7 +409,7 @@ pub fn run_workflow(
 
         // Check continue_signal: skip remaining phases in this cycle.
         if let Some(ref cs) = workflow.continue_signal {
-            if signal_matches(&output.combined, cs, &workflow.completion_signal_mode) {
+            if signal_matches(&response_text, cs, &workflow.completion_signal_mode) {
                 schedule.skip_to_next_cycle(run_spec.cycle);
             }
         }

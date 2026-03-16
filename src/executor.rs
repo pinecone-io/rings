@@ -242,8 +242,23 @@ impl ClaudeExecutor {
             "--dangerously-skip-permissions".to_string(),
             "-p".to_string(),
             "-".to_string(), // read prompt from stdin
+            "--output-format".to_string(),
+            "json".to_string(),
         ]
     }
+}
+
+/// Extract the plain-text response from claude JSON output.
+/// When `--output-format json` is used, claude emits a JSON object whose
+/// `result` field holds the actual text response. Falls back to the raw
+/// combined output if the output is not valid claude JSON.
+pub fn extract_response_text(output: &str) -> String {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(output.trim()) {
+        if let Some(result) = v.get("result").and_then(|r| r.as_str()) {
+            return result.to_string();
+        }
+    }
+    output.to_string()
 }
 
 impl Executor for ClaudeExecutor {

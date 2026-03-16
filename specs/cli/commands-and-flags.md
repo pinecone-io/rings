@@ -229,6 +229,70 @@ Dry run: my-workflow.toml
 
 ---
 
+### `rings init [NAME]`
+
+Scaffold a new workflow TOML file.
+
+```
+USAGE:
+    rings init [OPTIONS] [NAME]
+
+ARGS:
+    [NAME]    Base name for the workflow file. Produces <NAME>.rings.toml in the
+              current working directory. Defaults to "workflow" (producing
+              workflow.rings.toml) if omitted. May be a relative path with
+              a filename component (e.g. workflows/my-task), but must not
+              contain `..` components (exit code 2).
+
+OPTIONS:
+        --force                 Overwrite the target file if it already exists.
+                                Without this flag, rings init exits with code 2
+                                if the target file already exists.
+        --output-format <FORMAT> Output format: human (default) or jsonl.
+                                 In jsonl mode, emits a single
+                                 {"event":"init_complete","path":"/abs/path/to/created.rings.toml"}
+                                 event on stdout. Suitable for scripts that need
+                                 to capture the output path reliably.
+    -h, --help                  Print help information
+```
+
+`rings init` writes a single `.rings.toml` file containing a complete, immediately
+runnable workflow template. The write is atomic: rings writes to `<dest>.tmp` first,
+then renames, so a Ctrl+C during write never leaves a half-written file.
+
+The scaffolded file is designed to pass `rings run --dry-run` without modification.
+It uses `prompt_text` (inline prompt, F-003) rather than `prompt = "..."` (file
+reference, F-004) so no external file is needed. It sets `context_dir = "."` (always
+valid), `max_cycles = 10` (a conservative bound), and `completion_signal_mode = "line"`
+(the safer default — avoids false positives when Claude mentions the signal string
+in prose). The `completion_signal` string is embedded inside the `prompt_text` body
+so the F-151 startup warning does not fire. A `budget_cap_usd` field is included as
+an active field with a placeholder value so the F-116 no-cap warning does not fire on
+first run.
+
+The `prompt_text` in the scaffold includes a comment listing all available template
+variables (`{{phase_name}}`, `{{cycle}}`, `{{max_cycles}}`, `{{iteration}}`, `{{run}}`,
+`{{cost_so_far_usd}}`), since these are otherwise not discoverable without reading the
+spec.
+
+v1 is non-interactive: it writes a static template and exits. Interactive wizard
+features (prompting for phase names, signal strings, etc.) are deferred to a
+follow-on feature. When stdin is a TTY, no prompting occurs; the template is always
+written unconditionally (subject to the `--force` check).
+
+`rings init` scaffolds only the `.rings.toml` file. It does not create subdirectories
+(`queue/`, `activities/`, `wip/`). Directory scaffolding is a follow-on concern.
+
+**Exit codes:**
+- `0` — file written successfully
+- `2` — file already exists and `--force` was not given; target path contains `..`;
+  or target path is not writable
+
+**Dependencies:** F-001 (Workflow File Format), F-141 (Startup Validation), F-151
+(Completion Signal Presence Check), F-157 (Exit Code 2), F-116 (No Budget Cap Warning)
+
+---
+
 ## Configuration File
 
 rings looks for configuration in these locations (first found wins):

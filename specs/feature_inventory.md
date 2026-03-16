@@ -285,3 +285,15 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-178 | Shell Completions | I can get tab-completion for all commands and flags in bash, zsh, or fish (requires F-075) | BACKLOG | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 | F-179 | Completion Behavior | Tab-completion offers `.toml` files for workflow arguments, run IDs for run arguments, and flag names everywhere (requires F-178) | BACKLOG | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 | F-180 | Man Page | I can read `man rings` for offline documentation generated from the same source as `--help` | BACKLOG | [completion-and-manpage.md](cli/completion-and-manpage.md) |
+
+## Executor Args Ergonomics
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-181 | Per-Phase Model Selection via `executor.extra_args` | I can set `executor.extra_args` on any phase to append flags (e.g. `--model claude-haiku-4-5`) to the inherited executor args, so I can route cheap phases to smaller models without re-specifying all base flags | BACKLOG | [executor-integration.md](execution/executor-integration.md) |
+
+## Workflow Scaffolding
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-182 | `rings init` | I can scaffold a new, immediately runnable workflow TOML file with `rings init [NAME]` so I don't have to write boilerplate by hand | BACKLOG | [commands-and-flags.md](cli/commands-and-flags.md) |

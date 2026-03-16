@@ -103,23 +103,23 @@
 **Files:** new `src/lock.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Define `LockFile { run_id: String, pid: u32 }` with `Serialize`/`Deserialize`; use JSON format: `{"run_id":"...","pid":12345}`
-- [ ] Define `LockError` (thiserror): variants `ActiveProcess { run_id: String, pid: u32, context_dir: PathBuf }` and `ContextDirMissing { path: PathBuf }`; error message: `"Error: Another rings run (RUN_ID, PID=N) is already using context_dir.\nWait for it to finish or use --force-lock to override."`
-- [ ] Define `ContextLock { path: PathBuf }` with `Drop` impl that removes the lock file
-- [ ] Implement `ContextLock::acquire(context_dir, run_id, force) -> Result<ContextLock, LockError>`:
+- [x] Define `LockFile { run_id: String, pid: u32 }` with `Serialize`/`Deserialize`; use JSON format: `{"run_id":"...","pid":12345}`
+- [x] Define `LockError` (thiserror): variants `ActiveProcess { run_id: String, pid: u32, context_dir: PathBuf }` and `ContextDirMissing { path: PathBuf }`; error message: `"Error: Another rings run (RUN_ID, PID=N) is already using context_dir.\nWait for it to finish or use --force-lock to override."`
+- [x] Define `ContextLock { path: PathBuf }` with `Drop` impl that removes the lock file
+- [x] Implement `ContextLock::acquire(context_dir, run_id, force) -> Result<ContextLock, LockError>`:
   - Write atomically via `OpenOptions::new().write(true).create_new(true)` (`O_CREAT|O_EXCL`)
   - On `EEXIST`: read existing file, parse JSON; use `kill(pid, 0)` for liveness: `EPERM` → live → `LockError::ActiveProcess`; `ESRCH` or parse error → stale; remove and retry once; second `EEXIST` → `LockError::ActiveProcess`; `pid = 0` → treat as stale; empty file → treat as stale, acquire with warning
   - `force = true`: overwrite unconditionally
-- [ ] Gate entire module under `#[cfg(unix)]`
-- [ ] All exit paths must flow through `main()`'s return (not direct `process::exit()`) so `ContextLock::Drop` fires; `run_inner`/`resume_inner` return `Result<i32>`; `main()` calls `process::exit()` only after stack unwind
-- [ ] Acquire lock in both `run_inner` and `resume_inner` before `run_workflow`
+- [x] Gate entire module under `#[cfg(unix)]`
+- [x] All exit paths must flow through `main()`'s return (not direct `process::exit()`) so `ContextLock::Drop` fires; `run_inner`/`resume_inner` return `Result<i32>`; `main()` calls `process::exit()` only after stack unwind
+- [x] Acquire lock in both `run_inner` and `resume_inner` before `run_workflow`
 
 **Tests:**
-- [ ] `kill(pid, 0)` returns `EPERM` → treated as live → `LockError::ActiveProcess`
-- [ ] Lock file has `pid = 0` → treated as stale, acquire succeeds
-- [ ] `context_dir` does not exist → `LockError::ContextDirMissing`
-- [ ] Second `create_new` fails after stale removal → `LockError::ActiveProcess`
-- [ ] Lock file is empty → treated as stale, acquire succeeds with warning
+- [x] `kill(pid, 0)` returns `EPERM` → treated as live → `LockError::ActiveProcess`
+- [x] Lock file has `pid = 0` → treated as stale, acquire succeeds
+- [x] `context_dir` does not exist → `LockError::ContextDirMissing`
+- [x] Second `create_new` fails after stale removal → `LockError::ActiveProcess`
+- [x] Lock file is empty → treated as stale, acquire succeeds with warning
 
 ---
 

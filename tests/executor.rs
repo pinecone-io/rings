@@ -18,6 +18,8 @@ mod tests {
                 "--dangerously-skip-permissions".to_string(),
                 "-p".to_string(),
                 "-".to_string(),
+                "--output-format".to_string(),
+                "json".to_string(),
             ]
         );
         // Verify no arg is a template that could accept runtime content.

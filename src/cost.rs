@@ -49,6 +49,30 @@ lazy_static! {
 pub fn parse_cost_from_output(output: &str) -> RunCost {
     let parse_tokens = |s: &str| -> Option<u64> { s.replace(',', "").parse().ok() };
 
+    // Try JSON output format first (`--output-format json` emits a single JSON object
+    // with `total_cost_usd` and a nested `usage` object).
+    // Scan line-by-line so that stderr appended after the JSON line doesn't break parsing.
+    for line in output.lines() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) {
+            if let Some(cost_usd) = v.get("total_cost_usd").and_then(|c| c.as_f64()) {
+                let usage = v.get("usage");
+                let input_tokens = usage
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|t| t.as_u64());
+                let output_tokens = usage
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|t| t.as_u64());
+                return RunCost {
+                    cost_usd: Some(cost_usd),
+                    input_tokens,
+                    output_tokens,
+                    confidence: ParseConfidence::Full,
+                    raw_match: Some(format!("total_cost_usd:{cost_usd}")),
+                };
+            }
+        }
+    }
+
     // Try patterns in order, use last match of highest-confidence pattern found
     if let Some(caps) = RE_FULL.captures_iter(output).last() {
         let raw = caps[0].to_string();

@@ -121,3 +121,50 @@ executor.error_profile = "none"
 ```
 
 Per-phase executor fields inherit from `[executor]` for any fields not explicitly overridden.
+
+## Per-Phase Model Selection via `executor.extra_args` (F-181)
+
+**Prerequisites:** F-023 (Per-Phase Executors), F-066 (Default Executor Config)
+
+When different workflow phases benefit from different model tiers — for example, using a cheaper model for triage and a more capable model for synthesis — users can route individual phases to specific models using `executor.extra_args`.
+
+`executor.extra_args` is a list of arguments that rings **appends** to the inherited `executor.args` for that phase. This avoids the footgun of full `args` replacement: users do not need to re-specify base flags like `--dangerously-skip-permissions -p -` everywhere they want to change the model. The append semantics also keep the mechanism executor-agnostic — users supply whatever flag their executor accepts for model selection.
+
+```toml
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "triage"
+prompt = "./prompts/triage.md"
+# Uses workflow default — no extra_args needed
+
+[[phases]]
+name = "synthesis"
+prompt = "./prompts/synthesis.md"
+executor.extra_args = ["--model", "claude-opus-4-6"]
+# Effective args: ["--dangerously-skip-permissions", "-p", "-", "--model", "claude-opus-4-6"]
+```
+
+Per-phase `executor.extra_args` inherits from the workflow-level `[executor]` `extra_args` if defined, following the same override semantics as other per-phase executor fields. An `extra_args` value at the phase level **replaces** the workflow-level `extra_args` for that phase; it does not append again.
+
+### Audit Log Requirements
+
+The effective model per run must be recorded in both `run.toml` (F-105) and the `costs.jsonl` entry (F-107) for every run. Without this, the cost comparison between phases using different models is meaningless — you can see that phase A cost $0.02 and phase B cost $0.80, but not whether the difference is model tier or output length. The effective model value is the resolved model string after per-phase inheritance, extracted from the effective args where recognizable.
+
+### Startup Validation
+
+At startup, rings validates that `executor.extra_args` does not contain `--model` if `--model` is already present in the effective `executor.args` for that phase. A conflicting double `--model` flag produces a configuration error (exit code 2) rather than silently passing two flags to the executor.
+
+### Completion Signal Reliability in Mixed-Model Workflows
+
+Cheaper models are less reliably at emitting exact completion signal strings verbatim. When using a mixed-model workflow, it is recommended to use `completion_signal_phases` (F-013) to restrict completion detection to phases running capable models. This prevents a cheap model's reformulation of the signal from inadvertently triggering or suppressing workflow completion.
+
+### Workflow Portability
+
+Model availability varies by account tier. When the executor exits non-zero because a model string is unrecognized or unavailable, rings surfaces the executor's original error message clearly rather than a generic "executor exited non-zero", so the root cause is actionable.
+
+### Interaction with Workflow File Change Detection
+
+When F-050 (Workflow File Change Detection) is implemented, `executor.extra_args` and all executor fields must be treated as structurally significant. Changing the model between a run and its resume produces materially different output while the audit trail appears to show continuity. Resuming after any executor field change must require explicit acknowledgment or be blocked.

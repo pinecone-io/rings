@@ -1,16 +1,6 @@
 ## Unprocessed
 
-we should expose model selection through the toml config
-
-each phase should be configurable separately; some tasks are much better suited to a cheap model than an expensive model
-
-init command to scaffold a new workflow file
-
-need some visual feedback about the phase in progress actually doing something. A timer or some dots or something.
-
-output should be colorful and easy to visually parse
-
-RINGS_CONTINUE signal: a per-cycle short-circuit analogous to `continue` in a loop. when a phase emits a line containing RINGS_CONTINUE, rings skips all remaining phases in the current cycle and immediately begins the next cycle. useful when an early phase determines the current cycle has nothing to do (e.g. an idea is out-of-scope and needs no review or write phases). configured as continue_signal in the workflow TOML, similar to completion_signal.
+[~] RINGS_CONTINUE signal: a per-cycle short-circuit analogous to `continue` in a loop. when a phase emits a line containing RINGS_CONTINUE, rings skips all remaining phases in the current cycle and immediately begins the next cycle. useful when an early phase determines the current cycle has nothing to do (e.g. an idea is out-of-scope and needs no review or write phases). configured as continue_signal in the workflow TOML, similar to completion_signal.
 
 map/reduce phase mode: a first-class parallel execution primitive for workflows that need to fan out to N independent workers and collect their results. a phase with mode = "map" runs N times (configured via a `workers` field), each run receiving a {{worker_index}} template variable to differentiate its work (e.g. selecting a persona). rings manages per-worker log files and cost tracking individually. a subsequent phase with mode = "reduce" has named access to all worker outputs from the preceding map phase without requiring manual file coordination. this makes patterns like review panels, parallel validators, and multi-perspective analysis native to the rings model rather than requiring opaque Claude subagent dispatch inside a single invocation.
 

@@ -1,0 +1,30 @@
+[workflow]
+completion_signal = "PLAN_IMPL_DONE"
+completion_signal_mode = "line"
+completion_signal_phases = ["wave-5"]
+context_dir = "."
+max_cycles = 1
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "wave-1"
+prompt = "rings/plan-impl/prompts/wave-1.md"
+
+[[phases]]
+name = "wave-2"
+prompt = "rings/plan-impl/prompts/wave-2.md"
+
+[[phases]]
+name = "wave-3"
+prompt = "rings/plan-impl/prompts/wave-3.md"
+
+[[phases]]
+name = "wave-4"
+prompt = "rings/plan-impl/prompts/wave-4.md"
+
+[[phases]]
+name = "wave-5"
+prompt = "rings/plan-impl/prompts/wave-5.md"

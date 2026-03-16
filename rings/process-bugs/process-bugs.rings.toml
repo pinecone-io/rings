@@ -1,10 +1,10 @@
 [workflow]
-# Processes one bug per cycle from BUG_REPORT.md.
+# Processes one bug per cycle from queues/BUG_REPORT.md.
 # Each cycle: triage one open bug → fix it → verify and close it.
 # If no open bugs remain, the triage phase emits ALL_BUGS_RESOLVED and the
 # workflow exits cleanly.
 #
-# Run with:    rings run process-bugs.rings.toml
+# Run with:    rings run rings/process-bugs/process-bugs.rings.toml
 # Resume with: rings resume <run-id>
 
 completion_signal = "ALL_BUGS_RESOLVED"
@@ -20,16 +20,16 @@ args = ["--dangerously-skip-permissions", "-p", "-"]
 
 [[phases]]
 name = "triage"
-prompt = "process-bugs/triage.md"
+prompt = "rings/process-bugs/prompts/triage.md"
 
 [[phases]]
 name = "reproduce"
-prompt = "process-bugs/reproduce.md"
+prompt = "rings/process-bugs/prompts/reproduce.md"
 
 [[phases]]
 name = "fix"
-prompt = "process-bugs/fix.md"
+prompt = "rings/process-bugs/prompts/fix.md"
 
 [[phases]]
 name = "verify"
-prompt = "process-bugs/verify.md"
+prompt = "rings/process-bugs/prompts/verify.md"

@@ -43,7 +43,7 @@ Reproduced: "<title>" — succeeded
 ```
 
 **If reproduction failed:** do not proceed to fix. Move the bug entry from `## Open` to
-`## Needs Info` in `BUG_REPORT.md` (create the section if absent). Format the entry as:
+`## Needs Info` in `queues/BUG_REPORT.md` (create the section if absent). Format the entry as:
 
 ```
 - [ ] **<title>**: <original description>

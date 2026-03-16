@@ -1,0 +1,31 @@
+[workflow]
+# Processes one idea per cycle from queues/IDEAS.md into the spec documentation.
+# Each cycle: select one unprocessed idea → review panel → write to spec.
+# Trivially resolved ideas (already covered, out of scope) are handled by the
+# select phase alone, which emits RINGS_CONTINUE to skip review and write.
+#
+# Run with: rings run rings/process-ideas/process-ideas.rings.toml
+# Resume with: rings resume <run-id>
+
+completion_signal = "ALL_IDEAS_PROCESSED"
+completion_signal_mode = "line"
+completion_signal_phases = ["select"]
+continue_signal = "RINGS_CONTINUE"
+context_dir = "."
+max_cycles = 100
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "select"
+prompt = "rings/process-ideas/prompts/select.md"
+
+[[phases]]
+name = "review"
+prompt = "rings/process-ideas/prompts/review.md"
+
+[[phases]]
+name = "write"
+prompt = "rings/process-ideas/prompts/write.md"

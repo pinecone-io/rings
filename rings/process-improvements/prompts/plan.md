@@ -28,12 +28,12 @@ Record your findings under `## Spec Impact Check` in `improvement-working.md`:
 - **Spec impact detected** — describe exactly which spec behavior would be affected.
 
 If spec impact is detected, this improvement is out of scope for this workflow. Move
-the item from `## Unprocessed` to `## Resolved` in `TECH_DEBT.md`:
+the item from `## Unprocessed` to `## Resolved` in `queues/TECH_DEBT.md`:
 
 ```
 [YYYY-MM-DD] <original item text>
 → Out of scope (spec impact): <one-sentence explanation of what would change>
-→ Suggest filing in IDEAS.md if a product change is desired.
+→ Suggest filing in queues/IDEAS.md if a product change is desired.
 ```
 
 Delete `improvement-working.md`. Then print exactly:

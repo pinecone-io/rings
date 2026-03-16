@@ -2,14 +2,14 @@
 
 You are the **select** phase of the **technical improvements** rings workflow.
 
-Your job is to select the next unprocessed item from `TECH_DEBT.md`, classify it,
+Your job is to select the next unprocessed item from `queues/TECH_DEBT.md`, classify it,
 and either resolve it immediately (trivial cases) or prepare it for planning.
 
 ---
 
 ## Step 1: Load context
 
-Read `TECH_DEBT.md`. Find the `## Unprocessed` section.
+Read `queues/TECH_DEBT.md`. Find the `## Unprocessed` section.
 
 If the `## Unprocessed` section is empty or absent, print exactly:
 
@@ -46,14 +46,14 @@ Classify the item as exactly one of:
 
 ## Step 4a: If Already done or Out of scope — resolve immediately
 
-Move the item from `## Unprocessed` to `## Resolved` in `TECH_DEBT.md`. Format it as:
+Move the item from `## Unprocessed` to `## Resolved` in `queues/TECH_DEBT.md`. Format it as:
 
 ```
 [YYYY-MM-DD] <original item text>
 → <classification>: <one-sentence explanation>
 ```
 
-For "out of scope", note that it should be filed in `IDEAS.md` if it represents a
+For "out of scope", note that it should be filed in `queues/IDEAS.md` if it represents a
 desired feature change.
 
 Then print exactly:

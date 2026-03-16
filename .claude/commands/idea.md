@@ -1,9 +1,9 @@
-Capture a rough idea and append it to IDEAS.md without evaluating or processing it.
+Capture a rough idea and append it to queues/IDEAS.md without evaluating or processing it.
 
 ## Steps
 
 1. The user's idea is whatever they wrote after `/idea`. If no text was provided, ask them to describe the idea in one or a few sentences.
-2. If `IDEAS.md` does not exist at the project root, create it with a minimal header:
+2. If `queues/IDEAS.md` does not exist at the project root, create it with a minimal header:
    ```markdown
    # Ideas
 

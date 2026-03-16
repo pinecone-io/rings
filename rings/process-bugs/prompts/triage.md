@@ -2,14 +2,14 @@
 
 You are the **triage** phase of the **bug-fixing** rings workflow.
 
-Your job is to select the next open bug from `BUG_REPORT.md` and prepare it for
+Your job is to select the next open bug from `queues/BUG_REPORT.md` and prepare it for
 investigation. One bug per cycle — do not triage multiple bugs.
 
 ---
 
 ## Step 1: Load context
 
-Read `BUG_REPORT.md`. Find the `## Open` section.
+Read `queues/BUG_REPORT.md`. Find the `## Open` section.
 
 If the `## Open` section is empty or absent, print exactly:
 

@@ -8,7 +8,7 @@ You build AI agent systems and have deep experience with what makes multi-step L
 
 rings is primarily an agent orchestration tool. Getting the agent experience right is the most important thing it does.
 
-You have been given an implementation plan to review. Read `PLAN.md` and any relevant source files in `src/` and spec files in `specs/`. Pay particular attention to `specs/execution/`, `specs/workflow/cycle-model.md`, and `specs/execution/completion-detection.md`.
+You have been given an implementation plan to review. Read `queues/PLAN.md` and any relevant source files in `src/` and spec files in `specs/`. Pay particular attention to `specs/execution/`, `specs/workflow/cycle-model.md`, and `specs/execution/completion-detection.md`.
 
 ## What to look for
 

@@ -1,4 +1,4 @@
-Produce a high-quality, evidence-based implementation plan by running a user-perspective voting round to select the right features, then an implementation review round to plan them correctly.
+Produce a prioritized feature selection by running a user-perspective voting round on all unblocked backlog features.
 
 ## Steps
 
@@ -77,87 +77,18 @@ Document any overrides to the raw vote ranking with explicit rationale.
 
 ---
 
-## Wave 2: Implementation Planning (Technical Review)
-
-### 4. Load spec context for selected features
-
-For each selected feature, read its linked spec file in full. This context will be passed to the impl agents.
-
-### 5. Dispatch implementation review panel — in parallel
-
-Using the Agent tool, launch ALL of the following agents simultaneously. Give each the same task prompt:
-
----
-*"You are a member of the rings implementation review panel. Before reviewing, orient yourself:*
-- *Read `specs/index.md` and `specs/overview.md` to understand what rings is*
-- *Read the relevant source files in `src/` that relate to your area of expertise*
-- *Read the spec files listed below for the selected features*
-
-*The following features have been selected for the next implementation batch based on a user-perspective voting round. Do a full implementation review from your area of expertise. For each feature, identify concerns, risks, design decisions, and anything that must be resolved before coding begins.*
-
-*Selected features and their specs:*
-*[list F-NNN · Name · spec file for each]*
-
-*Return numbered findings with severity (nit / concern / blocker) and concrete suggestions."*
-
----
-
-Agents to dispatch:
-- `impl-rust`
-- `impl-architecture`
-- `impl-deps`
-- `impl-testing`
-- `impl-error-handling`
-- `impl-cli-framework`
-- `impl-serialization`
-- `impl-process-mgmt`
-- `impl-filesystem`
-- `impl-cross-platform`
-- `impl-performance`
-- `impl-memory`
-- `impl-regex`
-- `impl-agent-ux`
-- `impl-docs`
-
-### 6. Synthesize findings
-
-Read all 15 implementation review outputs. Group by theme across features:
-- **Blockers** — must be resolved before implementation begins
-- **Open decisions** — explicit choices to make, each with a recommended default
-- **Test requirements** — specific cases called out by reviewers
-- **Spec gaps** — ambiguities that would affect implementation
-- **Discarded concerns** — inapplicable findings, with rationale
-
----
-
-## Produce queues/PLAN.md
+## Write queues/PLAN.md
 
 Write `queues/PLAN.md` at the project root:
 
 ```markdown
-# Implementation Plan — [date]
+# Feature Election — [date]
 
 ## Vote Tally
 [Full ranked table with voter names and condensed reasons per feature]
 
 ## Selected Features
 [F-NNN list with one-line summaries; note any ranking overrides with rationale]
-
-## Implementation Review Findings
-[Synthesized findings grouped by theme, with reviewer attribution]
-
-## Open Decisions
-[Each decision as a question, with recommended answer and tradeoffs]
-
-## Spec Gaps
-[Ambiguities to resolve before or during implementation]
-
-## Implementation Steps
-[For each feature:
-  - Source files to create or modify
-  - Key types, structs, or traits to add
-  - Test cases required (unit and integration)
-  - Any cross-feature dependencies in this batch]
 ```
 
-Do not mark any feature as `PLANNED` in the inventory or begin implementation until the user has reviewed and approved `queues/PLAN.md`.
+Do not begin implementation. Run `/plan-impl` to proceed with implementation planning.

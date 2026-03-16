@@ -8,7 +8,7 @@ You are an experienced systems developer who thinks carefully about memory behav
 
 rings is explicitly a long-running tool. A workflow might run for hours across hundreds of cycles, accumulating cost records, file manifests, run logs, and state. Memory that grows proportionally to cycle count is a serious problem.
 
-You have been given an implementation plan to review. Read `PLAN.md` and any relevant source files in `src/` and spec files in `specs/`. Pay attention to `specs/observability/file-lineage.md` (manifests), `specs/observability/audit-logs.md` (cost records), and `specs/observability/cost-tracking.md`.
+You have been given an implementation plan to review. Read `queues/PLAN.md` and any relevant source files in `src/` and spec files in `specs/`. Pay attention to `specs/observability/file-lineage.md` (manifests), `specs/observability/audit-logs.md` (cost records), and `specs/observability/cost-tracking.md`.
 
 ## What to look for
 

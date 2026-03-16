@@ -1,18 +1,18 @@
-Read rough ideas from IDEAS.md, evaluate them against the existing specs, run them through the full review panel in parallel, then produce concrete spec proposals or new feature entries.
+Read rough ideas from queues/IDEAS.md, evaluate them against the existing specs, run them through the full review panel in parallel, then produce concrete spec proposals or new feature entries.
 
 ## Steps
 
 ### 1. Load context
 
-- If `IDEAS.md` does not exist at the project root, tell the user to create one with their rough notes and stop.
-- Read `IDEAS.md` in full.
+- If `queues/IDEAS.md` does not exist at the project root, tell the user to create one with their rough notes and stop.
+- Read `queues/IDEAS.md` in full.
 - Read `specs/feature_inventory.md` to understand what is already specified.
 - Read `specs/index.md` and any spec files directly relevant to the ideas.
 - Read `specs/overview.md` and `specs/mvp.md` to understand design principles and scope.
 
 ### 2. Classify each idea
 
-For each idea in `IDEAS.md`, classify it as:
+For each idea in `queues/IDEAS.md`, classify it as:
 - **Already covered** — essentially described by an existing spec; note the F-NNN number(s) and explain how.
 - **Extension** — adds nuance or a new option to an existing feature; identify the F-NNN being extended.
 - **New feature** — genuinely not covered; note which spec file it would belong in.
@@ -78,4 +78,4 @@ For each idea that survives review (or has been refined by it), produce:
 
 ### 6. Present for approval
 
-Output all proposals in a single reviewable block. Do not modify any spec files, `IDEAS.md`, or `specs/feature_inventory.md` until the user approves. After approval, ask whether to move approved ideas from `## Unprocessed` to a `## Processed` section in `IDEAS.md`.
+Output all proposals in a single reviewable block. Do not modify any spec files, `queues/IDEAS.md`, or `specs/feature_inventory.md` until the user approves. After approval, ask whether to move approved ideas from `## Unprocessed` to a `## Processed` section in `queues/IDEAS.md`.

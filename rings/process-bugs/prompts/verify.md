@@ -3,7 +3,7 @@
 You are the **verify** phase of the **bug-fixing** rings workflow.
 
 Your job is to verify the fix from the previous phase is correct, then move the bug
-from `## Open` to `## Resolved` in `BUG_REPORT.md`.
+from `## Open` to `## Resolved` in `queues/BUG_REPORT.md`.
 
 ---
 
@@ -18,7 +18,7 @@ Read `bug-working.md` in full, paying attention to `## Fix Applied`.
 Run `just validate`. If any checks fail, do **not** attempt further fixes. Instead:
 
 1. Record the failure output under `## Verification` in `bug-working.md`.
-2. Move the bug entry from `## Open` to `## Blocked` in `BUG_REPORT.md` (create the
+2. Move the bug entry from `## Open` to `## Blocked` in `queues/BUG_REPORT.md` (create the
    section if absent). Format the entry as:
 
    ```
@@ -48,7 +48,7 @@ Document your verification result under `## Verification` in `bug-working.md`.
 
 ---
 
-## Step 4: Close the bug in BUG_REPORT.md
+## Step 4: Close the bug in queues/BUG_REPORT.md
 
 Move the bug entry from `## Open` to `## Resolved` (create the section if absent).
 Format the resolved entry as:

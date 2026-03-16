@@ -4,7 +4,7 @@ Quick-reference lookup table of all rings features. Each row links to the spec f
 
 Summaries are written from the user's perspective. Features with dependencies note them so you can plan implementation order.
 
-**Status values:** `COMPLETE` — implemented and tested · `PLANNED` — scoped for next milestone · `BACKLOG` — specified but not yet scheduled
+**Status values:** `COMPLETE` — implemented and tested · `PLANNED` — scoped for current implementation batch · `PRIORITIZED` — elected to the work queue in `queues/PRIORITIZED_FEATURES.md` · `BACKLOG` — specified but not yet scheduled
 
 ## Workflow Definition
 
@@ -39,7 +39,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-019 | Sequential Phase Execution | I can write phases that depend on each other's file output because rings never runs two phases simultaneously | COMPLETE | [engine.md](execution/engine.md) |
-| F-020 | Timeout Per Run | I can set a per-run timeout so a hung Claude invocation doesn't stall my workflow indefinitely | BACKLOG | [engine.md](execution/engine.md) |
+| F-020 | Timeout Per Run | I can set a per-run timeout so a hung Claude invocation doesn't stall my workflow indefinitely | PLANNED | [engine.md](execution/engine.md) |
 | F-021 | Claude Code Integration | rings invokes Claude Code as a subprocess and passes my prompt securely over stdin | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
 | F-022 | Executor Abstraction | I can swap out the default `claude` binary for any other tool that accepts prompts over stdin | BACKLOG | [executor-integration.md](execution/executor-integration.md) |
 | F-023 | Per-Phase Executors | I can use a different executor binary for individual phases within the same workflow | BACKLOG | [executor-integration.md](execution/executor-integration.md) |
@@ -96,10 +96,10 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-049 | Resume State Recovery | If my state file is corrupted, rings can reconstruct my position from audit logs (requires F-046, F-068) | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-050 | Workflow File Change Detection | rings refuses to resume if I've made structural changes to the workflow since the last run, protecting me from mismatched state | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-051 | SIGINT Handling | Pressing Ctrl+C gracefully saves state and prints a resume command before exiting (requires F-046) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
-| F-052 | SIGTERM Handling | rings treats SIGTERM like Ctrl+C so process managers can stop it cleanly (requires F-051) | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-052 | SIGTERM Handling | rings treats SIGTERM like Ctrl+C so process managers can stop it cleanly (requires F-051) | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-053 | Double Ctrl+C | A second Ctrl+C while rings is waiting skips the graceful shutdown and force-kills the subprocess immediately (requires F-051) | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
-| F-054 | Subprocess Graceful Shutdown | rings sends SIGTERM to the executor and waits 5 seconds before escalating to SIGKILL | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
-| F-055 | Context Directory Lock | rings prevents two instances from running against the same context_dir at the same time | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-054 | Subprocess Graceful Shutdown | rings sends SIGTERM to the executor and waits 5 seconds before escalating to SIGKILL | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-055 | Context Directory Lock | rings prevents two instances from running against the same context_dir at the same time | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-056 | Stale Lock Detection | rings automatically removes a lock from a process that is no longer running (requires F-055) | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-057 | Cross-Machine Resume Limitation | rings documents that resume requires the workflow file at the same absolute path; `--parent-run` is available for cross-machine linking | BACKLOG | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-058 | Parent Run ID | rings records which run was the parent when I resume or use `--parent-run`, building an ancestry chain | BACKLOG | [run-ancestry.md](state/run-ancestry.md) |
@@ -186,11 +186,11 @@ Summaries are written from the user's perspective. Features with dependencies no
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-111 | Real-Time Cost Accumulation | I can see cumulative cost grow in real time as each run completes, both per-phase and globally | COMPLETE | [cost-tracking.md](observability/cost-tracking.md) |
-| F-112 | Budget Cap | I can set a spending ceiling so rings automatically stops and saves state when the cost limit is hit (requires F-046) | BACKLOG | [cost-tracking.md](observability/cost-tracking.md) |
+| F-112 | Budget Cap | I can set a spending ceiling so rings automatically stops and saves state when the cost limit is hit (requires F-046) | PLANNED | [cost-tracking.md](observability/cost-tracking.md) |
 | F-113 | Budget Warning Thresholds | rings warns me when I've reached 80% and 90% of my budget cap so I'm not surprised by a stop (requires F-112) | BACKLOG | [cost-tracking.md](observability/cost-tracking.md) |
 | F-114 | Per-Phase Budget Caps | I can set independent spending limits on individual phases to protect against a runaway single phase (requires F-112) | BACKLOG | [cost-tracking.md](observability/cost-tracking.md) |
-| F-115 | Low-Confidence Cost Warning | rings warns me any time it can only partially or not at all parse cost from executor output (requires F-033) | BACKLOG | [cost-tracking.md](observability/cost-tracking.md) |
-| F-116 | No Budget Cap Warning | rings warns me at startup if I haven't set any budget cap, so I don't accidentally run an unbounded workflow | BACKLOG | [cost-tracking.md](observability/cost-tracking.md) |
+| F-115 | Low-Confidence Cost Warning | rings warns me any time it can only partially or not at all parse cost from executor output (requires F-033) | PLANNED | [cost-tracking.md](observability/cost-tracking.md) |
+| F-116 | No Budget Cap Warning | rings warns me at startup if I haven't set any budget cap, so I don't accidentally run an unbounded workflow | PLANNED | [cost-tracking.md](observability/cost-tracking.md) |
 
 ## File Lineage
 

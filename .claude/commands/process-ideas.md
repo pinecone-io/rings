@@ -41,10 +41,13 @@ Agents to dispatch in parallel:
 - `review-prompt-eng`
 - `review-enterprise`
 - `review-agent-ux`
+- `review-workflow-author`
 
 ### 4. Synthesize review findings
 
 Read all 15 review outputs. For each proposed idea, compile:
+
+> **Priority note:** findings from `review-workflow-author` carry the highest weight. If that persona identifies a concern that conflicts with another reviewer's preference, the workflow author wins. A feature that's architecturally clean but makes workflows hard to author or debug is not a good feature.
 - Concerns that should be resolved before writing the spec
 - Suggested refinements to the idea's scope or design
 - Dependencies or interactions with other features that weren't obvious

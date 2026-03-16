@@ -35,12 +35,13 @@ Agents to dispatch in parallel:
 - `impl-cross-platform`
 - `impl-performance`
 - `impl-memory`
+- `impl-regex`
 - `impl-agent-ux`
 - `impl-docs`
 
 ### 4. Synthesize findings
 
-Read all 14 review outputs. Group findings by theme. Identify:
+Read all 15 review outputs. Group findings by theme. Identify:
 - **Blockers** — design issues that must be resolved before implementation begins
 - **Implementation decisions** — choices that need to be made explicitly (with a recommended default)
 - **Test requirements** — specific test cases called out by the testing reviewer

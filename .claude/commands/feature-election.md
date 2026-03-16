@@ -77,18 +77,21 @@ Document any overrides to the raw vote ranking with explicit rationale.
 
 ---
 
-## Write queues/PLAN.md
+## Write queues/SELECTED_FEATURES.md
 
-Write `queues/PLAN.md` at the project root:
+Overwrite `queues/SELECTED_FEATURES.md` (this file holds one batch at a time; the
+vote tally is printed to stdout and captured in the rings run log):
 
 ```markdown
-# Feature Election — [date]
+## Batch: [batch name] — [date]
 
-## Vote Tally
-[Full ranked table with voter names and condensed reasons per feature]
+| F-NNN | Feature | Spec file |
+|-------|---------|-----------|
+[one row per selected feature]
 
-## Selected Features
-[F-NNN list with one-line summaries; note any ranking overrides with rationale]
+Notes: [any ranking overrides with rationale, if any]
 ```
 
-Do not begin implementation. Run `/plan-impl` to proceed with implementation planning.
+Do not begin implementation. Run `rings run rings/plan-create/plan-create.rings.toml`
+to produce an initial draft, then `rings run rings/plan-review/plan-review.rings.toml`
+to review it.

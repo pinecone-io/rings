@@ -42,8 +42,9 @@ pass. Print a one-line status:
 Reproduced: "<title>" — succeeded
 ```
 
-**If reproduction failed:** do not proceed to fix. Move the bug entry from `## Open` to
-`## Needs Info` in `rings/process-bugs/queue/BUG_REPORT.md` (create the section if absent). Format the entry as:
+**If reproduction failed:** do not proceed to fix. Remove the bug entry from `## Open`
+in `rings/process-bugs/queue/BUG_REPORT.md`. Append to
+`rings/process-bugs/queue/NEEDS_INFO.md` (create the file if absent):
 
 ```
 - [ ] **<title>**: <original description>

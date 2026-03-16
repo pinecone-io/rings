@@ -18,12 +18,12 @@ Read `bug-working.md` in full, paying attention to `## Fix Applied`.
 Run `just validate`. If any checks fail, do **not** attempt further fixes. Instead:
 
 1. Record the failure output under `## Verification` in `bug-working.md`.
-2. Move the bug entry from `## Open` to `## Blocked` in `rings/process-bugs/queue/BUG_REPORT.md` (create the
-   section if absent). Format the entry as:
+2. Remove the bug entry from `## Open` in `rings/process-bugs/queue/BUG_REPORT.md`.
+   Append to `rings/process-bugs/queue/BLOCKED.md` (create the file if absent):
 
    ```
    - [ ] **<title>**: <original description>
-     → Blocked: tests failed after fix — see bug-working.md for details
+     → Blocked: tests failed after fix — see git log for details
    ```
 
 3. Delete `bug-working.md`.

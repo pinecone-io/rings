@@ -18,11 +18,12 @@ Read `improvement-working.md` in full, paying attention to `## Changes Made`.
 Run `just validate`. If any checks fail, do **not** attempt further fixes. Instead:
 
 1. Record the failure output under `## Verification` in `improvement-working.md`.
-2. Move the item from `## Unprocessed` to `## Blocked` in `rings/process-improvements/queue/TECH_DEBT.md`:
+2. Remove the item from `## Unprocessed` in `rings/process-improvements/queue/TECH_DEBT.md`.
+   Append to `rings/process-improvements/queue/BLOCKED.md` (create the file if absent):
 
    ```
    - [ ] **<title>**: <original description>
-     → Blocked: validation failed after implementation — see improvement-working.md for details
+     → Blocked: validation failed after implementation — see git log for details
    ```
 
 3. Delete `improvement-working.md`.

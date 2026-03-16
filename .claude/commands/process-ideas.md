@@ -24,7 +24,19 @@ Set aside anything classified as "already covered" or "out of scope" — do not 
 
 For all ideas classified as **extension** or **new feature**, launch ALL of the following agents simultaneously using the Agent tool. Give each the same task:
 
-"Review the following proposed ideas for the rings project and provide your perspective. For each idea, identify concerns, risks, gaps, or improvements before we commit to writing them into the spec. Also note anything the idea is missing that your area of expertise would require. Proposed ideas: [summarize each idea with its classification]. Relevant existing features for context: [list related F-NNN entries]."
+---
+*"You are a member of the rings project review panel. Before reviewing, orient yourself by reading:*
+- *`specs/index.md` — what rings is and core concepts*
+- *`specs/overview.md` — design principles and target user*
+- *`specs/mvp.md` — what was built first and why*
+- *`specs/feature_inventory.md` — what is already specified*
+
+*Review the following proposed ideas and provide your perspective from your area of expertise. For each idea, identify concerns, risks, gaps, or improvements before we commit to writing them into the spec. Also note anything the idea is missing that your area of expertise would require.*
+
+*Proposed ideas: [summarize each idea with its classification]*
+*Relevant existing features for context: [list related F-NNN entries and their spec files]*"*
+
+---
 
 Agents to dispatch in parallel:
 - `review-cli`

@@ -1,30 +1,108 @@
-Review the feature inventory, run a multi-persona voting round to select the highest-value batch, then produce a detailed implementation-hardened plan.
+Produce a high-quality, evidence-based implementation plan by running a user-perspective voting round to select the right features, then an implementation review round to plan them correctly.
 
 ## Steps
 
 ### 1. Orient yourself
 
-Read the following to understand current state:
+Read the following to build a complete picture of the project:
+- `specs/index.md` — what rings is and core concepts
+- `specs/overview.md` — design principles and target user
+- `specs/mvp.md` — original scope and what was built first
 - `specs/feature_inventory.md` — full feature list with statuses
-- `specs/mvp.md` — original scope priorities
-- `specs/index.md` — spec tree overview
 
-Identify all `BACKLOG` features whose prerequisites are all `COMPLETE`. These are the candidates eligible for voting. Read the spec file for each candidate so you can summarize them accurately for the agents.
+Identify all `BACKLOG` features whose prerequisites are all `COMPLETE`. These are the candidates eligible for voting. For each candidate, note its F-NNN, name, one-line summary, spec file, and any dependency notes.
 
-### 2. Voting round — dispatch all personas in parallel
+---
 
-Using the Agent tool, launch ALL of the following agents simultaneously. Give each the same task:
+## Wave 1: Feature Selection (User Perspective Voting)
 
-"You are being asked to vote on which features to implement next in the rings project. Below is the list of unblocked BACKLOG features — features whose prerequisites are already complete. Review the list from your area of expertise and cast your votes.
+### 2. Dispatch review panel for voting — in parallel
 
-For each feature you vote for, explain in 1–2 sentences why it matters from your perspective. You may vote for as many features as you genuinely care about, but focus on the ones that would make the biggest difference from your area of concern.
+Using the Agent tool, launch ALL of the following agents simultaneously. Give each the same task prompt:
 
-Unblocked features:
-[list each F-NNN, name, one-line summary, and spec file]
+---
+*"You are a member of the rings project review panel. Before voting, orient yourself by reading these files:*
+- *`specs/index.md` — what rings is*
+- *`specs/overview.md` — design principles and target user*
+- *`specs/mvp.md` — what was built first and why*
 
-Return your votes as a simple list: F-NNN — reason."
+*You are being asked to vote on which features to implement next. Below are all unblocked BACKLOG features — features whose prerequisites are already complete:*
 
-Agents to dispatch in parallel:
+*[list each candidate: F-NNN · Name · one-line summary · spec file]*
+
+*Vote for the features that would deliver the most value from your specific perspective. For each vote, write 1–2 sentences explaining why it matters to the people you represent. Vote for as many as you genuinely care about — but be selective. A vote means 'this would make a real difference to me.'*
+
+*Return your votes as:*
+*F-NNN — Name — reason"*
+
+---
+
+Agents to dispatch:
+- `review-cli`
+- `review-devops`
+- `review-data-eng`
+- `review-ai-newcomer`
+- `review-gen-z`
+- `review-security`
+- `review-token-opt`
+- `review-reliability`
+- `review-scripter`
+- `review-oss`
+- `review-founder`
+- `review-prompt-eng`
+- `review-enterprise`
+- `review-agent-ux`
+- `review-workflow-author`
+
+### 3. Tally votes and select the batch
+
+Read all 15 voting responses. Build a ranked table:
+
+```
+Rank  F-NNN  Feature Name                  Votes  Voters
+----  -----  ----------------------------  -----  ---------------------------------
+1     F-046  State Persistence             12     review-cli, review-founder, ...
+2     F-055  Context Directory Lock        9      review-reliability, ...
+...
+```
+
+For each feature, note the condensed reasons across voters — patterns in why people voted for something are as important as the count.
+
+Then select a batch of 5–10 features using votes as the primary signal, also considering:
+- **Logical grouping** — features that share a spec file or implementation surface
+- **Coherent scope** — a batch that can be reviewed and implemented together
+- **Niche but critical** — a feature with few votes from a high-priority persona (e.g. `review-workflow-author`) may outrank one with many votes from lower-priority personas
+
+Document any overrides to the raw vote ranking with explicit rationale.
+
+---
+
+## Wave 2: Implementation Planning (Technical Review)
+
+### 4. Load spec context for selected features
+
+For each selected feature, read its linked spec file in full. This context will be passed to the impl agents.
+
+### 5. Dispatch implementation review panel — in parallel
+
+Using the Agent tool, launch ALL of the following agents simultaneously. Give each the same task prompt:
+
+---
+*"You are a member of the rings implementation review panel. Before reviewing, orient yourself:*
+- *Read `specs/index.md` and `specs/overview.md` to understand what rings is*
+- *Read the relevant source files in `src/` that relate to your area of expertise*
+- *Read the spec files listed below for the selected features*
+
+*The following features have been selected for the next implementation batch based on a user-perspective voting round. Do a full implementation review from your area of expertise. For each feature, identify concerns, risks, design decisions, and anything that must be resolved before coding begins.*
+
+*Selected features and their specs:*
+*[list F-NNN · Name · spec file for each]*
+
+*Return numbered findings with severity (nit / concern / blocker) and concrete suggestions."*
+
+---
+
+Agents to dispatch:
 - `impl-rust`
 - `impl-architecture`
 - `impl-deps`
@@ -41,53 +119,18 @@ Agents to dispatch in parallel:
 - `impl-agent-ux`
 - `impl-docs`
 
-### 3. Tally votes
-
-Read all 15 voting responses. For each feature, record:
-- Total vote count
-- Which personas voted for it
-- A condensed summary of their reasons
-
-Produce a ranked vote table:
-
-```
-F-NNN  Feature Name                  Votes  Voters
------  ----------------------------  -----  ----------------------------------
-F-046  State Persistence             11     impl-rust, impl-testing, ...
-...
-```
-
-Note any features that received strong consensus (many voters) vs. niche advocacy (one or two specialists). A feature championed by `impl-agent-ux` alone still deserves consideration if agent experience is a priority.
-
-### 4. Select the batch
-
-Choose 5–10 features for the implementation batch using the vote tally as the primary signal. Prefer:
-- High vote counts (broad consensus across personas)
-- Logical grouping (features that share a spec file or implementation surface)
-- Coherent scope (features that can be reviewed and implemented together)
-
-Note any manual overrides to the vote ranking and why (e.g. "F-055 ranked 3rd but grouped with F-056 which ranked 8th, so both included").
-
-### 5. Implementation review round — dispatch all personas in parallel
-
-Using the Agent tool, launch ALL of the same agents simultaneously again. Give each the same task:
-
-"The following features have been selected for the next implementation batch based on a voting round. Please now do a full implementation review from your area of expertise. For each feature, identify concerns, risks, design decisions, and anything that should be resolved before coding begins.
-
-Selected features: [list F-NNN numbers, names, and spec file links]
-
-Focus on your area of expertise and produce numbered findings with severity ratings."
-
 ### 6. Synthesize findings
 
-Read all 15 review outputs. Group findings by theme across features. Identify:
+Read all 15 implementation review outputs. Group by theme across features:
 - **Blockers** — must be resolved before implementation begins
-- **Implementation decisions** — explicit choices to make, each with a recommended default
-- **Test requirements** — specific test cases called out across reviewers
-- **Spec clarifications** — ambiguities that would affect implementation
-- **Discarded concerns** — out of scope or inapplicable, with brief rationale
+- **Open decisions** — explicit choices to make, each with a recommended default
+- **Test requirements** — specific cases called out by reviewers
+- **Spec gaps** — ambiguities that would affect implementation
+- **Discarded concerns** — inapplicable findings, with rationale
 
-### 7. Produce PLAN.md
+---
+
+## Produce PLAN.md
 
 Write `PLAN.md` at the project root:
 
@@ -95,22 +138,26 @@ Write `PLAN.md` at the project root:
 # Implementation Plan — [date]
 
 ## Vote Tally
-[Full ranked table from step 3]
+[Full ranked table with voter names and condensed reasons per feature]
 
 ## Selected Features
-[F-NNN list with one-line summaries and rationale for any ranking overrides]
+[F-NNN list with one-line summaries; note any ranking overrides with rationale]
 
 ## Implementation Review Findings
 [Synthesized findings grouped by theme, with reviewer attribution]
 
 ## Open Decisions
-[Explicit choices with recommended options]
+[Each decision as a question, with recommended answer and tradeoffs]
 
-## Spec Clarifications Needed
+## Spec Gaps
 [Ambiguities to resolve before or during implementation]
 
 ## Implementation Steps
-[For each feature: source files to touch, types/structs to add, test cases required]
+[For each feature:
+  - Source files to create or modify
+  - Key types, structs, or traits to add
+  - Test cases required (unit and integration)
+  - Any cross-feature dependencies in this batch]
 ```
 
 Do not mark any feature as `PLANNED` in the inventory or begin implementation until the user has reviewed and approved `PLAN.md`.

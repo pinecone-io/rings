@@ -1,4 +1,4 @@
-Review the feature inventory and produce a detailed, review-hardened implementation plan for the next batch of features.
+Review the feature inventory and produce a detailed, implementation-hardened plan for the next batch of features.
 
 ## Steps
 
@@ -18,33 +18,33 @@ From the unblocked `BACKLOG` features, identify a candidate batch of 5–10 that
 
 For each candidate, read its linked spec file in full.
 
-### 3. Dispatch review panel in parallel
+### 3. Dispatch implementation review panel in parallel
 
-Using the Agent tool, launch ALL of the following agents simultaneously, giving each the same task description: "Review the following candidate features for the next implementation batch and provide your perspective. Candidate features: [list the F-NNN numbers and names]. Relevant spec files: [list the spec files]. Focus on your area of expertise and identify concerns, gaps, or improvements before we commit to building these."
+Using the Agent tool, launch ALL of the following agents simultaneously, giving each the same task description: "Review the following candidate features for implementation planning. For each feature, identify implementation concerns, risks, design decisions, and anything that should be resolved before coding begins. Candidate features: [list the F-NNN numbers and names]. Relevant spec files: [list the spec files]. Focus on your area of expertise."
 
 Agents to dispatch in parallel:
-- `review-cli`
-- `review-devops`
-- `review-data-eng`
-- `review-ai-newcomer`
-- `review-gen-z`
-- `review-security`
-- `review-token-opt`
-- `review-reliability`
-- `review-scripter`
-- `review-oss`
-- `review-founder`
-- `review-prompt-eng`
-- `review-enterprise`
-- `review-docs`
-- `review-agent-ux`
+- `impl-rust`
+- `impl-architecture`
+- `impl-deps`
+- `impl-testing`
+- `impl-error-handling`
+- `impl-cli-framework`
+- `impl-serialization`
+- `impl-process-mgmt`
+- `impl-filesystem`
+- `impl-cross-platform`
+- `impl-performance`
+- `impl-memory`
+- `impl-agent-ux`
+- `impl-docs`
 
 ### 4. Synthesize findings
 
-Read all 13 review outputs. Group findings by theme. Identify:
-- **Blockers** — things that should change before building (spec gaps, design issues)
-- **Spec amendments** — clarifications or additions needed in spec files before implementing
-- **Implementation notes** — concerns to carry forward into code (not spec changes)
+Read all 14 review outputs. Group findings by theme. Identify:
+- **Blockers** — design issues that must be resolved before implementation begins
+- **Implementation decisions** — choices that need to be made explicitly (with a recommended default)
+- **Test requirements** — specific test cases called out by the testing reviewer
+- **Spec clarifications needed** — ambiguities in the spec that would affect implementation
 - **Discarded concerns** — findings that don't apply or are out of scope, with brief rationale
 
 ### 5. Produce PLAN.md
@@ -57,17 +57,17 @@ Write a `PLAN.md` at the project root with the following structure:
 ## Selected Features
 [Numbered list of F-NNN features being planned, with one-line summaries]
 
-## Review Panel Findings
+## Implementation Review Findings
 [Synthesized findings grouped by theme, with reviewer attribution]
 
-## Spec Amendments Required
-[Any spec changes that should happen before implementation begins]
+## Open Decisions
+[Explicit choices that must be made before coding, with a recommended option]
+
+## Spec Clarifications Needed
+[Ambiguities to resolve, or confirm as implementation decisions]
 
 ## Implementation Steps
 [For each feature: source files to touch, types/structs to add, test cases required]
-
-## Open Questions
-[Anything requiring human decision before work begins]
 ```
 
 Do not mark any feature as `PLANNED` in the inventory or begin implementation until the user has reviewed and approved `PLAN.md`.

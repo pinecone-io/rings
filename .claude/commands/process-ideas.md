@@ -40,7 +40,6 @@ Agents to dispatch in parallel:
 - `review-founder`
 - `review-prompt-eng`
 - `review-enterprise`
-- `review-docs`
 - `review-agent-ux`
 
 ### 4. Synthesize review findings

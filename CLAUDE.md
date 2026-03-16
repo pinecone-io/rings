@@ -31,6 +31,18 @@ Conventional commit prefixes are required:
 
 Scopes are optional (e.g., `feat(executor): ...`). No PRs. No branches. Commit directly to `main`.
 
+## Filing Bug Reports
+
+If you encounter a bug — unexpected behavior, a crash, a spec violation, or a broken test you cannot fix within your task scope — add an entry to `BUG_REPORT.md` under `## Open`:
+
+```
+- [ ] **<short title>**: <what happened> — <what was expected instead>
+```
+
+Be specific: include the file path, function name, or test name where the bug manifests. Do not leave a bug silently unresolved; if you can't fix it, file it.
+
+The `process-bugs.rings.toml` workflow will pick it up in a future run.
+
 ## Agent Behavior
 
 - **Specs are the source of truth.** When code and spec conflict, fix the code to match the spec, then record the conflict in `REVIEW.md` under Conflicts.

@@ -2,7 +2,7 @@ Capture a rough idea and append it to IDEAS.md without evaluating or processing 
 
 ## Steps
 
-1. The user's idea is whatever they wrote after `/add-idea`. If no text was provided, ask them to describe the idea in one or a few sentences.
+1. The user's idea is whatever they wrote after `/idea`. If no text was provided, ask them to describe the idea in one or a few sentences.
 2. If `IDEAS.md` does not exist at the project root, create it with a minimal header:
    ```markdown
    # Ideas

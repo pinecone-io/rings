@@ -1,19 +1,73 @@
-Review the feature inventory and produce a detailed implementation plan for the next batch of features to work on.
+Review the feature inventory and produce a detailed, review-hardened implementation plan for the next batch of features.
 
 ## Steps
 
-1. Read `specs/feature_inventory.md` to get the full feature list with current statuses.
-2. Read `specs/mvp.md` to understand original scope priorities.
-3. Read `specs/index.md` to orient yourself in the spec tree.
-4. Identify all features that are `BACKLOG` and group them by their dependency relationships — features whose prerequisites are all `COMPLETE` are unblocked and eligible for the next batch.
-5. For each candidate feature, read the relevant spec file linked in the inventory to understand the full requirements.
-6. Propose a prioritized batch of 5–10 features to tackle next, chosen for:
-   - All prerequisites already `COMPLETE`
-   - High user value relative to implementation complexity
-   - Logical grouping (features that share a spec file or implementation surface are good candidates to bundle)
-7. For each selected feature, produce a detailed implementation plan:
-   - Which source files to create or modify
-   - Key data structures or types to add
-   - Test cases required (unit and integration) per the testing rules in `CLAUDE.md`
-   - Any spec ambiguities to note in `REVIEW.md`
-8. Output the plan in a format ready to be saved as `PLAN.md` at the project root.
+### 1. Orient yourself
+
+Read the following to understand current state:
+- `specs/feature_inventory.md` — full feature list with statuses; identify all `BACKLOG` features whose prerequisites are all `COMPLETE`
+- `specs/mvp.md` — original scope priorities
+- `specs/index.md` — spec tree overview
+
+### 2. Select candidate features
+
+From the unblocked `BACKLOG` features, identify a candidate batch of 5–10 that are:
+- High user value relative to implementation complexity
+- Logically grouped (same spec file or implementation surface)
+- Well-specified enough to implement now
+
+For each candidate, read its linked spec file in full.
+
+### 3. Dispatch review panel in parallel
+
+Using the Agent tool, launch ALL of the following agents simultaneously, giving each the same task description: "Review the following candidate features for the next implementation batch and provide your perspective. Candidate features: [list the F-NNN numbers and names]. Relevant spec files: [list the spec files]. Focus on your area of expertise and identify concerns, gaps, or improvements before we commit to building these."
+
+Agents to dispatch in parallel:
+- `review-cli`
+- `review-devops`
+- `review-data-eng`
+- `review-ai-newcomer`
+- `review-gen-z`
+- `review-security`
+- `review-token-opt`
+- `review-reliability`
+- `review-scripter`
+- `review-oss`
+- `review-founder`
+- `review-prompt-eng`
+- `review-enterprise`
+- `review-docs`
+- `review-agent-ux`
+
+### 4. Synthesize findings
+
+Read all 13 review outputs. Group findings by theme. Identify:
+- **Blockers** — things that should change before building (spec gaps, design issues)
+- **Spec amendments** — clarifications or additions needed in spec files before implementing
+- **Implementation notes** — concerns to carry forward into code (not spec changes)
+- **Discarded concerns** — findings that don't apply or are out of scope, with brief rationale
+
+### 5. Produce PLAN.md
+
+Write a `PLAN.md` at the project root with the following structure:
+
+```markdown
+# Implementation Plan — [date]
+
+## Selected Features
+[Numbered list of F-NNN features being planned, with one-line summaries]
+
+## Review Panel Findings
+[Synthesized findings grouped by theme, with reviewer attribution]
+
+## Spec Amendments Required
+[Any spec changes that should happen before implementation begins]
+
+## Implementation Steps
+[For each feature: source files to touch, types/structs to add, test cases required]
+
+## Open Questions
+[Anything requiring human decision before work begins]
+```
+
+Do not mark any feature as `PLANNED` in the inventory or begin implementation until the user has reviewed and approved `PLAN.md`.

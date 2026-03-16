@@ -20,6 +20,8 @@
 <!-- Cases where code and spec disagreed; what was changed and why. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-15 / Task 26: Advisory completion check — include file-based prompts] Advisory check for the completion signal only scanned `prompt_text` fields, not file-based prompts. Most real workflows use `prompt = "file.md"` syntax, so the check always warned even when the signal was correctly placed in those files. Fixed by iterating through phases and collecting both inline `prompt_text` values and content from `prompt` files (best-effort: file read errors are silently skipped since the check is advisory only). The check now correctly reads both inline and file-based prompts.
+
 [2026-03-15 / Task 25: Fix doubled run_id in completion audit log path] `print_completion` was appending `/{run_id}/` to `output_dir` which already contained `run_id`, producing a doubled path like `~/.local/share/rings/runs/run_abc/run_abc/` instead of `~/.local/share/rings/runs/run_abc/`. Fixed by removing the redundant `/{run_id}/` suffix from the format string and removing the `run_id` parameter from the function signature entirely. Updated both call sites in main.rs to match the new signature.
 
 [2026-03-15 / Task 24: Fix unwrap() in production code — verbose executor path] Verbose path in `ClaudeExecutor::run` had `Mutex::lock().unwrap()` on lines 100-101 in production code violating CLAUDE.md gate 4. Fixed with `.map_err(|_| anyhow::anyhow!(...))? to properly propagate mutex poisoning errors.

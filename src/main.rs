@@ -81,11 +81,17 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
 
     // Advisory check: completion signal in prompts
     if !args.no_completion_check {
-        let prompt_texts: Vec<String> = workflow
-            .phases
-            .iter()
-            .filter_map(|p| p.prompt_text.clone())
-            .collect();
+        let mut prompt_texts: Vec<String> = Vec::new();
+        for phase in &workflow.phases {
+            if let Some(text) = &phase.prompt_text {
+                prompt_texts.push(text.clone());
+            } else if let Some(file) = &phase.prompt {
+                // Best-effort: skip file read failures (advisory only)
+                if let Ok(content) = std::fs::read_to_string(file) {
+                    prompt_texts.push(content);
+                }
+            }
+        }
         let texts: Vec<&str> = prompt_texts.iter().map(String::as_str).collect();
         if !completion::any_prompt_contains_signal(&texts, &workflow.completion_signal) {
             eprintln!(

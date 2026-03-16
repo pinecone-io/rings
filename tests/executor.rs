@@ -1,5 +1,6 @@
-// Test file for executor module
-// Tests will be moved inline in src/executor.rs after compilation
+// Security: prompts go via stdin only (see CLAUDE.md and specs/execution/executor-integration.md).
+// This test pins the exact arg list. Any PR that adds a runtime-content arg must update this test,
+// making the security regression visible in review.
 #[cfg(test)]
 mod tests {
     use rings::executor::ClaudeExecutor;

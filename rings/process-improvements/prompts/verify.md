@@ -44,10 +44,11 @@ confirmation under `## Verification` in `improvement-working.md`.
 
 ---
 
-## Step 4: Close the item in queues/TECH_DEBT.md
+## Step 4: Close the item
 
-Move the item from `## Unprocessed` to `## Resolved` (create the section if absent).
-Format the resolved entry as:
+Remove the item from `## Unprocessed` in `queues/TECH_DEBT.md`.
+
+Append the following to `activities/TECH_DEBT_RESOLVED.md` (create the file if absent):
 
 ```
 - [x] [YYYY-MM-DD] **<title>**: <original description>

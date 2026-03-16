@@ -51,9 +51,11 @@ The summary must be written from the user's perspective in the style of existing
 
 ---
 
-## Step 5: Mark the idea as processed in queues/IDEAS.md
+## Step 5: Record the processed idea
 
-Move the original idea text from `## Unprocessed` to `## Processed` in `queues/IDEAS.md`. Format it as:
+Remove the original idea text from `## Unprocessed` in `queues/IDEAS.md`.
+
+Append the following to `activities/IDEAS_PROCESSED.md` (create the file if absent):
 
 ```
 [YYYY-MM-DD] <original idea text>

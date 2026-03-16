@@ -13,6 +13,3 @@ structured — without changing any product behavior described in `specs/`.
 
 <!-- Items moved here when the workflow could not complete them. Requires human investigation. -->
 
-## Resolved
-
-<!-- Items moved here automatically after a successful implementation and validation. -->

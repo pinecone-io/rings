@@ -22,4 +22,3 @@ a phase id and workflow idea tracked in config seems useful in order to track an
 
 file paths in the toml should be able to resolve paths whether they are absolute or relative to the toml file location. if a path is ambiguous because both locations contain files, then the user should get some kind of feedback
 
-## Processed

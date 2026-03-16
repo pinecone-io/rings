@@ -14,6 +14,3 @@
 
 <!-- Bugs moved here when a fix was applied but the test suite still fails. Requires human investigation. -->
 
-## Resolved
-
-<!-- Bugs are moved here automatically by the workflow after being fixed. -->

@@ -63,11 +63,12 @@ The `rings/process-bugs/process-bugs.rings.toml` workflow will pick it up in a f
 
 When writing or modifying rings workflows, follow these conventions:
 
-- **`queues/`** — files intended to be consumed by other workflows. Each queue file holds an ordered list of entries that workflows process and produce. Examples: `queues/IDEAS.md`, `queues/PLAN_DRAFTS.md`.
+- **`queues/`** — files intended to be consumed by other workflows. Each queue file holds an ordered list of entries that workflows process and produce. Examples: `queues/IDEAS.md`, `queues/PLAN_DRAFTS.md`. Contains only unprocessed and in-flight items — never completed ones.
+- **`activities/`** — permanent records of completed work. Workflows append here when closing an item; nothing reads these files as input. Examples: `activities/BUGS_RESOLVED.md`, `activities/IDEAS_PROCESSED.md`, `activities/TECH_DEBT_RESOLVED.md`.
 - **`rings/<workflow-name>/wip/`** — ephemeral state internal to a workflow's cycles. These files are scratch space for intermediate outputs within a run and must never be treated as durable. They should be cleaned up by the workflow itself (typically in the final synthesizing phase).
 - **First-phase cleanup** — the first phase of a cycle should delete any stale debris in its `wip/` directory before beginning new work. This prevents leftover files from an interrupted prior run from corrupting the current run's state detection logic.
 
-Never write ephemeral state to the repository root or to `queues/`. If a file is only meaningful within a single workflow run, it belongs in `rings/<workflow-name>/wip/`.
+Never write ephemeral state to the repository root or to `queues/`. If a file is only meaningful within a single workflow run, it belongs in `rings/<workflow-name>/wip/`. If a file records completed work for audit purposes, it belongs in `activities/`.
 
 ## Agent Behavior
 

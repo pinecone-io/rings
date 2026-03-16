@@ -48,10 +48,11 @@ Document your verification result under `## Verification` in `bug-working.md`.
 
 ---
 
-## Step 4: Close the bug in queues/BUG_REPORT.md
+## Step 4: Close the bug
 
-Move the bug entry from `## Open` to `## Resolved` (create the section if absent).
-Format the resolved entry as:
+Remove the bug entry from `## Open` in `queues/BUG_REPORT.md`.
+
+Append the following to `activities/BUGS_RESOLVED.md` (create the file if absent):
 
 ```
 - [x] [YYYY-MM-DD] **<title>**: <original description>

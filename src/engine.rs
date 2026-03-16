@@ -1,4 +1,7 @@
-use crate::audit::{append_cost_entry, extract_resume_commands, write_run_log, CostEntry};
+use crate::audit::{
+    append_cost_entry, append_event, extract_resume_commands, write_run_log, BudgetCapEvent,
+    BudgetWarningEvent, CostEntry,
+};
 use crate::cancel::CancelState;
 use crate::completion::{output_contains_signal, output_line_contains_signal};
 use crate::cost::parse_cost_from_output;
@@ -185,6 +188,7 @@ pub fn run_workflow(
     let runs_dir = config.output_dir.join("runs");
     let costs_path = config.output_dir.join("costs.jsonl");
     let state_path = config.output_dir.join("state.json");
+    let events_path = config.output_dir.join("events.jsonl");
 
     std::fs::create_dir_all(&config.output_dir)?;
 
@@ -658,6 +662,18 @@ pub fn run_workflow(
                 // Print budget cap reached message
                 crate::display::print_budget_cap_reached(cap, cumulative_cost);
 
+                // Emit budget_cap event
+                let event = BudgetCapEvent {
+                    event: "budget_cap".to_string(),
+                    run_id: config.run_id.clone(),
+                    cost_usd: cumulative_cost,
+                    budget_cap_usd: cap,
+                    scope: "global".to_string(),
+                    runs_completed: total_runs,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+                let _ = append_event(&events_path, &serde_json::to_value(&event)?);
+
                 // Save state before returning
                 let state = StateFile {
                     schema_version: 1,
@@ -691,6 +707,16 @@ pub fn run_workflow(
                     "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap.",
                     cumulative_cost, cap
                 );
+                let event = BudgetWarningEvent {
+                    event: "budget_warning".to_string(),
+                    run_id: config.run_id.clone(),
+                    cost_usd: cumulative_cost,
+                    budget_cap_usd: cap,
+                    pct: 80,
+                    scope: "global".to_string(),
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+                let _ = append_event(&events_path, &serde_json::to_value(&event)?);
             }
 
             // ≥90%: warning (once)
@@ -700,6 +726,16 @@ pub fn run_workflow(
                     "⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit.",
                     cumulative_cost, cap
                 );
+                let event = BudgetWarningEvent {
+                    event: "budget_warning".to_string(),
+                    run_id: config.run_id.clone(),
+                    cost_usd: cumulative_cost,
+                    budget_cap_usd: cap,
+                    pct: 90,
+                    scope: "global".to_string(),
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+                let _ = append_event(&events_path, &serde_json::to_value(&event)?);
             }
         }
 
@@ -717,6 +753,18 @@ pub fn run_workflow(
                         }
                         // Print budget cap reached message
                         crate::display::print_budget_cap_reached(cap, phase_cost);
+
+                        // Emit budget_cap event with phase scope
+                        let event = BudgetCapEvent {
+                            event: "budget_cap".to_string(),
+                            run_id: config.run_id.clone(),
+                            cost_usd: phase_cost,
+                            budget_cap_usd: cap,
+                            scope: format!("phase:{}", phase.name),
+                            runs_completed: total_runs,
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        };
+                        let _ = append_event(&events_path, &serde_json::to_value(&event)?);
 
                         // Save state before returning
                         let state = StateFile {
@@ -756,6 +804,16 @@ pub fn run_workflow(
                             "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap (phase: {}).",
                             phase_cost, cap, phase.name
                         );
+                        let event = BudgetWarningEvent {
+                            event: "budget_warning".to_string(),
+                            run_id: config.run_id.clone(),
+                            cost_usd: phase_cost,
+                            budget_cap_usd: cap,
+                            pct: 80,
+                            scope: format!("phase:{}", phase.name),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        };
+                        let _ = append_event(&events_path, &serde_json::to_value(&event)?);
                     }
 
                     // ≥90%: warning (once per phase)
@@ -767,6 +825,16 @@ pub fn run_workflow(
                     {
                         budget_warned_90_phase.insert(phase.name.clone(), true);
                         eprintln!("⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit (phase: {}).", phase_cost, cap, phase.name);
+                        let event = BudgetWarningEvent {
+                            event: "budget_warning".to_string(),
+                            run_id: config.run_id.clone(),
+                            cost_usd: phase_cost,
+                            budget_cap_usd: cap,
+                            pct: 90,
+                            scope: format!("phase:{}", phase.name),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        };
+                        let _ = append_event(&events_path, &serde_json::to_value(&event)?);
                     }
                 }
             }

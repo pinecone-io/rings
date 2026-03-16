@@ -35,6 +35,40 @@ pub fn append_cost_entry(costs_path: &Path, entry: &CostEntry) -> Result<()> {
         .with_context(|| format!("Failed to write to costs.jsonl: {}", costs_path.display()))
 }
 
+#[derive(Debug, Serialize)]
+pub struct BudgetWarningEvent {
+    pub event: String,
+    pub run_id: String,
+    pub cost_usd: f64,
+    pub budget_cap_usd: f64,
+    pub pct: u8,
+    pub scope: String, // "global" or "phase:<name>"
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BudgetCapEvent {
+    pub event: String,
+    pub run_id: String,
+    pub cost_usd: f64,
+    pub budget_cap_usd: f64,
+    pub scope: String, // "global" or "phase:<name>"
+    pub runs_completed: u32,
+    pub timestamp: String,
+}
+
+/// Append one line to events.jsonl (creates file if absent).
+pub fn append_event(events_path: &Path, event: &serde_json::Value) -> Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(events_path)
+        .with_context(|| format!("Failed to open events.jsonl: {}", events_path.display()))?;
+    let line = serde_json::to_string(event).context("Failed to serialize event")?;
+    writeln!(file, "{line}")
+        .with_context(|| format!("Failed to write to events.jsonl: {}", events_path.display()))
+}
+
 /// Write the full raw output of one run to its log file (e.g. runs/001.log).
 pub fn write_run_log(runs_dir: &Path, run_number: u32, output: &str) -> Result<()> {
     std::fs::create_dir_all(runs_dir)

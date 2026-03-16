@@ -157,7 +157,7 @@
   - ≥90%: emit `⚠  Budget: $X.XX spent — 90% of $Y.YY cap. Approaching limit.` (once per scope)
   - ≥100%: call `print_budget_cap_reached(scope)`, save state, exit 4
 - [x] `print_budget_cap_reached` display format: `"Error: Budget cap of $X.XX reached (spent $Y.YY).\nrings is stopping. Resume is available."` Exit code 4, `run.toml` status `"stopped"`.
-- [ ] Emit JSONL events: `budget_warning { scope, pct: u8 }` and `budget_cap`; add `pct: u8` (80 or 90) to `budget_warning` event
+- [x] Emit JSONL events: `budget_warning { scope, pct: u8 }` and `budget_cap`; add `pct: u8` (80 or 90) to `budget_warning` event
 - [x] Add `4 => "stopped"` arm to `final_status` and summary match in `main.rs`
 - [x] Add `4 =>` display arm calling `print_budget_cap_reached()` in `main.rs`
 - [x] On resume: reconstruct `cumulative_cost` from `costs.jsonl`; initialize `budget_warned_80`/`budget_warned_90` from reconstructed value

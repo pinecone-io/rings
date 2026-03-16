@@ -129,6 +129,108 @@ impl Executor for ClaudeExecutor {
     }
 }
 
+/// Configurable executor: spawns an arbitrary binary with caller-supplied args,
+/// writing the prompt to stdin. Used when `[executor]` is set in the workflow TOML.
+pub struct ConfigurableExecutor {
+    pub binary: String,
+    pub args: Vec<String>,
+}
+
+impl ConfigurableExecutor {
+    /// Returns the args that will be passed to the binary.
+    /// Exposed so callers can assert the security invariant (no prompt in args).
+    pub fn args(&self) -> &[String] {
+        &self.args
+    }
+}
+
+impl Executor for ConfigurableExecutor {
+    fn run(&self, invocation: &Invocation, verbose: bool) -> Result<ExecutorOutput> {
+        let mut child = Command::new(&self.binary)
+            .args(&self.args)
+            .current_dir(&invocation.context_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .with_context(|| format!("Failed to spawn executor: {}", self.binary))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(invocation.prompt.as_bytes())
+                .context("Failed to write prompt to executor stdin")?;
+        }
+
+        if verbose {
+            let stdout = child.stdout.take().context("Failed to get stdout")?;
+            let stderr = child.stderr.take().context("Failed to get stderr")?;
+
+            let stdout_output = Arc::new(Mutex::new(String::new()));
+            let stderr_output = Arc::new(Mutex::new(String::new()));
+
+            let stdout_accum = Arc::clone(&stdout_output);
+            let stderr_accum = Arc::clone(&stderr_output);
+
+            let stdout_thread = std::thread::spawn(move || {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{}", line);
+                    if let Ok(mut acc) = stdout_accum.lock() {
+                        acc.push_str(&line);
+                        acc.push('\n');
+                    }
+                }
+            });
+
+            let stderr_thread = std::thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("{}", line);
+                    if let Ok(mut acc) = stderr_accum.lock() {
+                        acc.push_str(&line);
+                        acc.push('\n');
+                    }
+                }
+            });
+
+            let output = child
+                .wait_with_output()
+                .context("Failed to wait for executor subprocess")?;
+
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+
+            let stdout_str = stdout_output
+                .lock()
+                .map_err(|_| anyhow::anyhow!("stdout accumulator mutex was poisoned"))?
+                .clone();
+            let stderr_str = stderr_output
+                .lock()
+                .map_err(|_| anyhow::anyhow!("stderr accumulator mutex was poisoned"))?
+                .clone();
+            let combined = format!("{}\n{}", stdout_str, stderr_str);
+
+            Ok(ExecutorOutput {
+                combined,
+                exit_code: output.status.code().unwrap_or(-1),
+            })
+        } else {
+            let output = child
+                .wait_with_output()
+                .context("Failed to wait for executor subprocess")?;
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let combined = format!("{stdout}\n{stderr}");
+
+            Ok(ExecutorOutput {
+                combined,
+                exit_code: output.status.code().unwrap_or(-1),
+            })
+        }
+    }
+}
+
 /// Test-only executor: returns pre-configured outputs in sequence.
 #[cfg(feature = "testing")]
 pub struct MockExecutor {

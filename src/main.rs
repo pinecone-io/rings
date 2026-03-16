@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use cli::{Cli, Command};
 use engine::{run_workflow, EngineConfig, ResumePoint};
-use executor::ClaudeExecutor;
+use executor::{ClaudeExecutor, ConfigurableExecutor};
 
 fn main() {
     let cli = Cli::parse();
@@ -55,8 +55,16 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
     }
 
     // Check executor is available
-    which::which("claude")
-        .context("'claude' not found on PATH. rings requires Claude Code to be installed.")?;
+    let executor_binary = workflow
+        .executor
+        .as_ref()
+        .map(|e| e.binary.as_str())
+        .unwrap_or("claude");
+    which::which(executor_binary).with_context(|| {
+        format!(
+            "'{executor_binary}' not found on PATH. rings requires Claude Code to be installed."
+        )
+    })?;
 
     // Resolve output directory
     let output_base =
@@ -104,7 +112,6 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
 
     display::print_run_header(&run_id, &args.workflow_file);
 
-    let executor = ClaudeExecutor;
     let config = EngineConfig {
         output_dir: run_dir.clone(),
         verbose: args.verbose,
@@ -126,7 +133,16 @@ fn run_inner(args: cli::RunArgs) -> Result<i32> {
     }
 
     let run_start = std::time::Instant::now();
-    let result = run_workflow(&workflow, &executor, &config, None, Some(canceled))?;
+    let result = if let Some(ref exec_cfg) = workflow.executor {
+        let executor = ConfigurableExecutor {
+            binary: exec_cfg.binary.clone(),
+            args: exec_cfg.args.clone(),
+        };
+        run_workflow(&workflow, &executor, &config, None, Some(canceled))?
+    } else {
+        let executor = ClaudeExecutor;
+        run_workflow(&workflow, &executor, &config, None, Some(canceled))?
+    };
     let total_elapsed_secs = run_start.elapsed().as_secs();
 
     let final_status = match result.exit_code {
@@ -242,7 +258,6 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
     eprintln!();
 
     // Build a resume-aware engine config (reuse same run_dir)
-    let executor = ClaudeExecutor;
     let config = EngineConfig {
         output_dir: run_dir.clone(),
         verbose: args.verbose,
@@ -260,20 +275,25 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
         .context("Failed to install Ctrl+C handler")?;
     }
 
+    let resume_point = Some(ResumePoint {
+        last_completed_run: saved_state.last_completed_run,
+        last_completed_cycle: saved_state.last_completed_cycle,
+        last_completed_phase_index: saved_state.last_completed_phase_index,
+        last_completed_iteration: saved_state.last_completed_iteration,
+    });
+
     // Use position-based resume so continue_signal skips are handled correctly.
     let run_start = std::time::Instant::now();
-    let result = run_workflow(
-        &workflow,
-        &executor,
-        &config,
-        Some(ResumePoint {
-            last_completed_run: saved_state.last_completed_run,
-            last_completed_cycle: saved_state.last_completed_cycle,
-            last_completed_phase_index: saved_state.last_completed_phase_index,
-            last_completed_iteration: saved_state.last_completed_iteration,
-        }),
-        Some(canceled),
-    )?;
+    let result = if let Some(ref exec_cfg) = workflow.executor {
+        let executor = ConfigurableExecutor {
+            binary: exec_cfg.binary.clone(),
+            args: exec_cfg.args.clone(),
+        };
+        run_workflow(&workflow, &executor, &config, resume_point, Some(canceled))?
+    } else {
+        let executor = ClaudeExecutor;
+        run_workflow(&workflow, &executor, &config, resume_point, Some(canceled))?
+    };
     let total_elapsed_secs = run_start.elapsed().as_secs();
 
     // Update run.toml status based on exit code

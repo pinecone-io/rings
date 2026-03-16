@@ -91,3 +91,34 @@ pub fn print_budget_cap_reached(cap_usd: f64, spent_usd: f64) {
     eprintln!("Error: Budget cap of ${cap_usd:.2} reached (spent ${spent_usd:.2}).");
     eprintln!("rings is stopping. Resume is available.");
 }
+
+/// Print low-confidence cost parse warnings (up to 10, then summary).
+pub fn print_parse_warnings(warnings: &[crate::cost::ParseWarning]) {
+    if warnings.is_empty() {
+        return;
+    }
+
+    eprintln!();
+    let display_count = std::cmp::min(warnings.len(), 10);
+    for w in warnings.iter().take(display_count) {
+        if w.confidence == crate::cost::ParseConfidence::None {
+            eprintln!(
+                "⚠  Low-confidence cost parse: Run {} (cycle {}, phase {}): cost could not be parsed",
+                w.run_number, w.cycle, w.phase
+            );
+        } else if let Some(ref snippet) = w.raw_match {
+            eprintln!(
+                "⚠  Low-confidence cost parse: Run {} (cycle {}, phase {}): {}",
+                w.run_number, w.cycle, w.phase, snippet
+            );
+        }
+    }
+
+    if warnings.len() > 10 {
+        let remaining = warnings.len() - 10;
+        eprintln!(
+            "⚠  ... and {} more low-confidence cost parse warnings.",
+            remaining
+        );
+    }
+}

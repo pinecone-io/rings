@@ -207,7 +207,7 @@ pub fn run_workflow(
         std::collections::HashMap::new();
     let mut budget_warned_90_phase: std::collections::HashMap<String, bool> =
         std::collections::HashMap::new();
-    let parse_warnings = Vec::new();
+    let mut parse_warnings = Vec::new();
 
     let workflow_name = workflow_name_from_file(&config.workflow_file);
 
@@ -496,6 +496,20 @@ pub fn run_workflow(
         let cost = parse_cost_from_output(&output.combined);
         cumulative_cost += cost.cost_usd.unwrap_or(0.0);
         total_runs += 1;
+
+        // Accumulate low-confidence parse warnings
+        if matches!(
+            cost.confidence,
+            crate::cost::ParseConfidence::Low | crate::cost::ParseConfidence::None
+        ) {
+            parse_warnings.push(crate::cost::ParseWarning {
+                run_number: run_spec.global_run_number,
+                cycle: run_spec.cycle,
+                phase: run_spec.phase_name.clone(),
+                confidence: cost.confidence.clone(),
+                raw_match: cost.raw_match.clone(),
+            });
+        }
 
         // Print per-run result
         crate::display::print_run_result(&run_spec, cost.cost_usd.unwrap_or(0.0), elapsed_secs);

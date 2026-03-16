@@ -174,8 +174,8 @@
 **Files:** `src/main.rs`, `src/engine.rs`, `src/cost.rs`, `src/display.rs`
 
 **Steps:**
-- [ ] **F-116:** In `run_inner`/`resume_inner` after workflow load: if no `budget_cap_usd` in TOML and no `--budget-cap` CLI flag, emit: `⚠  Warning: No budget cap configured. Use --budget-cap or budget_cap_usd to prevent unbounded spend.` (verbatim spec text with `⚠  ` prefix; record prefix deviation in REVIEW.md under Conflicts)
-- [ ] **F-115:** Add `ParseWarning` struct to `src/cost.rs`:
+- [x] **F-116:** In `run_inner`/`resume_inner` after workflow load: if no `budget_cap_usd` in TOML and no `--budget-cap` CLI flag, emit: `⚠  Warning: No budget cap configured. Use --budget-cap or budget_cap_usd to prevent unbounded spend.` (verbatim spec text with `⚠  ` prefix; record prefix deviation in REVIEW.md under Conflicts)
+- [x] **F-115:** Add `ParseWarning` struct to `src/cost.rs`:
   ```rust
   pub struct ParseWarning {
       pub run_number: u32,
@@ -185,16 +185,16 @@
       pub raw_match: Option<String>,
   }
   ```
-- [ ] Fix `cost_confidence` serialization: add `#[serde(rename_all = "lowercase")]` to `ParseConfidence`
-- [ ] In engine loop: if `cost.confidence` is `Low` or `None`, add a `ParseWarning` to an accumulator vec
-- [ ] Add `parse_warnings: Vec<ParseWarning>` to `EngineResult`
-- [ ] Implement `print_parse_warnings(warnings: &[ParseWarning])` in `display.rs`: show up to 10, then `"... and N more low-confidence cost parse warnings."`; `ParseConfidence::Low` with non-None `raw_match` → include raw match snippet; `ParseConfidence::None` → "could not be parsed" message
-- [ ] In `main.rs`: after engine completes, call `print_parse_warnings` with the accumulated warnings
+- [x] Fix `cost_confidence` serialization: add `#[serde(rename_all = "lowercase")]` to `ParseConfidence`
+- [x] In engine loop: if `cost.confidence` is `Low` or `None`, add a `ParseWarning` to an accumulator vec
+- [x] Add `parse_warnings: Vec<ParseWarning>` to `EngineResult`
+- [x] Implement `print_parse_warnings(warnings: &[ParseWarning])` in `display.rs`: show up to 10, then `"... and N more low-confidence cost parse warnings."`; `ParseConfidence::Low` with non-None `raw_match` → include raw match snippet; `ParseConfidence::None` → "could not be parsed" message
+- [x] In `main.rs`: after engine completes, call `print_parse_warnings` with the accumulated warnings
 
 **Tests:**
-- [ ] `ParseConfidence::Low` with non-None `raw_match` → warning includes raw match snippet
-- [ ] `ParseConfidence::None` → "could not be parsed" message (no snippet)
-- [ ] 11 low-confidence runs → shows 10 warnings + `"... and 1 more"`
+- [x] `ParseConfidence::Low` with non-None `raw_match` → warning includes raw match snippet
+- [x] `ParseConfidence::None` → "could not be parsed" message (no snippet)
+- [x] 11 low-confidence runs → shows 10 warnings + `"... and 1 more"`
 
 ---
 

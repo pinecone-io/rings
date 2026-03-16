@@ -127,6 +127,14 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     };
     meta.write(&run_dir.join("run.toml"))?;
 
+    // Advisory check: no budget cap configured
+    if workflow.budget_cap_usd.is_none() && args.budget_cap.is_none() {
+        eprintln!(
+            "⚠  Warning: No budget cap configured. \
+             Use --budget-cap or budget_cap_usd to prevent unbounded spend."
+        );
+    }
+
     // Advisory check: completion signal in prompts
     if !args.no_completion_check {
         let mut prompt_texts: Vec<String> = Vec::new();
@@ -277,6 +285,9 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         _ => {}
     }
 
+    // Print low-confidence cost parse warnings
+    display::print_parse_warnings(&result.parse_warnings);
+
     Ok(result.exit_code)
 }
 
@@ -323,6 +334,14 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         let secs = duration::parse_duration_secs(timeout_str)
             .with_context(|| format!("invalid --timeout-per-run value: {timeout_str:?}"))?;
         workflow.timeout_per_run_secs = Some(secs);
+    }
+
+    // Advisory check: no budget cap configured
+    if workflow.budget_cap_usd.is_none() && args.budget_cap.is_none() {
+        eprintln!(
+            "⚠  Warning: No budget cap configured. \
+             Use --budget-cap or budget_cap_usd to prevent unbounded spend."
+        );
     }
 
     eprintln!("Resuming {}", args.run_id);
@@ -461,6 +480,9 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         }
         _ => {}
     }
+
+    // Print low-confidence cost parse warnings
+    display::print_parse_warnings(&result.parse_warnings);
 
     Ok(result.exit_code)
 }

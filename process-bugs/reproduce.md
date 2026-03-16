@@ -1,5 +1,7 @@
 # Reproduce the Bug
 
+You are the **reproduce** phase of the **bug-fixing** rings workflow.
+
 Your job is to confirm the bug described in `bug-working.md` is reproducible before
 any fix is attempted.
 
@@ -14,7 +16,7 @@ Read `bug-working.md` in full to understand the bug title, description, and seve
 ## Step 2: Locate the relevant code
 
 Find the code path most likely responsible for the described behavior. Read the relevant
-files. Note the file paths and function names involved.
+files. Note the file paths and function names involved in `bug-working.md`.
 
 ---
 

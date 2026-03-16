@@ -1,5 +1,7 @@
 # Select and Classify One Improvement
 
+You are the **select** phase of the **technical improvements** rings workflow.
+
 Your job is to select the next unprocessed item from `TECH_DEBT.md`, classify it,
 and either resolve it immediately (trivial cases) or prepare it for planning.
 

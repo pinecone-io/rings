@@ -1,5 +1,7 @@
 # Verify and Close
 
+You are the **verify** phase of the **bug-fixing** rings workflow.
+
 Your job is to verify the fix from the previous phase is correct, then move the bug
 from `## Open` to `## Resolved` in `BUG_REPORT.md`.
 

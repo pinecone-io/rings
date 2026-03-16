@@ -1,5 +1,7 @@
 # Verify and Close
 
+You are the **verify** phase of the **technical improvements** rings workflow.
+
 Your job is to verify the implementation is correct, then move the item from
 `## Unprocessed` to `## Resolved` in `TECH_DEBT.md`.
 

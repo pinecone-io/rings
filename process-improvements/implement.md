@@ -1,5 +1,7 @@
 # Implement the Improvement
 
+You are the **implement** phase of the **technical improvements** rings workflow.
+
 Your job is to execute the implementation plan in `improvement-working.md`.
 
 ---

@@ -1,4 +1,6 @@
-# Triage One Bug
+# Triage One And Only One Bug
+
+You are the **triage** phase of the **bug-fixing** rings workflow.
 
 Your job is to select the next open bug from `BUG_REPORT.md` and prepare it for
 investigation. One bug per cycle — do not triage multiple bugs.

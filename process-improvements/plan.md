@@ -1,5 +1,7 @@
 # Plan the Improvement
 
+You are the **plan** phase of the **technical improvements** rings workflow.
+
 Your job is to design a concrete implementation plan for the improvement in
 `improvement-working.md` and confirm it does not touch any product behavior
 described in `specs/`.

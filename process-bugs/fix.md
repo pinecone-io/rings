@@ -1,5 +1,7 @@
 # Investigate and Fix
 
+You are the **fix** phase of the **bug-fixing** rings workflow.
+
 Your job is to identify the root cause of the bug in `bug-working.md` and implement
 a fix. Reproduction has already been done — read `## Reproduction Steps` to understand
 what was found.

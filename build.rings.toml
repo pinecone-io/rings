@@ -1,0 +1,15 @@
+[workflow]
+completion_signal = "RINGS_DONE"
+completion_signal_mode = "line"
+completion_signal_phases = ["builder"]
+context_dir = "."
+max_cycles = 50
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "--model", "claude-haiku-4-5-20251001", "-p", "-"]
+
+[[phases]]
+name = "builder"
+prompt = "ralph/BUILD_PROMPT.md"
+runs_per_cycle = 1

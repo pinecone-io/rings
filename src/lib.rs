@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod cancel;
 pub mod cli;
 pub mod completion;
 pub mod cost;

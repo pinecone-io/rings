@@ -90,11 +90,11 @@
 **Files:** `src/main.rs`, new `src/cancel.rs`
 
 **Steps:**
-- [ ] Define `CancelState` backed by `AtomicU8`: `0=NotCanceled`, `1=Canceling`, `2=ForceKill`; use `SeqCst` throughout; second-signal transition uses `compare_exchange`, not plain `store`
-- [ ] Install `ctrlc` handler once in `main()`, share `Arc<CancelState>`; first signal → `Canceling`; second signal while `Canceling` → `ForceKill`
-- [ ] Under `#[cfg(unix)]`: set `SIG_IGN` for SIGPIPE in `main()` before any subprocess spawning
-- [ ] Add `#[cfg(not(unix))] compile_error!("rings requires a Unix platform")` in `src/main.rs`
-- [ ] Replace all `thread::sleep(delay)` in the engine with a 100ms polling loop that checks the cancel flag
+- [x] Define `CancelState` backed by `AtomicU8`: `0=NotCanceled`, `1=Canceling`, `2=ForceKill`; use `SeqCst` throughout; second-signal transition uses `compare_exchange`, not plain `store`
+- [x] Install `ctrlc` handler once in `main()`, share `Arc<CancelState>`; first signal → `Canceling`; second signal while `Canceling` → `ForceKill`
+- [x] Under `#[cfg(unix)]`: set `SIG_IGN` for SIGPIPE in `main()` before any subprocess spawning
+- [x] Add `#[cfg(not(unix))] compile_error!("rings requires a Unix platform")` in `src/main.rs`
+- [x] Replace all `thread::sleep(delay)` in the engine with a 100ms polling loop that checks the cancel flag
 
 ---
 

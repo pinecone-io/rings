@@ -1,4 +1,5 @@
 use crate::audit::{append_cost_entry, extract_resume_commands, write_run_log, CostEntry};
+use crate::cancel::CancelState;
 use crate::completion::{output_contains_signal, output_line_contains_signal};
 use crate::cost::parse_cost_from_output;
 use crate::executor::{Executor, Invocation};
@@ -8,7 +9,6 @@ use crate::workflow::PhaseConfig;
 use crate::workflow::Workflow;
 use anyhow::Result;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -179,7 +179,7 @@ pub fn run_workflow(
     executor: &dyn Executor,
     config: &EngineConfig,
     resume_from: Option<ResumePoint>,
-    canceled: Option<Arc<AtomicBool>>,
+    cancel: Option<Arc<CancelState>>,
 ) -> Result<EngineResult> {
     let runs_dir = config.output_dir.join("runs");
     let costs_path = config.output_dir.join("costs.jsonl");
@@ -348,8 +348,8 @@ pub fn run_workflow(
         last_successful_run = run_spec.global_run_number;
 
         // Check for cancellation (Ctrl+C)
-        if let Some(ref canceled_flag) = canceled {
-            if canceled_flag.load(Ordering::SeqCst) {
+        if let Some(ref cancel_state) = cancel {
+            if cancel_state.is_canceling() {
                 // Print final cycle cost before returning
                 if current_display_cycle > 0 {
                     crate::display::print_cycle_cost(cycle_cost);
@@ -409,9 +409,18 @@ pub fn run_workflow(
             }
         }
 
-        // Inter-run delay (skipped in tests since delay_between_runs = 0)
+        // Inter-run delay: poll in 100ms slices so cancellation is detected promptly.
         if workflow.delay_between_runs > 0 {
-            std::thread::sleep(std::time::Duration::from_secs(workflow.delay_between_runs));
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_secs(workflow.delay_between_runs);
+            while std::time::Instant::now() < deadline {
+                if let Some(ref cs) = cancel {
+                    if cs.is_canceling() {
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
         }
     }
 

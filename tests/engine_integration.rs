@@ -1,8 +1,10 @@
 // Run with: cargo test --features testing
+use rings::cancel::CancelState;
 use rings::engine::{run_workflow, EngineConfig};
 use rings::executor::{ExecutorOutput, MockExecutor};
 use rings::state;
 use rings::workflow::{PhaseConfig, Workflow};
+use std::sync::Arc;
 use tempfile::tempdir;
 
 fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workflow {
@@ -151,9 +153,6 @@ fn engine_classifies_nonzero_exit_as_error() {
 
 #[test]
 fn engine_saves_state_and_exits_130_on_cancel() {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
-
     let dir = tempdir().unwrap();
     let workflow = make_workflow("DONE", &[("builder", 1)], 10);
     // First run succeeds, second run triggers cancellation
@@ -167,8 +166,7 @@ fn engine_saves_state_and_exits_130_on_cancel() {
             exit_code: 0,
         },
     ]);
-    let canceled = Arc::new(AtomicBool::new(false));
-    let canceled_clone = canceled.clone();
+    let cancel = Arc::new(CancelState::new());
     let config = EngineConfig {
         output_dir: dir.path().to_path_buf(),
         verbose: false,
@@ -176,10 +174,10 @@ fn engine_saves_state_and_exits_130_on_cancel() {
         workflow_file: "test.rings.toml".to_string(),
     };
 
-    // Set the cancel flag immediately (test simplicity)
-    canceled_clone.store(true, Ordering::SeqCst);
+    // Signal cancellation immediately (test simplicity)
+    cancel.signal_received();
 
-    let result = run_workflow(&workflow, &executor, &config, None, Some(canceled)).unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, Some(cancel)).unwrap();
     assert_eq!(
         result.exit_code, 130,
         "exit code should be 130 on cancellation"

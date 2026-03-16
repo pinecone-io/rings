@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-16 / plan-review-refactor Task 7] The plan's verification step (`grep -r "PLAN\.md\|plan-impl" .claude/ rings/`) expected zero matches after removing `plan-impl`. However, `.claude/commands/replan.md` and the impl agent files (`.claude/agents/impl-*.md`) still reference `queues/PLAN.md`. These are outside the plan's stated scope — `replan` is a separate command, and the agent files reference `PLAN.md` in their boilerplate setup (though the new `plan-review` workflow passes draft content directly via prompt). The new workflow files themselves contain no references to `PLAN.md` or `plan-impl`.
+
 [2026-03-15 / Task 28: Remove unused indicatif dependency] Removed unused `indicatif = "0.17"` dependency from Cargo.toml. The dependency was declared in the original plan header for potential progress-bar display, but the actual implementation uses plain `eprintln!()` calls for terminal output. Removing this unused dependency reduces compile time and binary bloat.
 
 [2026-03-15 / Task 27: Remove duplicate security test and stale comment] Consolidated security test into `tests/executor.rs` only. Removed the stale "Tests will be moved inline in src/executor.rs after compilation" comment that was misleading. The test is now the single source of truth in the integration test file, with better documentation about the security invariant. This eliminates duplication and makes the codebase cleaner.
@@ -39,6 +41,8 @@
 ## Open Questions
 <!-- Ambiguities, spec gaps, or missing specs that need human review. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
+
+[2026-03-16 / plan-review-refactor Task 7] Should `.claude/commands/replan.md` and the impl agent files be updated to reference `queues/SELECTED_FEATURES.md` or `queues/PLAN_DRAFTS.md` instead of `queues/PLAN.md`? These files were not in scope for the plan-review-refactor plan but still reference the deprecated queue file name.
 
 [2026-03-15 / Review Pass — per-pass verification] Executed full review pass per REVIEW_PROMPT.md. Summary: Tasks 1–7 complete (41 checked steps). Tasks 2, 8–16 incomplete (63 unchecked steps). Code quality gates pass (format ✓, clippy ✓, tests ✓ with --features testing). One critical quality gate violation identified: Task 5 contains `.expect()` in production code, violating CLAUDE.md gate 4. Previous review incorrectly claimed a non-existent exception. Task 17 added to plan to fix via lazy_static refactoring. No TODO/FIXME comments, no architectural issues in completed tasks.
 

@@ -1,5 +1,6 @@
 ---
 name: impl-performance
+model: sonnet
 description: Reviews implementation plans from a performance and efficiency perspective. Use when evaluating algorithmic complexity, unnecessary allocations, hot path analysis, benchmarking strategy, and whether performance-sensitive operations will scale to realistic workloads.
 ---
 

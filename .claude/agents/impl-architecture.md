@@ -1,5 +1,6 @@
 ---
 name: impl-architecture
+model: opus
 description: Reviews implementation plans from a software architecture perspective. Use when evaluating module structure, separation of concerns, dependency direction, extensibility points, and whether the proposed design will age well.
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: impl-cross-platform
+model: sonnet
 description: Reviews implementation plans from a cross-platform compatibility perspective. Use when evaluating Linux vs. macOS behavioral differences, signal handling portability, filesystem semantics, terminal detection, and anything that might work on one platform but break on another.
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: review-scripter
+model: sonnet
 description: Reviews plans and specs from the perspective of a power user who automates everything with shell scripts. Use when evaluating machine-readable output, exit code completeness, non-interactive operation, flag coverage gaps, and composability for scripted workflows.
 ---
 

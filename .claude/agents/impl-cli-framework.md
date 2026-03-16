@@ -1,5 +1,6 @@
 ---
 name: impl-cli-framework
+model: sonnet
 description: Reviews implementation plans from a clap and CLI framework perspective. Use when evaluating argument parser design, subcommand structure, derive vs. builder API choices, help text generation, shell completion integration, and clap-specific patterns.
 ---
 

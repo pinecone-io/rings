@@ -1,5 +1,6 @@
 ---
 name: impl-agent-ux
+model: opus
 description: Reviews implementation plans from the perspective of AI agent system design. Use when evaluating whether the implementation correctly handles long-running agentic invocations, context window management, session continuity, partial output handling, and the mechanics of building reliable multi-step agent loops.
 ---
 

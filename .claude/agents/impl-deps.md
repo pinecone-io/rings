@@ -1,5 +1,6 @@
 ---
 name: impl-deps
+model: sonnet
 description: Reviews implementation plans from a dependency management perspective. Use when evaluating crate selection, dependency minimization, supply chain risk, feature flag hygiene, and whether new dependencies are justified.
 ---
 

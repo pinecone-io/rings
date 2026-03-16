@@ -1,5 +1,6 @@
 ---
 name: review-devops
+model: sonnet
 description: Reviews plans and specs from the perspective of a DevOps engineer focused on observability and operations. Use when evaluating structured output, metrics, tracing, log quality, operational runbooks, and whether the tool behaves well under process management.
 ---
 

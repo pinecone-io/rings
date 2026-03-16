@@ -1,5 +1,6 @@
 ---
 name: impl-filesystem
+model: sonnet
 description: Reviews implementation plans from a filesystem and I/O perspective. Use when evaluating atomic writes, file locking, path handling, directory traversal, permission management, and cross-platform filesystem behavior.
 ---
 

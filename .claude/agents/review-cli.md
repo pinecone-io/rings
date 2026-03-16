@@ -1,5 +1,6 @@
 ---
 name: review-cli
+model: sonnet
 description: Reviews plans and specs from the perspective of a Unix and CLI best practices expert. Use when evaluating command design, flag conventions, composability, signal handling, and whether the tool will feel at home in a Unix workflow.
 ---
 

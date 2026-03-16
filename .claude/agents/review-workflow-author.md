@@ -1,5 +1,6 @@
 ---
 name: review-workflow-author
+model: opus
 description: Reviews plans and specs from the perspective of someone who actively designs, debugs, and iterates on rings workflows. Use when evaluating prompt authoring ergonomics, completion signal design, workflow debuggability, iteration speed, and whether rings gives authors enough feedback to know if their workflow is working.
 ---
 

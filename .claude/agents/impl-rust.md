@@ -1,5 +1,6 @@
 ---
 name: impl-rust
+model: opus
 description: Reviews implementation plans from the perspective of an experienced Rust developer. Use when evaluating idiomatic Rust patterns, trait design, ownership and borrowing, lifetime annotations, and whether the proposed implementation structure will fight the borrow checker.
 ---
 

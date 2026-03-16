@@ -1,5 +1,6 @@
 ---
 name: review-security
+model: opus
 description: Reviews plans and specs from the perspective of a security engineer. Use when evaluating prompt injection risks, subprocess invocation safety, path traversal, credential exposure, file permissions, and information disclosure in error messages.
 ---
 

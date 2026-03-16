@@ -1,5 +1,6 @@
 ---
 name: review-founder
+model: sonnet
 description: Reviews plans and specs from the perspective of a cost-conscious startup founder who uses AI tooling at scale. Use when evaluating spend visibility, budget control reliability, early warnings, runaway protection, cost predictability, and ROI signal.
 ---
 

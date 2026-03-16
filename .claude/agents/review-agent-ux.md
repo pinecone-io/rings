@@ -1,5 +1,6 @@
 ---
 name: review-agent-ux
+model: opus
 description: Reviews plans and specs from the perspective of someone building AI agent systems and agentic workflows. Use when evaluating whether rings is a good substrate for autonomous agents, multi-agent coordination, long-running agentic tasks, and human-in-the-loop patterns.
 ---
 

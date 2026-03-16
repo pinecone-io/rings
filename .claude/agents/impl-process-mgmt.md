@@ -1,5 +1,6 @@
 ---
 name: impl-process-mgmt
+model: sonnet
 description: Reviews implementation plans from a process management perspective. Use when evaluating subprocess spawning, stdin/stdout/stderr piping, signal forwarding, PID tracking, timeout implementation, and cross-platform process behavior.
 ---
 

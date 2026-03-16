@@ -1,5 +1,6 @@
 ---
 name: review-token-opt
+model: sonnet
 description: Reviews plans and specs from the perspective of someone focused on minimizing token usage and LLM costs. Use when evaluating what ends up in the context window, prompt construction efficiency, template variable utility, and missing token-saving primitives.
 ---
 

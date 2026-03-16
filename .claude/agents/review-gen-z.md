@@ -1,5 +1,6 @@
 ---
 name: review-gen-z
+model: sonnet
 description: Reviews plans and specs from the perspective of a Gen Z developer with strong DX instincts and low tolerance for friction. Use when evaluating first impressions, copy-paste friendliness, cognitive overhead, aesthetic quality of output, and whether the tool feels modern and well-crafted.
 ---
 

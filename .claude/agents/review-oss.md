@@ -1,5 +1,6 @@
 ---
 name: review-oss
+model: sonnet
 description: Reviews plans and specs from the perspective of an experienced open source maintainer. Use when evaluating API stability, semver discipline, contributor onboarding, format versioning, dependency footprint, and long-term maintenance burden.
 ---
 

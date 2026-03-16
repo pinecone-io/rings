@@ -1,5 +1,6 @@
 ---
 name: review-enterprise
+model: sonnet
 description: Reviews plans and specs from the perspective of an enterprise security and compliance reviewer. Use when evaluating audit trail completeness, credential handling, data residency, access control, retention policies, change management, and third-party data sharing.
 ---
 

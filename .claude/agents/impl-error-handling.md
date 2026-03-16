@@ -1,5 +1,6 @@
 ---
 name: impl-error-handling
+model: sonnet
 description: Reviews implementation plans from an error handling design perspective. Use when evaluating error type design, anyhow vs. typed errors, error propagation strategy, error message quality, and whether failures are handled at the right level.
 ---
 

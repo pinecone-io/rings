@@ -1,5 +1,6 @@
 ---
 name: review-data-eng
+model: sonnet
 description: Reviews plans and specs from the perspective of a data engineer and ETL pipeline builder. Use when evaluating data lineage, idempotency, failure recovery, phase contracts, format stability, and replay/backfill capabilities.
 ---
 

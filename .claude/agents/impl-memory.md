@@ -1,5 +1,6 @@
 ---
 name: impl-memory
+model: sonnet
 description: Reviews implementation plans from a memory management perspective. Use when evaluating heap allocation patterns, unbounded growth risks, streaming vs. buffering tradeoffs, and whether the implementation will remain stable across long-running workflows with hundreds of cycles.
 ---
 

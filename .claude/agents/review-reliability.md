@@ -1,5 +1,6 @@
 ---
 name: review-reliability
+model: sonnet
 description: Reviews plans and specs from the perspective of a reliability and performance engineer. Use when evaluating failure atomicity, retry semantics, timeout coverage, resource exhaustion handling, concurrent access safety, and large-scale behavior.
 ---
 

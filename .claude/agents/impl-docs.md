@@ -1,5 +1,6 @@
 ---
 name: impl-docs
+model: sonnet
 description: Reviews implementation plans from a technical writing and documentation perspective. Use when evaluating whether planned features can be clearly explained, whether help text will be sufficient, whether error messages are teachable, and whether the implementation will produce good documentation surfaces.
 ---
 

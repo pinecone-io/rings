@@ -1,5 +1,6 @@
 ---
 name: review-prompt-eng
+model: opus
 description: Reviews plans and specs from the perspective of an experienced prompt engineer. Use when evaluating completion signal robustness, template variable utility, context continuity between phases, prompt hygiene, iteration dynamics, and whether the workflow primitives enable effective prompts.
 ---
 

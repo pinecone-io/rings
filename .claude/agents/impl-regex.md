@@ -1,5 +1,6 @@
 ---
 name: impl-regex
+model: sonnet
 description: Reviews implementation plans from a regex and pattern matching perspective. Use when evaluating completion signal detection, cost extraction patterns, error classification matchers, custom parser design, ReDoS risk, anchoring correctness, and whether regex patterns are testable and maintainable.
 ---
 

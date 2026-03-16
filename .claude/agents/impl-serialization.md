@@ -1,5 +1,6 @@
 ---
 name: impl-serialization
+model: sonnet
 description: Reviews implementation plans from a serialization and data format perspective. Use when evaluating serde usage, TOML/JSON schema design, on-disk format evolution, backward compatibility, and whether structured data is being handled safely.
 ---
 

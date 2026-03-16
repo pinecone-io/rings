@@ -1,5 +1,6 @@
 ---
 name: impl-testing
+model: sonnet
 description: Reviews implementation plans from a testing strategy perspective. Use when evaluating test coverage, mock design, unit vs. integration test balance, test isolation, and whether the proposed implementation will be easy or hard to test.
 ---
 

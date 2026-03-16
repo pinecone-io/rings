@@ -1,5 +1,6 @@
 ---
 name: review-ai-newcomer
+model: sonnet
 description: Reviews plans and specs from the perspective of a developer who is competent with software but new to AI-assisted programming workflows. Use when evaluating first-run experience, error clarity, mental model legibility, cost visibility, and onboarding friction.
 ---
 

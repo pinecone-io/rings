@@ -37,6 +37,16 @@ Scopes are optional (e.g., `feat(executor): ...`). No PRs. No branches. Commit d
 - **When uncertain**, pick the approach most consistent with `specs/`, then record the decision in `REVIEW.md` under Decisions.
 - **Never edit files in `specs/`.** Suggest refinements or corrections in `REVIEW.md` under Open Questions.
 
+### Cross-File Spec References
+
+`specs/feature_inventory.md` is a one-line-per-feature index of everything defined across all spec files. It is the primary navigation aid for token-efficient spec lookup — load it first to find the right spec file, then load only that file.
+
+**Whenever you add, rename, or substantially change a feature in any `specs/` file, also update `specs/feature_inventory.md`** so the index stays accurate. This applies to:
+- New features or flags added to any spec
+- Features renamed or split across files
+- Features removed or marked deprecated
+- New spec files added to `specs/`
+
 ### REVIEW.md structure
 
 Three fixed sections. Append entries within each section — never overwrite or delete prior entries. Each entry should begin with a date or task reference so entries can be distinguished.

@@ -4,6 +4,7 @@
 
 → [Product overview, design principles, and target user](overview.md)
 → [MVP scope — minimum to build first](mvp.md)
+→ [Feature inventory — numbered list of every feature with one-line summaries and spec links](feature_inventory.md)
 
 ## Core Concepts
 

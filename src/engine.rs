@@ -251,8 +251,194 @@ pub fn run_workflow(
             prompt,
             context_dir: PathBuf::from(&workflow.context_dir),
         };
+
+        // Determine timeout for this run: per-phase timeout overrides global.
+        let timeout_secs = workflow.phases[run_spec.phase_index]
+            .timeout_per_run_secs
+            .as_ref()
+            .and_then(|d| d.to_secs().ok())
+            .or(workflow.timeout_per_run_secs);
+
+        // Spawn the subprocess and implement wait loop with timeout/cancellation.
         let run_start = std::time::Instant::now();
-        let output = executor.run(&invocation, config.verbose)?;
+        let mut handle = executor.spawn(&invocation, config.verbose)?;
+        let timeout_deadline =
+            timeout_secs.map(|secs| run_start + std::time::Duration::from_secs(secs));
+
+        let mut output = crate::executor::ExecutorOutput {
+            combined: String::new(),
+            exit_code: -1,
+        };
+        let mut timeout_occurred = false;
+        let mut cancel_occurred = false;
+
+        loop {
+            // Check ForceKill first (highest priority)
+            if let Some(ref cancel_state) = cancel {
+                if cancel_state.is_force_kill() {
+                    let _ = handle.send_sigkill();
+                    // Wait briefly for output collection
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    // Try to get the output, fallback to partial if process doesn't exit
+                    output = match handle.try_wait() {
+                        Ok(Some(out)) => out,
+                        _ => match handle.partial_output() {
+                            Ok(partial) => crate::executor::ExecutorOutput {
+                                combined: partial,
+                                exit_code: 137,
+                            },
+                            Err(_) => crate::executor::ExecutorOutput {
+                                combined: String::new(),
+                                exit_code: 137,
+                            },
+                        },
+                    };
+                    cancel_occurred = true;
+                    break;
+                }
+            }
+
+            // Check Canceling (second priority)
+            if let Some(ref cancel_state) = cancel {
+                if cancel_state.is_canceling() && !cancel_occurred {
+                    let _ = handle.send_sigterm();
+                    // Save state immediately after SIGTERM
+                    let state = StateFile {
+                        schema_version: 1,
+                        run_id: config.run_id.clone(),
+                        workflow_file: config.workflow_file.clone(),
+                        last_completed_run: last_successful_run,
+                        last_completed_cycle: last_cycle,
+                        last_completed_phase_index: run_spec.phase_index,
+                        last_completed_iteration: run_spec.phase_iteration,
+                        total_runs_completed: total_runs,
+                        cumulative_cost_usd: cumulative_cost,
+                        claude_resume_commands: vec![],
+                        canceled_at: Some(chrono::Utc::now().to_rfc3339()),
+                        failure_reason: None,
+                    };
+                    let _ = state.write_atomic(&state_path);
+
+                    // Wait up to 5s for graceful shutdown
+                    let grace_deadline =
+                        std::time::Instant::now() + std::time::Duration::from_secs(5);
+                    let mut exited_gracefully = false;
+                    loop {
+                        match handle.try_wait() {
+                            Ok(Some(out)) => {
+                                output = out;
+                                exited_gracefully = true;
+                                break;
+                            }
+                            Ok(None) => {
+                                if std::time::Instant::now() >= grace_deadline {
+                                    // Grace period expired, SIGKILL
+                                    let _ = handle.send_sigkill();
+                                    break;
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                            }
+                            Err(_) => break,
+                        }
+                    }
+
+                    // If didn't exit gracefully, collect partial output
+                    if !exited_gracefully {
+                        output = match handle.partial_output() {
+                            Ok(partial) => crate::executor::ExecutorOutput {
+                                combined: partial,
+                                exit_code: 130,
+                            },
+                            Err(_) => crate::executor::ExecutorOutput {
+                                combined: String::new(),
+                                exit_code: 130,
+                            },
+                        };
+                    }
+                    cancel_occurred = true;
+                    break;
+                }
+            }
+
+            // Check timeout (third priority)
+            if let Some(deadline) = timeout_deadline {
+                if std::time::Instant::now() >= deadline {
+                    let _ = handle.send_sigterm();
+                    // Save state immediately after SIGTERM
+                    let state = StateFile {
+                        schema_version: 1,
+                        run_id: config.run_id.clone(),
+                        workflow_file: config.workflow_file.clone(),
+                        last_completed_run: last_successful_run,
+                        last_completed_cycle: last_cycle,
+                        last_completed_phase_index: run_spec.phase_index,
+                        last_completed_iteration: run_spec.phase_iteration,
+                        total_runs_completed: total_runs,
+                        cumulative_cost_usd: cumulative_cost,
+                        claude_resume_commands: vec![],
+                        canceled_at: None,
+                        failure_reason: Some("timeout".to_string()),
+                    };
+                    let _ = state.write_atomic(&state_path);
+
+                    // Wait up to 5s for graceful shutdown
+                    let grace_deadline =
+                        std::time::Instant::now() + std::time::Duration::from_secs(5);
+                    let mut exited_gracefully = false;
+                    loop {
+                        match handle.try_wait() {
+                            Ok(Some(out)) => {
+                                output = out;
+                                exited_gracefully = true;
+                                break;
+                            }
+                            Ok(None) => {
+                                if std::time::Instant::now() >= grace_deadline {
+                                    // Grace period expired, SIGKILL
+                                    let _ = handle.send_sigkill();
+                                    break;
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                            }
+                            Err(_) => break,
+                        }
+                    }
+
+                    // If didn't exit gracefully, collect partial output with timeout exit code
+                    if !exited_gracefully {
+                        output = match handle.partial_output() {
+                            Ok(partial) => crate::executor::ExecutorOutput {
+                                combined: partial,
+                                exit_code: 2,
+                            },
+                            Err(_) => crate::executor::ExecutorOutput {
+                                combined: String::new(),
+                                exit_code: 2,
+                            },
+                        };
+                    }
+                    timeout_occurred = true;
+                    break;
+                }
+            }
+
+            // Try to wait for normal completion
+            match handle.try_wait() {
+                Ok(Some(out)) => {
+                    output = out;
+                    break;
+                }
+                Ok(None) => {
+                    // Process still running, poll again in 100ms
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                Err(e) => {
+                    // Error waiting for process
+                    return Err(e);
+                }
+            }
+        }
+
         let elapsed_secs = run_start.elapsed().as_secs();
 
         // When --output-format json is used, cost lives in the JSON object and
@@ -273,6 +459,60 @@ pub fn run_workflow(
 
         // Write run log
         write_run_log(&runs_dir, run_spec.global_run_number, &output.combined)?;
+
+        // Handle timeout
+        if timeout_occurred {
+            // Print final cycle cost before returning
+            if current_display_cycle > 0 {
+                crate::display::print_cycle_cost(cycle_cost);
+            }
+            append_cost_entry(
+                &costs_path,
+                &CostEntry {
+                    run: run_spec.global_run_number,
+                    cycle: run_spec.cycle,
+                    phase: run_spec.phase_name.clone(),
+                    iteration: run_spec.phase_iteration,
+                    cost_usd: cost.cost_usd,
+                    input_tokens: cost.input_tokens,
+                    output_tokens: cost.output_tokens,
+                    cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                },
+            )?;
+            return Ok(EngineResult {
+                exit_code: 2,
+                completed_cycles: last_cycle,
+                total_cost_usd: cumulative_cost,
+                total_runs,
+            });
+        }
+
+        // Handle cancellation
+        if cancel_occurred {
+            // Print final cycle cost before returning
+            if current_display_cycle > 0 {
+                crate::display::print_cycle_cost(cycle_cost);
+            }
+            append_cost_entry(
+                &costs_path,
+                &CostEntry {
+                    run: run_spec.global_run_number,
+                    cycle: run_spec.cycle,
+                    phase: run_spec.phase_name.clone(),
+                    iteration: run_spec.phase_iteration,
+                    cost_usd: cost.cost_usd,
+                    input_tokens: cost.input_tokens,
+                    output_tokens: cost.output_tokens,
+                    cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                },
+            )?;
+            return Ok(EngineResult {
+                exit_code: 130,
+                completed_cycles: last_cycle,
+                total_cost_usd: cumulative_cost,
+                total_runs,
+            });
+        }
 
         // Handle executor error — save state with PREVIOUS completed run so the
         // failing run will be retried on resume.
@@ -295,6 +535,7 @@ pub fn run_workflow(
                 cumulative_cost_usd: cumulative_cost,
                 claude_resume_commands: resume_commands,
                 canceled_at: None,
+                failure_reason: None,
             };
             state.write_atomic(&state_path)?;
             append_cost_entry(
@@ -332,6 +573,7 @@ pub fn run_workflow(
             cumulative_cost_usd: cumulative_cost,
             claude_resume_commands: resume_commands.clone(),
             canceled_at: None,
+            failure_reason: None,
         };
         state.write_atomic(&state_path)?;
 
@@ -372,6 +614,7 @@ pub fn run_workflow(
                     cumulative_cost_usd: cumulative_cost,
                     claude_resume_commands: resume_commands.clone(),
                     canceled_at: Some(chrono::Utc::now().to_rfc3339()),
+                    failure_reason: None,
                 };
                 state.write_atomic(&state_path)?;
                 return Ok(EngineResult {

@@ -16,6 +16,8 @@ pub struct StateFile {
     #[serde(default)]
     pub claude_resume_commands: Vec<String>,
     pub canceled_at: Option<String>,
+    #[serde(default)]
+    pub failure_reason: Option<String>,
 }
 
 impl StateFile {

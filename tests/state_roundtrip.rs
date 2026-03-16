@@ -19,6 +19,7 @@ fn state_file_roundtrip() {
         cumulative_cost_usd: 1.42,
         claude_resume_commands: vec!["claude resume abc".to_string()],
         canceled_at: None,
+        failure_reason: None,
     };
 
     state.write_atomic(&path).unwrap();
@@ -68,6 +69,7 @@ fn state_write_is_atomic() {
             cumulative_cost_usd: 0.0,
             claude_resume_commands: vec![],
             canceled_at: None,
+            failure_reason: None,
         };
         state.write_atomic(&path).unwrap();
         // File must be readable after every write

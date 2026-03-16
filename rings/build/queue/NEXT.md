@@ -128,21 +128,21 @@
 **Files:** `src/engine.rs`, `src/state.rs`
 
 **Steps:**
-- [ ] Add `failure_reason: Option<String>` to `StateFile` with `#[serde(default)]`
-- [ ] Engine calls `executor.spawn()` and holds a `RunHandle`; wait loop uses `try_wait()` in 100ms slices
-- [ ] In the wait loop, check in order:
+- [x] Add `failure_reason: Option<String>` to `StateFile` with `#[serde(default)]`
+- [x] Engine calls `executor.spawn()` and holds a `RunHandle`; wait loop uses `try_wait()` in 100ms slices
+- [x] In the wait loop, check in order:
   1. `ForceKill` → SIGKILL immediately
   2. `Canceling` → SIGTERM, save state, wait up to 5s, SIGKILL if subprocess ignores SIGTERM, write partial output to run log, exit 130
   3. Timeout expired → SIGTERM, save state, wait up to 5s, SIGKILL, write partial output to run log, set `failure_reason = "timeout"`, exit 2
   4. Normal exit → proceed
-- [ ] Correct save order on cancellation/timeout: SIGTERM → save state → wait up to 5s → SIGKILL if needed → write partial output to run log → exit
-- [ ] Record exit code 2 / timeout conflict with `exit-codes.md` in REVIEW.md under Conflicts
+- [x] Correct save order on cancellation/timeout: SIGTERM → save state → wait up to 5s → SIGKILL if needed → write partial output to run log → exit
+- [x] Record exit code 2 / timeout conflict with `exit-codes.md` in REVIEW.md under Conflicts
 
 **Tests:**
-- [ ] `sigterm_called` on `MockRunHandle` is `true` after cancel flag fires
-- [ ] `sigkill_called` on `MockRunHandle` is `true` when `ignores_sigterm = true` and 5s expires
-- [ ] `state.json` is written BEFORE SIGKILL is sent
-- [ ] `NNN.log` exists and contains partial output for interrupted run
+- [x] `sigterm_called` on `MockRunHandle` is `true` after cancel flag fires
+- [x] `sigkill_called` on `MockRunHandle` is `true` when `ignores_sigterm = true` and 5s expires
+- [x] `state.json` is written BEFORE SIGKILL is sent
+- [x] `NNN.log` exists and contains partial output for interrupted run
 
 ---
 

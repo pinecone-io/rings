@@ -21,6 +21,8 @@ pub struct ExecutorOutput {
 /// A handle to a running executor subprocess.
 pub trait RunHandle: Send {
     fn wait(&mut self) -> Result<ExecutorOutput>;
+    /// Non-blocking wait: returns Some if process exited, None if still running.
+    fn try_wait(&mut self) -> Result<Option<ExecutorOutput>>;
     fn pid(&self) -> u32;
     fn send_sigterm(&self) -> Result<()>;
     fn send_sigkill(&self) -> Result<()>;
@@ -121,6 +123,36 @@ impl RunHandle for ClaudeRunHandle {
             combined: format!("{stdout_str}\n{stderr_str}"),
             exit_code,
         })
+    }
+
+    fn try_wait(&mut self) -> Result<Option<ExecutorOutput>> {
+        match self.child.try_wait().context("Failed to poll subprocess")? {
+            Some(status) => {
+                // Process exited; join reader threads to collect all output.
+                if let Some(t) = self.stdout_thread.take() {
+                    let _ = t.join();
+                }
+                if let Some(t) = self.stderr_thread.take() {
+                    let _ = t.join();
+                }
+                let exit_code = status.code().unwrap_or(-1);
+                let stdout_str = self
+                    .stdout_output
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("stdout mutex poisoned"))?
+                    .clone();
+                let stderr_str = self
+                    .stderr_output
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("stderr mutex poisoned"))?
+                    .clone();
+                Ok(Some(ExecutorOutput {
+                    combined: format!("{stdout_str}\n{stderr_str}"),
+                    exit_code,
+                }))
+            }
+            None => Ok(None), // Process still running
+        }
     }
 
     fn pid(&self) -> u32 {
@@ -320,6 +352,13 @@ impl RunHandle for MockRunHandle {
             std::thread::sleep(std::time::Duration::from_millis(self.wait_delay_ms));
         }
         Ok(self.output.clone())
+    }
+
+    fn try_wait(&mut self) -> Result<Option<ExecutorOutput>> {
+        if self.wait_delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(self.wait_delay_ms));
+        }
+        Ok(Some(self.output.clone()))
     }
 
     fn pid(&self) -> u32 {

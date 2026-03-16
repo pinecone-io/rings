@@ -54,10 +54,14 @@ impl RunMeta {
             .with_context(|| format!("Failed to parse run.toml: {}", path.display()))
     }
 
+    /// Atomic write: write to a temp file then rename into place.
     pub fn write(&self, path: &Path) -> Result<()> {
+        let tmp_path = path.with_extension("tmp");
         let content = toml::to_string_pretty(self).context("Failed to serialize run.toml")?;
-        std::fs::write(path, content)
-            .with_context(|| format!("Failed to write run.toml: {}", path.display()))
+        std::fs::write(&tmp_path, &content)
+            .with_context(|| format!("Failed to write temp run.toml: {}", tmp_path.display()))?;
+        std::fs::rename(&tmp_path, path)
+            .with_context(|| format!("Failed to rename run.toml into place: {}", path.display()))
     }
 
     pub fn update_status(&mut self, path: &Path, status: &str) -> Result<()> {

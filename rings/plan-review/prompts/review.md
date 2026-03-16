@@ -24,12 +24,19 @@ The authoritative ordered list of reviewers (12 total):
 
 ## Setup
 
-### Step 1: Debris cleanup (first cycle only)
+### Step 1: Debris cleanup
 
-Check `rings/plan-review/wip/` for files matching `review-*.md`.
+**This is cycle {{cycle}} of {{max_cycles}}.**
 
-If **zero** such files exist, delete any other files in `rings/plan-review/wip/` before
-proceeding. This clears stale state from any previously interrupted run.
+Assert that `{{max_cycles}}` equals 12 (the number of reviewers in the roster). If it
+does not, stop and note the mismatch in `REVIEW.md` — misconfigured `max_cycles` causes
+synthesize to run too early or too late.
+
+If `{{cycle}}` == 1, unconditionally delete **all** files in `rings/plan-review/wip/`
+before proceeding. This clears stale state from any previously interrupted run,
+regardless of what files are present. A prior synthesize interrupted before wip cleanup
+would leave stale review files that look like current-draft findings — unconditional
+cleanup on cycle 1 prevents this.
 
 ### Step 2: Determine which reviewer to run next
 

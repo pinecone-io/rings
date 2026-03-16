@@ -5,6 +5,14 @@ specification, and either resolve it immediately (trivial cases) or prepare it f
 
 ---
 
+## Step 0: First-cycle cleanup
+
+Delete any files in `rings/process-ideas/wip/`. Also reset any items marked `[~]`
+(in-progress) back to `[ ]` in `rings/process-ideas/queue/IDEAS.md` under `## Unprocessed`.
+This clears state from any previously interrupted run.
+
+---
+
 ## Step 1: Load context
 
 Read the following files:
@@ -14,7 +22,7 @@ Read the following files:
 - `specs/overview.md` — design principles and target user
 - `specs/mvp.md` — original scope
 
-If the `## Unprocessed` section is empty or absent, print exactly:
+If the `## Unprocessed` section is empty or absent (no `[ ]` entries), print exactly:
 
 ```
 ALL_IDEAS_PROCESSED
@@ -26,7 +34,10 @@ and stop.
 
 ## Step 2: Select the first unprocessed idea
 
-Take the first item in the `## Unprocessed` section. One idea per cycle — do not process multiple ideas.
+Take the first item in the `## Unprocessed` section with status `[ ]`. One idea per cycle — do not process multiple ideas.
+
+Mark the selected entry as in-progress by changing `[ ]` to `[~]` in
+`rings/process-ideas/queue/IDEAS.md`. **Do this before writing the wip file.**
 
 ---
 
@@ -60,13 +71,13 @@ Then print exactly:
 RINGS_CONTINUE
 ```
 
-and stop. Do not create `idea-working.md`.
+and stop. Do not create `rings/process-ideas/wip/idea-working.md`.
 
 ---
 
 ## Step 4b: If Extension or New feature — prepare for review
 
-Write `idea-working.md` at the project root with the following structure:
+Write `rings/process-ideas/wip/idea-working.md` with the following structure:
 
 ```markdown
 # Idea Working File

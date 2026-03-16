@@ -7,7 +7,7 @@ then mark it as processed in rings/process-ideas/queue/IDEAS.md.
 
 ## Step 1: Load context
 
-Read `idea-working.md` in full. Read the spec file listed under `## Spec File`. Read
+Read `rings/process-ideas/wip/idea-working.md` in full. Read the spec file listed under `## Spec File`. Read
 `specs/feature_inventory.md` to find the highest existing F-NNN so you can assign the next one.
 
 ---
@@ -20,7 +20,7 @@ Find the highest F-NNN in `specs/feature_inventory.md`. The new feature gets the
 
 ## Step 3: Write the spec entry
 
-Write a prose entry in the spec file listed under `## Spec File` in `idea-working.md`.
+Write a prose entry in the spec file listed under `## Spec File` in `rings/process-ideas/wip/idea-working.md`.
 
 For an **Extension**, add the new behavior as a subsection within the existing feature's section.
 For a **New feature**, append a new section at the end of the file.
@@ -66,7 +66,7 @@ Append the following to `rings/process-ideas/activities/IDEAS_PROCESSED.md` (cre
 
 ## Step 6: Clean up and confirm
 
-Delete `idea-working.md`.
+Delete `rings/process-ideas/wip/idea-working.md`.
 
 Print a one-line confirmation:
 

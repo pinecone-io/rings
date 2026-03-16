@@ -2,17 +2,20 @@
 use rings::engine::{run_workflow, EngineConfig};
 use rings::executor::{ExecutorOutput, MockExecutor};
 use rings::state;
-use rings::workflow::Workflow;
+use rings::workflow::{PhaseConfig, Workflow};
 use tempfile::tempdir;
 
 fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workflow {
-    use rings::workflow::PhaseConfig;
     Workflow {
         completion_signal: signal.to_string(),
+        continue_signal: None,
+        completion_signal_phases: vec![],
+        completion_signal_mode: "substring".to_string(),
         context_dir: ".".to_string(),
         max_cycles,
         output_dir: None,
         delay_between_runs: 0,
+        executor: None,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {
@@ -188,4 +191,173 @@ fn engine_saves_state_and_exits_130_on_cancel() {
         state.run_id, "test-run-id",
         "run_id should match EngineConfig"
     );
+}
+
+#[test]
+fn continue_signal_skips_remaining_phases_in_cycle() {
+    let dir = tempdir().unwrap();
+    // 3-phase workflow; cycle 1: phase_a emits continue_signal → phases b and c skipped.
+    // Cycle 2: all 3 phases run; phase_c emits the completion signal.
+    let workflow = Workflow {
+        completion_signal: "DONE".to_string(),
+        continue_signal: Some("SKIP_REST".to_string()),
+        completion_signal_phases: vec![],
+        completion_signal_mode: "substring".to_string(),
+        context_dir: ".".to_string(),
+        max_cycles: 3,
+        output_dir: None,
+        delay_between_runs: 0,
+        executor: None,
+        phases: vec![
+            PhaseConfig {
+                name: "phase_a".to_string(),
+                prompt: None,
+                prompt_text: Some("p".to_string()),
+                runs_per_cycle: 1,
+            },
+            PhaseConfig {
+                name: "phase_b".to_string(),
+                prompt: None,
+                prompt_text: Some("p".to_string()),
+                runs_per_cycle: 1,
+            },
+            PhaseConfig {
+                name: "phase_c".to_string(),
+                prompt: None,
+                prompt_text: Some("p".to_string()),
+                runs_per_cycle: 1,
+            },
+        ],
+    };
+    let executor = MockExecutor::new(vec![
+        // cycle 1: only phase_a runs, emits continue_signal
+        ExecutorOutput {
+            combined: "SKIP_REST".to_string(),
+            exit_code: 0,
+        },
+        // cycle 2: all three phases run
+        ExecutorOutput {
+            combined: "no signal".to_string(),
+            exit_code: 0,
+        },
+        ExecutorOutput {
+            combined: "no signal".to_string(),
+            exit_code: 0,
+        },
+        ExecutorOutput {
+            combined: "DONE".to_string(),
+            exit_code: 0,
+        },
+    ]);
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-continue".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0, "should complete via DONE signal");
+    // 4 total runs: 1 (cycle 1, phase_a) + 3 (cycle 2, all phases)
+    assert_eq!(
+        result.total_runs, 4,
+        "phases b and c must be skipped in cycle 1"
+    );
+}
+
+#[test]
+fn completion_signal_phases_restricts_completion_to_named_phases() {
+    let dir = tempdir().unwrap();
+    // completion only fires from "synthesize", not "review"
+    let workflow = Workflow {
+        completion_signal: "DONE".to_string(),
+        continue_signal: None,
+        completion_signal_phases: vec!["synthesize".to_string()],
+        completion_signal_mode: "substring".to_string(),
+        context_dir: ".".to_string(),
+        max_cycles: 5,
+        output_dir: None,
+        delay_between_runs: 0,
+        executor: None,
+        phases: vec![
+            PhaseConfig {
+                name: "review".to_string(),
+                prompt: None,
+                prompt_text: Some("p".to_string()),
+                runs_per_cycle: 1,
+            },
+            PhaseConfig {
+                name: "synthesize".to_string(),
+                prompt: None,
+                prompt_text: Some("p".to_string()),
+                runs_per_cycle: 1,
+            },
+        ],
+    };
+    // review emits DONE (should be ignored), then synthesize emits DONE (should fire)
+    let executor = MockExecutor::new(vec![
+        ExecutorOutput {
+            combined: "DONE".to_string(), // review phase — must NOT trigger completion
+            exit_code: 0,
+        },
+        ExecutorOutput {
+            combined: "DONE".to_string(), // synthesize phase — MUST trigger completion
+            exit_code: 0,
+        },
+    ]);
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-phases".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0);
+    // Both review and synthesize ran: total_runs == 2
+    assert_eq!(result.total_runs, 2);
+}
+
+#[test]
+fn line_mode_completion_requires_signal_on_own_line() {
+    let dir = tempdir().unwrap();
+    let workflow = Workflow {
+        completion_signal: "DONE".to_string(),
+        continue_signal: None,
+        completion_signal_phases: vec![],
+        completion_signal_mode: "line".to_string(),
+        context_dir: ".".to_string(),
+        max_cycles: 5,
+        output_dir: None,
+        delay_between_runs: 0,
+        executor: None,
+        phases: vec![PhaseConfig {
+            name: "builder".to_string(),
+            prompt: None,
+            prompt_text: Some("p".to_string()),
+            runs_per_cycle: 1,
+        }],
+    };
+    // First output: "DONE" embedded mid-line (should NOT fire in line mode)
+    // Second output: "DONE" alone on its own line (SHOULD fire)
+    let executor = MockExecutor::new(vec![
+        ExecutorOutput {
+            combined: "work: DONE, continuing".to_string(),
+            exit_code: 0,
+        },
+        ExecutorOutput {
+            combined: "work done\nDONE\nbye".to_string(),
+            exit_code: 0,
+        },
+    ]);
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-line-mode".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0, "should complete on second run");
+    assert_eq!(result.total_runs, 2);
 }

@@ -6,6 +6,8 @@ pub struct TemplateVars {
     pub iteration: u32,
     pub runs_per_cycle: u32,
     pub cost_so_far_usd: f64,
+    pub workflow_name: String,
+    pub context_dir: String,
 }
 
 pub fn render_prompt(template: &str, vars: &TemplateVars) -> String {
@@ -24,4 +26,6 @@ pub fn render_prompt(template: &str, vars: &TemplateVars) -> String {
             "{{cost_so_far_usd}}",
             &format!("{:.3}", vars.cost_so_far_usd),
         )
+        .replace("{{workflow_name}}", &vars.workflow_name)
+        .replace("{{context_dir}}", &vars.context_dir)
 }

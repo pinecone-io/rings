@@ -77,15 +77,18 @@ Append the following entry to `rings/build/queue/READY_TO_IMPLEMENT.md`:
 [ambiguities to note or resolve during implementation; omit section if none]
 ```
 
-### Step 2: Remove the draft
+### Step 2: Clean up wip files
 
-In `rings/plan-review/queue/PLAN_DRAFTS.md`, delete the entire draft entry — from the
-`## [DRAFT] Batch: <batch name>` heading through the end of that entry. The file should
-be empty (or contain only the header) after deletion.
-
-### Step 3: Clean up wip files
+**Do this BEFORE marking the draft as reviewed** — deleting wip files first ensures stale
+reviewer output cannot be confused with output for the next draft if interrupted.
 
 Delete all files in `rings/plan-review/wip/`.
+
+### Step 3: Mark the draft reviewed
+
+In `rings/plan-review/queue/PLAN_DRAFTS.md`, change the status heading of the current draft
+from `## [DRAFT]` to `## [REVIEWED]`. Do not delete the entry — preserving it provides an
+audit trail.
 
 ### Step 4: Signal completion
 

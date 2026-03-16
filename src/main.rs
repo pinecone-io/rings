@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use cli::{Cli, Command};
-use engine::{run_workflow, EngineConfig};
+use engine::{run_workflow, EngineConfig, ResumePoint};
 use executor::ClaudeExecutor;
 
 fn main() {
@@ -260,13 +260,18 @@ fn resume_inner(args: cli::ResumeArgs) -> Result<i32> {
         .context("Failed to install Ctrl+C handler")?;
     }
 
-    // Use RunSchedule::resume_from to skip already-completed runs
+    // Use position-based resume so continue_signal skips are handled correctly.
     let run_start = std::time::Instant::now();
     let result = run_workflow(
         &workflow,
         &executor,
         &config,
-        Some(saved_state.last_completed_run),
+        Some(ResumePoint {
+            last_completed_run: saved_state.last_completed_run,
+            last_completed_cycle: saved_state.last_completed_cycle,
+            last_completed_phase_index: saved_state.last_completed_phase_index,
+            last_completed_iteration: saved_state.last_completed_iteration,
+        }),
         Some(canceled),
     )?;
     let total_elapsed_secs = run_start.elapsed().as_secs();

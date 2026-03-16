@@ -27,9 +27,11 @@ If it has any unchecked tasks (`- [ ]`), skip directly to **Step 3: Choose a tas
 
 NEXT.md has no unchecked tasks. Archive and refill:
 
-1. If NEXT.md has any content (completed tasks), append its entire content to
-   `rings/build/activities/BATCHES_COMPLETED.md` (create the file if absent),
-   then overwrite `NEXT.md` with empty content.
+1. If NEXT.md has any content (completed tasks):
+   - **First**, append its entire content to
+     `rings/build/activities/BATCHES_COMPLETED.md` (create the file if absent).
+   - **Then** overwrite `NEXT.md` with empty content.
+   (Archive before clearing — if interrupted mid-clear, the completed work is preserved.)
 
 2. Read `rings/build/queue/READY_TO_IMPLEMENT.md`. Find the first batch — it starts
    with a `## Batch:` heading.
@@ -42,10 +44,14 @@ NEXT.md has no unchecked tasks. Archive and refill:
 
    Then stop.
 
-4. Move the first batch from `READY_TO_IMPLEMENT.md` into `NEXT.md`. A batch runs
+4. Copy the first batch from `READY_TO_IMPLEMENT.md` into `NEXT.md`. A batch runs
    from its `## Batch:` heading up to (but not including) the next `## Batch:` heading,
-   or to the end of the file if there is no next batch. Remove it from
-   `READY_TO_IMPLEMENT.md` after copying.
+   or to the end of the file if there is no next batch.
+   - **First**, write the batch content to `NEXT.md`.
+   - **Then** remove that batch from `READY_TO_IMPLEMENT.md`.
+   (Write destination before clearing source — if interrupted mid-remove, the batch
+   remains in both places and can be deduplicated on next run, but is never lost.)
+   Then stop. Do NOT continue to Step 3.
 
 ### Step 3: Choose a task
 

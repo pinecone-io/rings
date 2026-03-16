@@ -7,11 +7,19 @@ investigation. One bug per cycle — do not triage multiple bugs.
 
 ---
 
+## Step 0: First-cycle cleanup
+
+Delete any files in `rings/process-bugs/wip/`. Also reset any items marked `[~]`
+(in-progress) back to `[ ]` in `rings/process-bugs/queue/BUG_REPORT.md` under `## Open`.
+This clears state from any previously interrupted run.
+
+---
+
 ## Step 1: Load context
 
 Read `rings/process-bugs/queue/BUG_REPORT.md`. Find the `## Open` section.
 
-If the `## Open` section is empty or absent, print exactly:
+If the `## Open` section is empty or absent (no `[ ]` or `[~]` entries), print exactly:
 
 ```
 ALL_BUGS_RESOLVED
@@ -23,17 +31,18 @@ and stop.
 
 ## Step 2: Select the first open bug
 
-Take the first entry in the `## Open` section. It will look like:
+Take the first entry in the `## Open` section with status `[ ]`. Skip entries marked
+`[~]` — they are in-progress from an interrupted run and will have been reset in Step 0
+unless this is a mid-cycle resume. One bug per cycle — do not triage multiple bugs.
 
-```
-- [ ] **<title>**: <description>
-```
+Mark the selected entry as in-progress by changing `[ ]` to `[~]` in
+`rings/process-bugs/queue/BUG_REPORT.md`. **Do this before writing the wip file.**
 
 ---
 
-## Step 3: Write bug-working.md
+## Step 3: Write rings/process-bugs/wip/bug-working.md
 
-Write `bug-working.md` at the project root with this structure:
+Write `rings/process-bugs/wip/bug-working.md` with this structure:
 
 ```markdown
 # Bug Working File

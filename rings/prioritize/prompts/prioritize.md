@@ -48,14 +48,10 @@ Rank by these criteria (in order):
 
 ---
 
-## Step 3: Update feature_inventory.md
+## Step 3: Append to rings/prioritize/activities/PRIORITIZED_FEATURES.md
 
-For each elected feature, change its status from `BACKLOG` to `PRIORITIZED` in
-`specs/feature_inventory.md`. Change only the status cell — leave all other columns untouched.
-
----
-
-## Step 4: Append to rings/prioritize/activities/PRIORITIZED_FEATURES.md
+**Do this BEFORE updating feature_inventory.md** — writing the activity record first ensures no
+feature is silently lost if interrupted between the two writes.
 
 Read `rings/prioritize/activities/PRIORITIZED_FEATURES.md` to find the current highest priority number N (look for the
 last `### Priority N:` heading). If the file has no entries yet, start at N = 0.
@@ -73,6 +69,13 @@ Append each elected feature as a new entry, incrementing N for each:
 ```
 
 Append entries in priority order (highest-priority elected feature first).
+
+---
+
+## Step 4: Update feature_inventory.md
+
+For each elected feature, change its status from `BACKLOG` to `PRIORITIZED` in
+`specs/feature_inventory.md`. Change only the status cell — leave all other columns untouched.
 
 ---
 

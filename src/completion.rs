@@ -3,6 +3,11 @@ pub fn output_contains_signal(output: &str, signal: &str) -> bool {
     output.contains(signal)
 }
 
+/// Returns true if `signal` appears alone on a trimmed line in `output`.
+pub fn output_line_contains_signal(output: &str, signal: &str) -> bool {
+    output.lines().any(|line| line.trim() == signal)
+}
+
 /// Returns true if `signal` appears in the prompt text (used for startup advisory check).
 pub fn prompt_text_contains_signal(prompt: &str, signal: &str) -> bool {
     prompt.contains(signal)

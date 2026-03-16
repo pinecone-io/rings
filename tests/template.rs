@@ -10,6 +10,8 @@ fn substitutes_all_variables() {
         iteration: 1,
         runs_per_cycle: 3,
         cost_so_far_usd: 0.142,
+        workflow_name: "test-workflow".to_string(),
+        context_dir: ".".to_string(),
     };
     let template = "Phase: {{phase_name}}, cycle {{cycle}}/{{max_cycles}}, run {{run}}, iter {{iteration}}/{{runs_per_cycle}}, cost ${{cost_so_far_usd}}";
     let rendered = render_prompt(template, &vars);
@@ -29,6 +31,8 @@ fn leaves_unknown_variables_intact() {
         iteration: 1,
         runs_per_cycle: 1,
         cost_so_far_usd: 0.0,
+        workflow_name: "test".to_string(),
+        context_dir: ".".to_string(),
     };
     let template = "{{phase_name}} {{unknown_var}}";
     let rendered = render_prompt(template, &vars);
@@ -45,6 +49,8 @@ fn cost_formats_to_three_decimal_places() {
         iteration: 1,
         runs_per_cycle: 1,
         cost_so_far_usd: 1.0 / 3.0,
+        workflow_name: "test".to_string(),
+        context_dir: ".".to_string(),
     };
     let rendered = render_prompt("{{cost_so_far_usd}}", &vars);
     assert_eq!(rendered, "0.333");
@@ -60,6 +66,8 @@ fn renders_unlimited_max_cycles() {
         iteration: 1,
         runs_per_cycle: 1,
         cost_so_far_usd: 0.0,
+        workflow_name: "test".to_string(),
+        context_dir: ".".to_string(),
     };
     assert_eq!(render_prompt("{{max_cycles}}", &vars), "unlimited");
 }

@@ -7,6 +7,7 @@ pub struct WorkflowFile {
     pub workflow: WorkflowConfig,
     #[serde(default)]
     pub phases: Vec<PhaseConfig>,
+    pub executor: Option<ExecutorConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -17,6 +18,20 @@ pub struct WorkflowConfig {
     pub output_dir: Option<String>,
     #[serde(default)]
     pub delay_between_runs: u64,
+    /// When a phase emits this signal, skip remaining phases in the current cycle.
+    pub continue_signal: Option<String>,
+    /// Phase names from which the completion signal may fire. Empty = any phase.
+    #[serde(default)]
+    pub completion_signal_phases: Vec<String>,
+    /// "line" (signal must appear alone on a line) or "substring" (default).
+    pub completion_signal_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExecutorConfig {
+    pub binary: String,
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -36,11 +51,17 @@ fn default_runs_per_cycle() -> u32 {
 #[derive(Debug, Clone)]
 pub struct Workflow {
     pub completion_signal: String,
+    pub continue_signal: Option<String>,
+    /// Phase names from which completion may fire. Empty = any phase.
+    pub completion_signal_phases: Vec<String>,
+    /// "line" or "substring"
+    pub completion_signal_mode: String,
     pub context_dir: String,
     pub max_cycles: u32,
     pub output_dir: Option<String>,
     pub delay_between_runs: u64,
     pub phases: Vec<PhaseConfig>,
+    pub executor: Option<ExecutorConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -102,11 +123,18 @@ impl Workflow {
         }
         Ok(Workflow {
             completion_signal: file.workflow.completion_signal,
+            continue_signal: file.workflow.continue_signal,
+            completion_signal_phases: file.workflow.completion_signal_phases,
+            completion_signal_mode: file
+                .workflow
+                .completion_signal_mode
+                .unwrap_or_else(|| "substring".to_string()),
             context_dir: file.workflow.context_dir,
             max_cycles,
             output_dir: file.workflow.output_dir,
             delay_between_runs: file.workflow.delay_between_runs,
             phases: file.phases,
+            executor: file.executor,
         })
     }
 }

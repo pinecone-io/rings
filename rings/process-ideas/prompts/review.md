@@ -1,13 +1,13 @@
 # Review Panel
 
-Your job is to run the 15-persona review panel against the idea in `idea-working.md` and
+Your job is to run the 15-persona review panel against the idea in `rings/process-ideas/wip/idea-working.md` and
 synthesize their findings back into that file.
 
 ---
 
 ## Step 1: Load the idea
 
-Read `idea-working.md` in full. Read the spec file listed under `## Spec File`. Read
+Read `rings/process-ideas/wip/idea-working.md` in full. Read the spec file listed under `## Spec File`. Read
 `specs/overview.md` and `specs/feature_inventory.md` for broader context.
 
 ---
@@ -48,7 +48,7 @@ idea looks solid from your perspective, say so briefly."*
 
 ## Step 3: Synthesize findings
 
-Read all 15 responses. Write a synthesis under `## Review Synthesis` in `idea-working.md`.
+Read all 15 responses. Write a synthesis under `## Review Synthesis` in `rings/process-ideas/wip/idea-working.md`.
 
 The synthesis must cover:
 

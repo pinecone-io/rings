@@ -7,11 +7,19 @@ and either resolve it immediately (trivial cases) or prepare it for planning.
 
 ---
 
+## Step 0: First-cycle cleanup
+
+Delete any files in `rings/process-improvements/wip/`. Also reset any items marked `[~]`
+(in-progress) back to `[ ]` in `rings/process-improvements/queue/TECH_DEBT.md` under `## Unprocessed`.
+This clears state from any previously interrupted run.
+
+---
+
 ## Step 1: Load context
 
 Read `rings/process-improvements/queue/TECH_DEBT.md`. Find the `## Unprocessed` section.
 
-If the `## Unprocessed` section is empty or absent, print exactly:
+If the `## Unprocessed` section is empty or absent (no `[ ]` entries), print exactly:
 
 ```
 ALL_IMPROVEMENTS_PROCESSED
@@ -23,7 +31,10 @@ and stop.
 
 ## Step 2: Select the first unprocessed item
 
-Take the first entry in `## Unprocessed`. One item per cycle — do not process multiple.
+Take the first entry in `## Unprocessed` with status `[ ]`. One item per cycle — do not process multiple.
+
+Mark the selected entry as in-progress by changing `[ ]` to `[~]` in
+`rings/process-improvements/queue/TECH_DEBT.md`. **Do this before writing the wip file.**
 
 ---
 
@@ -64,13 +75,13 @@ Then print exactly:
 RINGS_CONTINUE
 ```
 
-and stop. Do not create `improvement-working.md`.
+and stop. Do not create `rings/process-improvements/wip/improvement-working.md`.
 
 ---
 
 ## Step 4b: If Valid — prepare for planning
 
-Write `improvement-working.md` at the project root with this structure:
+Write `rings/process-improvements/wip/improvement-working.md` with this structure:
 
 ```markdown
 # Improvement Working File

@@ -1,0 +1,30 @@
+[workflow]
+# Iterates through 12 reviewer agents (one per cycle), writing per-reviewer findings
+# to rings/plan-review/wip/. When all reviewers are done, synthesizes findings into
+# queues/READY_TO_IMPLEMENT.md and marks the draft [REVIEWED] in PLAN_DRAFTS.md.
+#
+# max_cycles MUST equal the number of reviewers in the roster (currently 12).
+# If reviewers are added or removed from the roster in prompts/review.md,
+# update max_cycles to match.
+#
+# Run with: rings run rings/plan-review/plan-review.rings.toml
+# Resume with: rings resume <run-id>
+
+completion_signal = "PLAN_REVIEW_DONE"
+completion_signal_mode = "line"
+completion_signal_phases = ["synthesize"]
+continue_signal = "RINGS_CONTINUE"
+context_dir = "."
+max_cycles = 12
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "review"
+prompt = "rings/plan-review/prompts/review.md"
+
+[[phases]]
+name = "synthesize"
+prompt = "rings/plan-review/prompts/synthesize.md"

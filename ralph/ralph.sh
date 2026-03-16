@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
-# spec-extract.sh — Ralph-style iterative build/review loop for rings
-# Phase 1: builder — picks one task from the plan and implements it.
-# Phase 2: reviewer — reviews code quality and adds tasks if needed; loops back.
+# ralph.sh — Iterative build loop for rings
+# Picks one task from the plan and implements it, looping until all tasks are done.
 # Runs claude directly on the host.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_PROMPT_MD="$SCRIPT_DIR/BUILD_PROMPT.md"
-REVIEW_PROMPT_MD="$SCRIPT_DIR/REVIEW_PROMPT.md"
 PLAN_FILE="$PROJECT_ROOT/docs/superpowers/plans/2026-03-15-rings-mvp.md"
 USAGE_LOG="$SCRIPT_DIR/usage.jsonl"
 MAX_ITERATIONS="${MAX_ITERATIONS:-50}"
-MAX_REVIEW_PASSES="${MAX_REVIEW_PASSES:-5}"
-BUILD_PER_REVIEW="${BUILD_PER_REVIEW:-2}"
 MODEL="${MODEL:-claude-haiku-4-5-20251001}"
 
 log() { echo "[rings-build] $*"; }
@@ -116,85 +112,40 @@ main() {
   log "Token usage log: $USAGE_LOG"
 
   iteration=0
-  review_pass=0
 
-  while true; do
-
-    # ── Phase 1: builder ────────────────────────────────────────────────────
-    builds_this_cycle=0
-    while has_unchecked_tasks && [[ $builds_this_cycle -lt $BUILD_PER_REVIEW ]]; do
-      iteration=$((iteration + 1))
-      builds_this_cycle=$((builds_this_cycle + 1))
-      if [[ $iteration -gt $MAX_ITERATIONS ]]; then
-        log "ERROR: Reached max iterations ($MAX_ITERATIONS). Stopping."
-        print_usage_summary
-        exit 1
-      fi
-
-      log "Build iteration $iteration: running builder..."
-
-      build_output=$(run_claude \
-        "build" \
-        "iter-$iteration" \
-        "$BUILD_PROMPT_MD" \
-        "Read the plan at docs/superpowers/plans/2026-03-15-rings-mvp.md, pick the most important unchecked task, and implement it following BUILD_PROMPT.md.")
-
-      echo "$build_output"
-
-      if echo "$build_output" | grep -q "^RINGS_DONE"; then
-        log "Builder signals completion — no tasks remain."
-        print_usage_summary
-        exit 0
-      fi
-
-      if echo "$build_output" | grep -q "^ITERATION COMPLETE"; then
-        log "Build iteration $iteration complete."
-      else
-        log "WARNING: Build iteration $iteration did not emit ITERATION COMPLETE — continuing anyway."
-      fi
-    done
-
-    # ── Phase 2: reviewer ───────────────────────────────────────────────────
-    review_pass=$((review_pass + 1))
-    if [[ $review_pass -gt $MAX_REVIEW_PASSES ]]; then
-      log "ERROR: Reached max review passes ($MAX_REVIEW_PASSES). Stopping."
+  while has_unchecked_tasks; do
+    iteration=$((iteration + 1))
+    if [[ $iteration -gt $MAX_ITERATIONS ]]; then
+      log "ERROR: Reached max iterations ($MAX_ITERATIONS). Stopping."
       print_usage_summary
       exit 1
     fi
 
-    log "Review pass $review_pass: no unchecked tasks remain, starting review..."
+    log "Build iteration $iteration: running builder..."
 
-    review_output=$(run_claude \
-      "review" \
-      "pass-$review_pass" \
-      "$REVIEW_PROMPT_MD" \
-      "All plan tasks are complete. Review the rings codebase for architectural correctness and code quality. Follow the instructions in REVIEW_PROMPT.md.")
+    build_output=$(run_claude \
+      "build" \
+      "iter-$iteration" \
+      "$BUILD_PROMPT_MD" \
+      "Read the plan at docs/superpowers/plans/2026-03-15-rings-mvp.md, pick the most important unchecked task, and implement it following BUILD_PROMPT.md.")
 
-    echo "$review_output"
+    echo "$build_output"
 
-    if echo "$review_output" | grep -q "^RINGS_DONE"; then
-      log "Review signals completion. $iteration build iteration(s), $review_pass review pass(es)."
-      log "Results in: $PROJECT_ROOT/src/"
-      log "Token usage log: $USAGE_LOG"
+    if echo "$build_output" | grep -q "^RINGS_DONE"; then
+      log "Builder signals completion — no tasks remain."
       print_usage_summary
-      break
+      exit 0
     fi
 
-    if echo "$review_output" | grep -q "^REVIEW PASS COMPLETE — issues found"; then
-      log "Review pass $review_pass found issues — looping back to build phase."
-      continue
+    if echo "$build_output" | grep -q "^ITERATION COMPLETE"; then
+      log "Build iteration $iteration complete."
+    else
+      log "WARNING: Build iteration $iteration did not emit ITERATION COMPLETE — continuing anyway."
     fi
-
-    if has_unchecked_tasks; then
-      log "Review pass $review_pass added new tasks (no signal emitted) — looping back to build phase."
-      continue
-    fi
-
-    log "WARNING: Review pass $review_pass produced no new tasks and no completion signal."
-    log "Treating as complete. Check review output above."
-    print_usage_summary
-    break
   done
+
+  log "All tasks complete after $iteration iteration(s)."
+  print_usage_summary
 }
 
 main "$@"

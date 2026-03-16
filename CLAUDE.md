@@ -2,7 +2,8 @@
 
 ## Testing
 
-- **TDD by default.** Write failing tests first, then implement.
+- **Implement first, then test.** Write the real implementation, then write tests that verify it. Do not write tests first and fill in stubs to make them compile — placeholder implementations are forbidden.
+- **No `todo!()`, `unimplemented!()`, or stub bodies in committed code.** Every committed function must do what it says.
 - **No live `claude` invocations in tests.** The process execution layer must sit behind a trait (e.g., `Executor` in `src/executor.rs`) so it can be mocked. Never call an actual `claude` subprocess in any test.
 - **A feature is done when:** happy path and key error paths are covered at both unit and integration level.
 - `unwrap()` in tests is fine — a panic fails the test, which is the intended behavior.
@@ -11,9 +12,8 @@
 
 A task is not done until **all** of the following are satisfied:
 
-1. **Tests pass** — `cargo test` is clean
-2. **Formatting** — run `cargo fmt` to fix, then verify with `cargo fmt --check`
-3. **Linting** — `cargo clippy -- -D warnings` produces zero warnings
+1. **Tests pass** — `just validate` is clean (runs fmt-check, lint, and tests)
+2. **Formatting** — run `just fmt` to auto-fix, then re-run `just validate`
 4. **No `unwrap()` or `expect()` in production code** — all errors propagate via `?` and `anyhow`
 5. **Spec consulted** — the relevant spec in `specs/` was read and the implementation is consistent with it. If no directly relevant spec exists, note that in `REVIEW.md` under Open Questions.
 6. **REVIEW.md updated** — any decisions, conflicts, or open questions from this task are recorded
@@ -66,9 +66,7 @@ Before every commit, verify and record the following. Copy this block into your 
 ```
 Pre-commit checklist
 --------------------
-[ ] cargo test — all tests pass
-[ ] cargo fmt --check — no formatting violations
-[ ] cargo clippy -- -D warnings — zero warnings
+[ ] just validate — all gates pass (fmt, lint, tests)
 [ ] No unwrap()/expect() added to production code
 [ ] Relevant spec in specs/ consulted; implementation is consistent
 [ ] REVIEW.md updated with decisions, conflicts, or open questions from this task

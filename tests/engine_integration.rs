@@ -3,9 +3,16 @@ use rings::cancel::CancelState;
 use rings::engine::{run_workflow, EngineConfig};
 use rings::executor::{ExecutorOutput, MockExecutor};
 use rings::state;
-use rings::workflow::{PhaseConfig, Workflow};
+use rings::workflow::{CompiledErrorProfile, PhaseConfig, Workflow};
 use std::sync::Arc;
 use tempfile::tempdir;
+
+fn default_compiled_error_profile() -> CompiledErrorProfile {
+    CompiledErrorProfile {
+        quota_regexes: vec![],
+        auth_regexes: vec![],
+    }
+}
 
 fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workflow {
     Workflow {
@@ -17,9 +24,18 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
         max_cycles,
         output_dir: None,
         delay_between_runs: 0,
+        delay_between_cycles: 0,
         executor: None,
         budget_cap_usd: None,
         timeout_per_run_secs: None,
+        compiled_error_profile: default_compiled_error_profile(),
+        quota_backoff: false,
+        quota_backoff_delay: 0,
+        quota_backoff_max_retries: 0,
+        manifest_enabled: false,
+        manifest_ignore: vec![],
+        manifest_mtime_optimization: false,
+        snapshot_cycles: false,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {
@@ -209,9 +225,18 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
         max_cycles: 3,
         output_dir: None,
         delay_between_runs: 0,
+        delay_between_cycles: 0,
         executor: None,
         budget_cap_usd: None,
         timeout_per_run_secs: None,
+        compiled_error_profile: default_compiled_error_profile(),
+        quota_backoff: false,
+        quota_backoff_delay: 0,
+        quota_backoff_max_retries: 0,
+        manifest_enabled: false,
+        manifest_ignore: vec![],
+        manifest_mtime_optimization: false,
+        snapshot_cycles: false,
         phases: vec![
             PhaseConfig {
                 name: "phase_a".to_string(),
@@ -288,9 +313,18 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
         max_cycles: 5,
         output_dir: None,
         delay_between_runs: 0,
+        delay_between_cycles: 0,
         executor: None,
         budget_cap_usd: None,
         timeout_per_run_secs: None,
+        compiled_error_profile: default_compiled_error_profile(),
+        quota_backoff: false,
+        quota_backoff_delay: 0,
+        quota_backoff_max_retries: 0,
+        manifest_enabled: false,
+        manifest_ignore: vec![],
+        manifest_mtime_optimization: false,
+        snapshot_cycles: false,
         phases: vec![
             PhaseConfig {
                 name: "review".to_string(),
@@ -346,9 +380,18 @@ fn line_mode_completion_requires_signal_on_own_line() {
         max_cycles: 5,
         output_dir: None,
         delay_between_runs: 0,
+        delay_between_cycles: 0,
         executor: None,
         budget_cap_usd: None,
         timeout_per_run_secs: None,
+        compiled_error_profile: default_compiled_error_profile(),
+        quota_backoff: false,
+        quota_backoff_delay: 0,
+        quota_backoff_max_retries: 0,
+        manifest_enabled: false,
+        manifest_ignore: vec![],
+        manifest_mtime_optimization: false,
+        snapshot_cycles: false,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,

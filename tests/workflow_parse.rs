@@ -281,3 +281,126 @@ fn rejects_phase_invalid_timeout() {
         Err(WorkflowError::InvalidDuration { .. })
     ));
 }
+
+#[test]
+fn error_profile_named_claude_code() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        [executor]
+        binary = "claude"
+        error_profile = "claude-code"
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let workflow = Workflow::from_str(toml).unwrap();
+    assert!(!workflow.compiled_error_profile.quota_regexes.is_empty());
+    assert!(!workflow.compiled_error_profile.auth_regexes.is_empty());
+}
+
+#[test]
+fn error_profile_named_none() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        [executor]
+        binary = "claude"
+        error_profile = "none"
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let workflow = Workflow::from_str(toml).unwrap();
+    assert!(workflow.compiled_error_profile.quota_regexes.is_empty());
+    assert!(workflow.compiled_error_profile.auth_regexes.is_empty());
+}
+
+#[test]
+fn error_profile_custom() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        [executor]
+        binary = "claude"
+        [executor.error_profile]
+        quota_patterns = ["limit", "quota"]
+        auth_patterns = ["unauthorized", "forbidden"]
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let workflow = Workflow::from_str(toml).unwrap();
+    assert_eq!(workflow.compiled_error_profile.quota_regexes.len(), 2);
+    assert_eq!(workflow.compiled_error_profile.auth_regexes.len(), 2);
+}
+
+#[test]
+fn error_profile_defaults_to_claude_code_when_no_executor() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let workflow = Workflow::from_str(toml).unwrap();
+    assert!(!workflow.compiled_error_profile.quota_regexes.is_empty());
+    assert!(!workflow.compiled_error_profile.auth_regexes.is_empty());
+}
+
+#[test]
+fn error_profile_defaults_to_claude_code_when_no_profile_specified() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        [executor]
+        binary = "claude"
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let workflow = Workflow::from_str(toml).unwrap();
+    assert!(!workflow.compiled_error_profile.quota_regexes.is_empty());
+    assert!(!workflow.compiled_error_profile.auth_regexes.is_empty());
+}
+
+#[test]
+fn new_workflow_fields_parsed_correctly() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        delay_between_cycles = 10
+        quota_backoff = true
+        quota_backoff_delay = 5
+        quota_backoff_max_retries = 3
+        manifest_enabled = true
+        manifest_mtime_optimization = true
+        snapshot_cycles = true
+        manifest_ignore = ["*.tmp", "**/cache"]
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let workflow = Workflow::from_str(toml).unwrap();
+    assert_eq!(workflow.delay_between_cycles, 10);
+    assert!(workflow.quota_backoff);
+    assert_eq!(workflow.quota_backoff_delay, 5);
+    assert_eq!(workflow.quota_backoff_max_retries, 3);
+    assert!(workflow.manifest_enabled);
+    assert!(workflow.manifest_mtime_optimization);
+    assert!(workflow.snapshot_cycles);
+    assert_eq!(workflow.manifest_ignore.len(), 2);
+}

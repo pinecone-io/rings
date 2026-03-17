@@ -81,17 +81,17 @@ pub enum ErrorProfileName { ClaudeCode, None }
 `ErrorProfile` should only derive `Deserialize`, not `Serialize` (it is never serialized back to state files).
 
 **Tests:**
-- [ ] `ErrorProfile` TOML deser: bare string `"claude-code"` → `Named(ClaudeCode)`
-- [ ] `ErrorProfile` TOML deser: bare string `"none"` → `Named(None)`
-- [ ] `ErrorProfile` TOML deser: inline table `{ quota_patterns = [...], auth_patterns = [...] }` → `Custom`
-- [ ] `ErrorProfile` does not derive `Serialize` (confirm at compile time via no `.serialize()` call)
-- [ ] `Workflow::validate()` returns `CompiledErrorProfile` populated from `ClaudeCode` patterns when `executor` is None
-- [ ] `Workflow::validate()` compiles custom patterns correctly
+- [x] `ErrorProfile` TOML deser: bare string `"claude-code"` → `Named(ClaudeCode)`
+- [x] `ErrorProfile` TOML deser: bare string `"none"` → `Named(None)`
+- [x] `ErrorProfile` TOML deser: inline table `{ quota_patterns = [...], auth_patterns = [...] }` → `Custom`
+- [x] `ErrorProfile` does not derive `Serialize` (confirm at compile time via no `.serialize()` call)
+- [x] `Workflow::validate()` returns `CompiledErrorProfile` populated from `ClaudeCode` patterns when `executor` is None
+- [x] `Workflow::validate()` compiles custom patterns correctly
 
 **Steps:**
-- [ ] Add `ErrorProfile` and `ErrorProfileName` enums with `#[serde(untagged)]`
-- [ ] Add all new fields to `ExecutorConfig` and `WorkflowConfig`
-- [ ] Update `Workflow::validate()` to promote new fields into `Workflow`, compile `CompiledErrorProfile`
+- [x] Add `ErrorProfile` and `ErrorProfileName` enums with `#[serde(untagged)]`
+- [x] Add all new fields to `ExecutorConfig` and `WorkflowConfig`
+- [x] Update `Workflow::validate()` to promote new fields into `Workflow`, compile `CompiledErrorProfile`
 
 ---
 

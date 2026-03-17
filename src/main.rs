@@ -165,7 +165,15 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     let _lock = {
         let context_dir = PathBuf::from(&workflow.context_dir);
         match ContextLock::acquire(&context_dir, &run_id, args.force_lock) {
-            Ok(lock) => lock,
+            Ok(result) => {
+                if let Some(stale_info) = &result.stale_removed {
+                    eprintln!(
+                        "Warning: Removed stale lock file from previous run {} (PID={} no longer running).",
+                        stale_info.run_id, stale_info.pid
+                    );
+                }
+                result.lock
+            }
             Err(e) => {
                 eprintln!("{}", e);
                 return Ok(2);
@@ -354,7 +362,15 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     let _lock = {
         let context_dir = PathBuf::from(&workflow.context_dir);
         match ContextLock::acquire(&context_dir, &args.run_id, args.force_lock) {
-            Ok(lock) => lock,
+            Ok(result) => {
+                if let Some(stale_info) = &result.stale_removed {
+                    eprintln!(
+                        "Warning: Removed stale lock file from previous run {} (PID={} no longer running).",
+                        stale_info.run_id, stale_info.pid
+                    );
+                }
+                result.lock
+            }
             Err(e) => {
                 eprintln!("{}", e);
                 return Ok(2);

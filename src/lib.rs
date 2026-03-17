@@ -7,6 +7,8 @@ pub mod display;
 pub mod duration;
 pub mod engine;
 pub mod executor;
+#[cfg(unix)]
+pub mod lock;
 pub mod state;
 pub mod template;
 pub mod workflow;

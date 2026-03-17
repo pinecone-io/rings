@@ -88,9 +88,9 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - [ ] `--force-lock` still bypasses lock check (no regression)
 
 **Steps:**
-- [ ] Add `StaleLockInfo` and `LockAcquireResult` to `lock.rs`
-- [ ] Change `acquire()` return type; populate `stale_removed` on stale removal
-- [ ] Update both call sites in `main.rs`; emit warning string to stderr
+- [x] Add `StaleLockInfo` and `LockAcquireResult` to `lock.rs`
+- [x] Change `acquire()` return type; populate `stale_removed` on stale removal
+- [x] Update both call sites in `main.rs`; emit warning string to stderr
 
 ---
 

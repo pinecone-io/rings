@@ -13,6 +13,18 @@ pub struct LockFile {
     pub pid: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct StaleLockInfo {
+    pub run_id: String,
+    pub pid: u32,
+}
+
+#[derive(Debug)]
+pub struct LockAcquireResult {
+    pub lock: ContextLock,
+    pub stale_removed: Option<StaleLockInfo>,
+}
+
 #[derive(Debug, Error)]
 pub enum LockError {
     #[error("Error: Another rings run ({run_id}, PID={pid}) is already using context_dir.\nWait for it to finish or use --force-lock to override.")]
@@ -56,7 +68,7 @@ impl ContextLock {
         context_dir: impl AsRef<Path>,
         run_id: impl AsRef<str>,
         force: bool,
-    ) -> Result<Self, LockError> {
+    ) -> Result<LockAcquireResult, LockError> {
         let context_dir = context_dir.as_ref();
         let run_id = run_id.as_ref();
 
@@ -83,8 +95,11 @@ impl ContextLock {
                 .truncate(true)
                 .open(&lock_file_path)?;
             f.write_all(lock_json.as_bytes())?;
-            return Ok(ContextLock {
-                path: lock_file_path,
+            return Ok(LockAcquireResult {
+                lock: ContextLock {
+                    path: lock_file_path,
+                },
+                stale_removed: None,
             });
         }
 
@@ -96,12 +111,16 @@ impl ContextLock {
         {
             Ok(mut f) => {
                 f.write_all(lock_json.as_bytes())?;
-                Ok(ContextLock {
-                    path: lock_file_path,
+                Ok(LockAcquireResult {
+                    lock: ContextLock {
+                        path: lock_file_path,
+                    },
+                    stale_removed: None,
                 })
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 // Lock file exists. Check if it's stale.
+                let mut stale_info: Option<StaleLockInfo> = None;
                 if let Ok(existing_lock) = Self::read_lock_file(&lock_file_path) {
                     // Check if the pid in the lock file is alive
                     if Self::is_process_alive(existing_lock.pid) {
@@ -111,6 +130,11 @@ impl ContextLock {
                             context_dir: context_dir.to_path_buf(),
                         });
                     }
+                    // Lock is stale, remember it
+                    stale_info = Some(StaleLockInfo {
+                        run_id: existing_lock.run_id,
+                        pid: existing_lock.pid,
+                    });
                 }
                 // Lock is stale or unreadable. Try to remove and retry once.
                 let _ = std::fs::remove_file(&lock_file_path);
@@ -123,8 +147,11 @@ impl ContextLock {
                 {
                     Ok(mut f) => {
                         f.write_all(lock_json.as_bytes())?;
-                        Ok(ContextLock {
-                            path: lock_file_path,
+                        Ok(LockAcquireResult {
+                            lock: ContextLock {
+                                path: lock_file_path,
+                            },
+                            stale_removed: stale_info,
                         })
                     }
                     Err(_) => {
@@ -201,22 +228,24 @@ mod tests {
     #[test]
     fn test_lock_acquire_success() {
         let tmp = TempDir::new().unwrap();
-        let lock = ContextLock::acquire(tmp.path(), "test_run", false).unwrap();
+        let result = ContextLock::acquire(tmp.path(), "test_run", false).unwrap();
         let lock_file = tmp.path().join(".rings.lock");
         assert!(lock_file.exists());
-        drop(lock);
+        assert!(result.stale_removed.is_none());
+        drop(result.lock);
         assert!(!lock_file.exists());
     }
 
     #[test]
     fn test_lock_file_format() {
         let tmp = TempDir::new().unwrap();
-        let _lock = ContextLock::acquire(tmp.path(), "test_run_123", false).unwrap();
+        let result = ContextLock::acquire(tmp.path(), "test_run_123", false).unwrap();
         let lock_file = tmp.path().join(".rings.lock");
         let contents = std::fs::read_to_string(&lock_file).unwrap();
         let parsed: LockFile = serde_json::from_str(&contents).unwrap();
         assert_eq!(parsed.run_id, "test_run_123");
         assert!(parsed.pid > 0);
+        drop(result.lock);
     }
 
     #[test]
@@ -241,12 +270,16 @@ mod tests {
         std::fs::write(&lock_file, json).unwrap();
 
         // Acquiring should succeed and remove the stale lock
-        let lock = ContextLock::acquire(tmp.path(), "new_run", false).unwrap();
-        assert_eq!(lock.path, lock_file);
+        let result = ContextLock::acquire(tmp.path(), "new_run", false).unwrap();
+        assert_eq!(result.lock.path, lock_file);
+        assert!(result.stale_removed.is_some());
+        assert_eq!(result.stale_removed.as_ref().unwrap().run_id, "old_run");
+        assert_eq!(result.stale_removed.as_ref().unwrap().pid, 0);
 
         let new_contents = std::fs::read_to_string(&lock_file).unwrap();
         let parsed: LockFile = serde_json::from_str(&new_contents).unwrap();
         assert_eq!(parsed.run_id, "new_run");
+        drop(result.lock);
     }
 
     #[test]
@@ -255,11 +288,13 @@ mod tests {
         let lock_file = tmp.path().join(".rings.lock");
         std::fs::write(&lock_file, "").unwrap();
 
-        // Should succeed and write a new lock
-        let _lock = ContextLock::acquire(tmp.path(), "new_run", false).unwrap();
+        // Should succeed and write a new lock. Empty file is unreadable, so no stale info.
+        let result = ContextLock::acquire(tmp.path(), "new_run", false).unwrap();
+        assert!(result.stale_removed.is_none());
         let contents = std::fs::read_to_string(&lock_file).unwrap();
         let parsed: LockFile = serde_json::from_str(&contents).unwrap();
         assert_eq!(parsed.run_id, "new_run");
+        drop(result.lock);
     }
 
     #[test]
@@ -274,9 +309,11 @@ mod tests {
         std::fs::write(&lock_file, json).unwrap();
 
         // With force=true, should overwrite even though our own process is "alive"
-        let _lock = ContextLock::acquire(tmp.path(), "new_run", true).unwrap();
+        let result = ContextLock::acquire(tmp.path(), "new_run", true).unwrap();
+        assert!(result.stale_removed.is_none());
         let new_contents = std::fs::read_to_string(&lock_file).unwrap();
         let parsed: LockFile = serde_json::from_str(&new_contents).unwrap();
         assert_eq!(parsed.run_id, "new_run");
+        drop(result.lock);
     }
 }

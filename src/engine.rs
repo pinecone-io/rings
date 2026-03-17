@@ -7,6 +7,7 @@ use crate::cancel::CancelState;
 use crate::completion::{output_contains_signal, output_line_contains_signal};
 use crate::cost::parse_cost_from_output;
 use crate::executor::{extract_response_text, Executor, Invocation};
+use crate::manifest::{compute_manifest, diff_manifests, read_manifest_gz, write_manifest_gz};
 use crate::state::{FailureReason, StateFile};
 use crate::template::{render_prompt, TemplateVars};
 use crate::workflow::PhaseConfig;
@@ -505,6 +506,35 @@ pub fn run_workflow(
         None => RunSchedule::new(&workflow.phases, workflow.max_cycles),
         Some(ref r) => RunSchedule::resume_from_position(&workflow.phases, workflow.max_cycles, r),
     };
+
+    // Compute before-manifest if manifests are enabled and this is not a resume.
+    let manifests_dir = config.output_dir.join("manifests");
+    let before_manifest_path = manifests_dir.join("000-before.json.gz");
+    let mut current_manifest = None;
+
+    if workflow.manifest_enabled && resume_from.is_none() {
+        if let Ok(manifest) = compute_manifest(
+            &PathBuf::from(&workflow.context_dir),
+            &config.output_dir,
+            0,
+            0,
+            "before",
+            0,
+            &workflow.manifest_ignore,
+            workflow.manifest_mtime_optimization,
+        ) {
+            if let Err(e) = write_manifest_gz(&manifest, &before_manifest_path) {
+                eprintln!("⚠  Failed to write before-manifest: {}", e);
+            } else {
+                current_manifest = Some(manifest);
+            }
+        }
+    } else if workflow.manifest_enabled && resume_from.is_some() {
+        // Load existing before-manifest for diff computation on resume
+        if let Ok(manifest) = read_manifest_gz(&before_manifest_path) {
+            current_manifest = Some(manifest);
+        }
+    }
 
     // Restore cumulative cost from resume point if provided.
     if let Some(ref _r) = resume_from {
@@ -1052,6 +1082,45 @@ pub fn run_workflow(
         state.claude_resume_commands = resume_commands.clone();
         state.write_atomic(&state_path)?;
 
+        // Compute after-manifest and diff if manifests are enabled.
+        let mut files_added = 0u32;
+        let mut files_modified = 0u32;
+        let mut files_deleted = 0u32;
+        let mut files_changed = 0u32;
+
+        if workflow.manifest_enabled {
+            let after_manifest_path =
+                manifests_dir.join(format!("{:03}-after.json.gz", run_spec.global_run_number));
+
+            if let Ok(after_manifest) = compute_manifest(
+                &PathBuf::from(&workflow.context_dir),
+                &config.output_dir,
+                run_spec.global_run_number,
+                run_spec.cycle,
+                &run_spec.phase_name,
+                run_spec.phase_iteration,
+                &workflow.manifest_ignore,
+                workflow.manifest_mtime_optimization,
+            ) {
+                // Diff with previous manifest if it exists
+                if let Some(ref prev_manifest) = current_manifest {
+                    let diff = diff_manifests(prev_manifest, &after_manifest);
+                    files_added = diff.added.len() as u32;
+                    files_modified = diff.modified.len() as u32;
+                    files_deleted = diff.deleted.len() as u32;
+                    files_changed = files_added + files_modified;
+                }
+
+                // Write the after-manifest
+                if let Err(e) = write_manifest_gz(&after_manifest, &after_manifest_path) {
+                    eprintln!("⚠  Failed to write after-manifest: {}", e);
+                } else {
+                    // Update current_manifest for next run
+                    current_manifest = Some(after_manifest);
+                }
+            }
+        }
+
         // Append cost entry after state is safely checkpointed.
         append_cost_entry(
             &costs_path,
@@ -1064,10 +1133,10 @@ pub fn run_workflow(
                 input_tokens: cost.input_tokens,
                 output_tokens: cost.output_tokens,
                 cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
-                files_added: 0,
-                files_modified: 0,
-                files_deleted: 0,
-                files_changed: 0,
+                files_added,
+                files_modified,
+                files_deleted,
+                files_changed,
                 event: None,
             },
         )?;

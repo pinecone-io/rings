@@ -13,6 +13,7 @@ pub mod executor;
 pub mod list;
 #[cfg(unix)]
 pub mod lock;
+pub mod manifest;
 pub mod state;
 pub mod template;
 pub mod workflow;

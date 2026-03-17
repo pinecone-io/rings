@@ -1,36 +1,25 @@
 #[cfg(not(unix))]
 compile_error!("rings requires a Unix platform");
 
-pub mod audit;
-pub mod backoff;
-pub mod cancel;
-pub mod cli;
-pub mod completion;
-pub mod cost;
-pub mod display;
-pub mod dry_run;
-pub mod duration;
-pub mod engine;
-pub mod executor;
-pub mod list;
-#[cfg(unix)]
-pub mod lock;
-pub mod state;
-pub mod template;
-pub mod workflow;
-
 use anyhow::{bail, Context, Result};
-use cancel::CancelState;
 use clap::Parser;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use cli::{Cli, Command};
-use engine::{run_workflow, EngineConfig, ResumePoint};
-use executor::{ClaudeExecutor, ConfigurableExecutor};
+use rings::cancel::CancelState;
+use rings::cli::{self, Cli, Command};
+use rings::completion;
+use rings::display;
+use rings::dry_run;
+use rings::duration;
+use rings::engine::{run_workflow, EngineConfig, ResumePoint};
+use rings::executor::{ClaudeExecutor, ConfigurableExecutor};
+use rings::list;
 #[cfg(unix)]
-use lock::ContextLock;
+use rings::lock::ContextLock;
+use rings::state;
+use rings::workflow;
 
 fn main() {
     // Ignore SIGPIPE so that broken pipe errors (e.g., when piping rings output

@@ -256,11 +256,11 @@ These are checked as a non-overridable second pass, after `manifest_ignore` glob
 - [ ] Integration: large-file-count warning emitted when >10,000 files
 
 **Steps:**
-- [ ] Add `globset` to `Cargo.toml`; remove `glob` (do not add `glob = "0.3"`)
-- [ ] Add `flate2`, `sha2` to `Cargo.toml`
-- [ ] Create `src/manifest.rs`
-- [ ] Integrate `compute_manifest` hooks into engine (before first run, after each successful run)
-- [ ] Expose `manifest` in `src/lib.rs`
+- [x] Add `globset` to `Cargo.toml`; remove `glob` (do not add `glob = "0.3"`)
+- [x] Add `flate2`, `sha2` to `Cargo.toml`
+- [x] Create `src/manifest.rs`
+- [x] Integrate `compute_manifest` hooks into engine (before first run, after each successful run)
+- [x] Expose `manifest` in `src/lib.rs`
 
 ---
 

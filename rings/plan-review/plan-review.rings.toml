@@ -19,7 +19,7 @@ max_cycles = 12
 
 [executor]
 binary = "claude"
-args = ["--dangerously-skip-permissions", "-p", "-"]
+args = ["--dangerously-skip-permissions", "--output-format", "json", "-p", "-"]
 
 [[phases]]
 name = "review"

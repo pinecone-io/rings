@@ -14,7 +14,7 @@ max_cycles = 1
 
 [executor]
 binary = "claude"
-args = ["--dangerously-skip-permissions", "-p", "-"]
+args = ["--dangerously-skip-permissions", "--output-format", "json", "-p", "-"]
 
 [[phases]]
 name = "elect"

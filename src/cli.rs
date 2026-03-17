@@ -1,6 +1,17 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::str::FromStr;
 
+fn validate_run_id(s: &str) -> Result<String, String> {
+    if s.starts_with("run_") {
+        Ok(s.to_string())
+    } else {
+        Err(format!(
+            "invalid run ID: {}; expected format 'run_<timestamp>_<hash>'",
+            s
+        ))
+    }
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
     /// Human-readable output (tables, text)
@@ -58,6 +69,14 @@ pub enum Command {
     Resume(ResumeArgs),
     /// List recent workflow runs
     List(ListArgs),
+    /// Show a summary of a completed run (shorthand for inspect --show summary)
+    Show(ShowArgs),
+    /// Inspect run details with customizable views
+    Inspect(InspectArgs),
+    /// Show lineage of a run (ancestor/descendant chain)
+    Lineage(LineageArgs),
+    /// Generate shell completions
+    Completions(CompletionsArgs),
 }
 
 #[derive(Args, Debug)]
@@ -100,6 +119,22 @@ pub struct RunArgs {
     /// Preview execution plan without running anything
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Parent run ID for ancestry tracking (e.g. run_20240315_143022_a1b2c3)
+    #[arg(long, value_parser = validate_run_id)]
+    pub parent_run: Option<String>,
+
+    /// Enable quota-based automatic retries on executor failure
+    #[arg(long)]
+    pub quota_backoff: bool,
+
+    /// Delay in seconds before retrying after a quota error
+    #[arg(long, requires = "quota_backoff")]
+    pub quota_backoff_delay: Option<u64>,
+
+    /// Maximum number of quota backoff retries
+    #[arg(long, requires = "quota_backoff")]
+    pub quota_backoff_max_retries: Option<u32>,
 }
 
 #[derive(Args, Debug)]
@@ -153,4 +188,63 @@ pub struct ListArgs {
     /// Maximum number of runs to display
     #[arg(short = 'n', long, default_value = "20")]
     pub limit: usize,
+}
+
+#[derive(Args, Debug)]
+pub struct ShowArgs {
+    /// Run ID to show (e.g. run_20240315_143022_a1b2c3)
+    pub run_id: String,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum InspectView {
+    /// Summary overview of the run
+    #[value(name = "summary")]
+    Summary,
+    /// Cycle-by-cycle breakdown
+    #[value(name = "cycles")]
+    Cycles,
+    /// Cost details and breakdown
+    #[value(name = "costs")]
+    Costs,
+    /// File changes across the run
+    #[value(name = "files-changed")]
+    FilesChanged,
+    /// Data flow and phase contracts
+    #[value(name = "data-flow")]
+    DataFlow,
+}
+
+#[derive(Args, Debug)]
+pub struct InspectArgs {
+    /// Run ID to inspect (e.g. run_20240315_143022_a1b2c3)
+    pub run_id: String,
+
+    /// Views to display (can be specified multiple times)
+    #[arg(long, action = clap::ArgAction::Append)]
+    pub show: Vec<InspectView>,
+
+    /// Filter by specific cycle number
+    #[arg(long)]
+    pub cycle: Option<u32>,
+
+    /// Filter by specific phase name
+    #[arg(long)]
+    pub phase: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct LineageArgs {
+    /// Run ID to trace ancestry for (e.g. run_20240315_143022_a1b2c3)
+    pub run_id: String,
+
+    /// Show descendants instead of ancestors
+    #[arg(long)]
+    pub descendants: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct CompletionsArgs {
+    /// Shell type (bash, zsh, fish, powershell)
+    pub shell: String,
 }

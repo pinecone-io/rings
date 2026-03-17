@@ -88,6 +88,8 @@ fn sigterm_called_on_cancellation() {
 
     let dir = tempdir().unwrap();
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test_cancel_1".to_string(),
@@ -224,6 +226,8 @@ fn double_ctrl_c_sends_sigkill_before_grace_period_expires() {
     );
 
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test_double_sigkill".to_string(),
@@ -341,6 +345,8 @@ fn single_ctrl_c_waits_up_to_grace_period_without_second_signal() {
     );
 
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test_single_sigterm".to_string(),

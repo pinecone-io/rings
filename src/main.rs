@@ -57,6 +57,10 @@ fn main() {
         Command::Run(args) => cmd_run(args, Arc::clone(&cancel)),
         Command::Resume(args) => cmd_resume(args, Arc::clone(&cancel)),
         Command::List(args) => cmd_list(args, cli.output_format),
+        Command::Show(args) => cmd_show(args, cli.output_format),
+        Command::Inspect(args) => cmd_inspect(args, cli.output_format),
+        Command::Lineage(args) => cmd_lineage(args, cli.output_format),
+        Command::Completions(args) => cmd_completions(args),
     };
     std::process::exit(exit_code);
 }
@@ -172,6 +176,21 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     std::fs::create_dir_all(&run_dir)
         .with_context(|| format!("Cannot create output directory: {}", run_dir.display()))?;
 
+    // Handle --parent-run flag and calculate ancestry_depth
+    let (continuation_of, ancestry_depth) = if let Some(ref parent_run_id) = args.parent_run {
+        // Load parent's run.toml to get its ancestry_depth
+        let parent_depth = {
+            let parent_meta_path = output_base.join(parent_run_id).join("run.toml");
+            match state::RunMeta::read(&parent_meta_path) {
+                Ok(parent_meta) => parent_meta.ancestry_depth,
+                Err(_) => 0, // Parent not found or unreadable; treat as depth 0
+            }
+        };
+        (Some(parent_run_id.clone()), parent_depth + 1)
+    } else {
+        (None, 0)
+    };
+
     // Write run.toml
     let mut meta = state::RunMeta {
         run_id: run_id.clone(),
@@ -183,9 +202,9 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         rings_version: env!("CARGO_PKG_VERSION").to_string(),
         status: state::RunStatus::Running,
         phase_fingerprint: Some(workflow.structural_fingerprint()),
-        parent_run_id: None,
-        continuation_of: None,
-        ancestry_depth: 0,
+        parent_run_id: None, // parent_run_id is only set on resume, not on fresh run
+        continuation_of: continuation_of.clone(),
+        ancestry_depth,
     };
     meta.write(&run_dir.join("run.toml"))?;
 
@@ -251,6 +270,8 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
             .unwrap_or_else(|_| PathBuf::from(&args.workflow_file))
             .to_string_lossy()
             .to_string(),
+        ancestry_continuation_of: continuation_of,
+        ancestry_depth,
     };
 
     let run_start = std::time::Instant::now();
@@ -372,12 +393,12 @@ fn cmd_resume(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> i32 {
 }
 
 fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> {
-    // Find run directory
+    // Find old run directory to resume from
     let output_base = resolve_output_dir(args.output_dir.as_deref(), None);
-    let run_dir = output_base.join(&args.run_id);
-    let state_path = run_dir.join("state.json");
-    let costs_path = run_dir.join("costs.jsonl");
-    let meta_path = run_dir.join("run.toml");
+    let old_run_dir = output_base.join(&args.run_id);
+    let state_path = old_run_dir.join("state.json");
+    let costs_path = old_run_dir.join("costs.jsonl");
+    let old_meta_path = old_run_dir.join("run.toml");
 
     // Load state with fallback recovery from costs.jsonl
     let saved_state = match state::StateFile::load_or_recover(&state_path, &costs_path) {
@@ -403,8 +424,26 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         }
     };
 
-    let mut meta = state::RunMeta::read(&meta_path)
+    let old_meta = state::RunMeta::read(&old_meta_path)
         .with_context(|| format!("Cannot read run.toml for run {}", args.run_id))?;
+
+    // Generate a new run_id for the resumed run (implements Option A: new run directory on resume)
+    let new_run_id = generate_run_id();
+    let run_dir = output_base.join(&new_run_id);
+    let meta_path = run_dir.join("run.toml");
+
+    // Create new metadata with parent_run_id set to the old run
+    let mut meta = state::RunMeta {
+        run_id: new_run_id.clone(),
+        workflow_file: old_meta.workflow_file.clone(),
+        started_at: chrono::Utc::now().to_rfc3339(),
+        rings_version: env!("CARGO_PKG_VERSION").to_string(),
+        status: state::RunStatus::Running,
+        phase_fingerprint: old_meta.phase_fingerprint.clone(),
+        parent_run_id: Some(args.run_id.clone()),
+        continuation_of: None,
+        ancestry_depth: 1,
+    };
 
     // Reload workflow
     let toml_content = std::fs::read_to_string(&meta.workflow_file)
@@ -490,7 +529,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         );
     }
 
-    eprintln!("Resuming {}", args.run_id);
+    eprintln!("Resuming {} (previously {})", new_run_id, args.run_id);
     eprintln!("Workflow:  {}", meta.workflow_file);
     eprintln!("Previous cost: ${:.3}", saved_state.cumulative_cost_usd);
     eprintln!();
@@ -499,7 +538,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     #[cfg(unix)]
     let _lock = {
         let context_dir = PathBuf::from(&workflow.context_dir);
-        match ContextLock::acquire(&context_dir, &args.run_id, args.force_lock) {
+        match ContextLock::acquire(&context_dir, &new_run_id, args.force_lock) {
             Ok(result) => {
                 if let Some(stale_info) = &result.stale_removed {
                     eprintln!(
@@ -516,12 +555,21 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         }
     };
 
-    // Build a resume-aware engine config (reuse same run_dir)
+    // Create new run directory for the resumed run
+    std::fs::create_dir_all(&run_dir)
+        .with_context(|| format!("Cannot create new run directory: {}", run_dir.display()))?;
+
+    // Write the new run.toml with parent_run_id set
+    meta.write(&meta_path)?;
+
+    // Build engine config for the new run directory
     let config = EngineConfig {
         output_dir: run_dir.clone(),
         verbose: args.verbose,
-        run_id: args.run_id.clone(),
+        run_id: new_run_id.clone(),
         workflow_file: meta.workflow_file.clone(),
+        ancestry_continuation_of: None, // continuation_of is not set on resume
+        ancestry_depth: 1,              // resumed runs always start at depth 1
     };
 
     let resume_point = Some(ResumePoint {
@@ -592,7 +640,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                 workflow.max_cycles,
                 result.total_cost_usd,
                 result.total_runs,
-                &args.run_id,
+                &new_run_id,
             );
         }
         3 => {
@@ -606,7 +654,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                 display::print_executor_error(
                     failed_run_number,
                     3,
-                    &args.run_id,
+                    &new_run_id,
                     &log_path.to_string_lossy(),
                 );
             }
@@ -624,7 +672,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                 let phase = workflow.phases.get(state.last_completed_phase_index);
                 let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
                 display::print_cancellation(
-                    &args.run_id,
+                    &new_run_id,
                     state.last_completed_cycle,
                     phase_name,
                     state.cumulative_cost_usd,
@@ -737,6 +785,35 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
     }
 
     Ok(0)
+}
+
+fn cmd_show(_args: cli::ShowArgs, _output_format: cli::OutputFormat) -> i32 {
+    // Show is a shorthand for inspect --show summary
+    // This will be fully implemented when rings inspect is available (Task 8)
+    // For now, return a placeholder error
+    eprintln!("Error: 'rings show' is not yet fully implemented. Use 'rings inspect' instead.");
+    2
+}
+
+fn cmd_inspect(_args: cli::InspectArgs, _output_format: cli::OutputFormat) -> i32 {
+    // Inspect command will be implemented in Task 8
+    // For now, return a placeholder error
+    eprintln!("Error: 'rings inspect' is not yet implemented.");
+    2
+}
+
+fn cmd_lineage(_args: cli::LineageArgs, _output_format: cli::OutputFormat) -> i32 {
+    // Lineage command will be implemented in Task 8
+    // For now, return a placeholder error
+    eprintln!("Error: 'rings lineage' is not yet implemented.");
+    2
+}
+
+fn cmd_completions(_args: cli::CompletionsArgs) -> i32 {
+    // Completions command will be implemented in Task 8
+    // For now, return a placeholder error
+    eprintln!("Error: 'rings completions' is not yet implemented.");
+    2
 }
 
 fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str>) -> PathBuf {

@@ -65,6 +65,8 @@ fn engine_exits_zero_on_completion_signal() {
         },
     ]);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-run-id".to_string(),
@@ -89,6 +91,8 @@ fn engine_exits_one_when_max_cycles_reached() {
         .collect();
     let executor = MockExecutor::new(outputs);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-run-id".to_string(),
@@ -108,6 +112,8 @@ fn engine_writes_run_logs() {
         exit_code: 0,
     }]);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-run-id".to_string(),
@@ -134,6 +140,8 @@ fn engine_writes_costs_jsonl() {
         exit_code: 0,
     }]);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-run-id".to_string(),
@@ -157,6 +165,8 @@ fn engine_classifies_nonzero_exit_as_error() {
         exit_code: 1,
     }]);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-run-id".to_string(),
@@ -184,6 +194,8 @@ fn engine_saves_state_and_exits_130_on_cancel() {
     ]);
     let cancel = Arc::new(CancelState::new());
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-run-id".to_string(),
@@ -285,6 +297,8 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
         },
     ]);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-continue".to_string(),
@@ -356,6 +370,8 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
         },
     ]);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-phases".to_string(),
@@ -414,6 +430,8 @@ fn line_mode_completion_requires_signal_on_own_line() {
         },
     ]);
     let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
         output_dir: dir.path().to_path_buf(),
         verbose: false,
         run_id: "test-line-mode".to_string(),

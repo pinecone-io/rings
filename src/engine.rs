@@ -324,6 +324,8 @@ pub struct EngineConfig {
     pub verbose: bool,
     pub run_id: String,
     pub workflow_file: String,
+    pub ancestry_continuation_of: Option<String>,
+    pub ancestry_depth: u32,
 }
 
 pub struct EngineResult {
@@ -418,7 +420,15 @@ fn make_state_snapshot(
         claude_resume_commands: vec![], // Will be populated by caller if needed
         canceled_at,
         failure_reason,
-        ancestry: None,
+        ancestry: if config.ancestry_continuation_of.is_some() || config.ancestry_depth > 0 {
+            Some(crate::state::AncestryInfo {
+                parent_run_id: None, // parent_run_id is set in resume_inner, not in new runs
+                continuation_of: config.ancestry_continuation_of.clone(),
+                ancestry_depth: config.ancestry_depth,
+            })
+        } else {
+            None
+        },
     }
 }
 

@@ -180,6 +180,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         started_at: chrono::Utc::now().to_rfc3339(),
         rings_version: env!("CARGO_PKG_VERSION").to_string(),
         status: "running".to_string(),
+        phase_fingerprint: Some(workflow.structural_fingerprint()),
     };
     meta.write(&run_dir.join("run.toml"))?;
 
@@ -421,6 +422,59 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         let secs = duration::parse_duration_secs(timeout_str)
             .with_context(|| format!("invalid --timeout-per-run value: {timeout_str:?}"))?;
         workflow.timeout_per_run_secs = Some(secs);
+    }
+
+    // Check workflow structural changes
+    let current_fingerprint = workflow.structural_fingerprint();
+    match &meta.phase_fingerprint {
+        None => {
+            // Old run.toml without fingerprint; skip check with advisory warning
+            eprintln!(
+                "⚠  Warning: run.toml has no phase fingerprint (created with older rings version). \
+                 Skipping structural change detection."
+            );
+        }
+        Some(saved_fingerprint) => {
+            if saved_fingerprint != &current_fingerprint {
+                // Detect type of structural change
+                if current_fingerprint.len() > saved_fingerprint.len() {
+                    eprintln!("Cannot resume: workflow has phases not present in the saved run.");
+                    return Ok(2);
+                } else if current_fingerprint.len() < saved_fingerprint.len() {
+                    eprintln!(
+                        "Cannot resume: saved run has phases removed from the current workflow."
+                    );
+                    return Ok(2);
+                } else if current_fingerprint != *saved_fingerprint {
+                    // Same length but different: must be reordered
+                    eprintln!("Cannot resume: phase order has changed since this run was created.");
+                    return Ok(2);
+                }
+            }
+        }
+    }
+
+    // Check for non-structural changes (runs_per_cycle change may require clamping)
+    // If runs_per_cycle of the last_completed_phase_index changed, clamp last_completed_iteration
+    let mut saved_state = saved_state;
+    if let Some(saved_fingerprint) = &meta.phase_fingerprint {
+        if saved_fingerprint == &current_fingerprint {
+            // Fingerprints match (no structural changes)
+            // Check if runs_per_cycle changed for the last_completed_phase_index
+            if (saved_state.last_completed_phase_index as usize) < workflow.phases.len() {
+                let current_runs_per_cycle =
+                    workflow.phases[saved_state.last_completed_phase_index].runs_per_cycle;
+                // If current runs_per_cycle is smaller than last_completed_iteration, clamp
+                // and emit warning
+                if saved_state.last_completed_iteration > current_runs_per_cycle {
+                    saved_state.last_completed_iteration = current_runs_per_cycle;
+                    eprintln!(
+                        "Workflow file has changed since this run was created. \
+                         Non-structural changes will take effect from the resume point."
+                    );
+                }
+            }
+        }
     }
 
     // Advisory check: no budget cap configured

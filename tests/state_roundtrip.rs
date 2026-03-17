@@ -41,6 +41,7 @@ fn run_meta_roundtrip() {
         started_at: "2026-03-15T14:30:00Z".to_string(),
         rings_version: "0.1.0".to_string(),
         status: "running".to_string(),
+        phase_fingerprint: None,
     };
 
     meta.write(&path).unwrap();

@@ -272,12 +272,12 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - [ ] Integration: `rings resume` with structurally changed workflow exits code 2
 
 **Steps:**
-- [ ] Implement `Workflow::structural_fingerprint` returning `Vec<String>`
-- [ ] Add `phase_fingerprint: Option<Vec<String>>` to `RunMeta` with `#[serde(default)]`
-- [ ] Write fingerprint to `run.toml` at run-start in `main.rs`
-- [ ] Implement fingerprint comparison in `resume_inner`; emit appropriate error or warning
-- [ ] Clamp `last_completed_iteration` to new `runs_per_cycle` when it changes
-- [ ] Write `tests/workflow_change_detection.rs`
+- [x] Implement `Workflow::structural_fingerprint` returning `Vec<String>`
+- [x] Add `phase_fingerprint: Option<Vec<String>>` to `RunMeta` with `#[serde(default)]`
+- [x] Write fingerprint to `run.toml` at run-start in `main.rs`
+- [x] Implement fingerprint comparison in `resume_inner`; emit appropriate error or warning
+- [x] Clamp `last_completed_iteration` to new `runs_per_cycle` when it changes
+- [x] Write `tests/workflow_change_detection.rs`
 
 ---
 

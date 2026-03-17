@@ -114,6 +114,11 @@ impl std::str::FromStr for Workflow {
 }
 
 impl Workflow {
+    /// Return the structural fingerprint: phase names in declaration order.
+    pub fn structural_fingerprint(&self) -> Vec<String> {
+        self.phases.iter().map(|p| p.name.clone()).collect()
+    }
+
     fn validate(file: WorkflowFile) -> Result<Self, WorkflowError> {
         if file.workflow.completion_signal.is_empty() {
             return Err(WorkflowError::EmptyCompletionSignal);

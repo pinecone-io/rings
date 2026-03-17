@@ -120,6 +120,8 @@ pub struct RunMeta {
     pub started_at: String,
     pub rings_version: String,
     pub status: String, // "running" | "completed" | "canceled" | "failed"
+    #[serde(default)]
+    pub phase_fingerprint: Option<Vec<String>>,
 }
 
 impl RunMeta {

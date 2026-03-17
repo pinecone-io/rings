@@ -376,6 +376,9 @@ pub fn run_workflow(
 
     let workflow_name = workflow_name_from_file(&config.workflow_file);
 
+    // Track which phases have been warned about unknown variables (once per phase)
+    let mut warned_phases: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     let mut schedule = match resume_from {
         None => RunSchedule::new(&workflow.phases, workflow.max_cycles),
         Some(ref r) => RunSchedule::resume_from_position(&workflow.phases, workflow.max_cycles, r),
@@ -444,6 +447,26 @@ pub fn run_workflow(
             (None, Some(file)) => std::fs::read_to_string(file)?,
             _ => unreachable!("workflow validation ensures one of these exists"),
         };
+
+        // Scan for unknown variables once per phase
+        if !warned_phases.contains(&run_spec.phase_name) {
+            warned_phases.insert(run_spec.phase_name.clone());
+            let unknown_vars =
+                crate::template::find_unknown_variables(&raw_prompt, crate::template::KNOWN_VARS);
+            for unknown_var in unknown_vars {
+                let timestamp =
+                    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                let event = serde_json::json!({
+                    "event": "advisory_warning",
+                    "run_id": config.run_id,
+                    "phase": run_spec.phase_name,
+                    "warning_type": "unknown_variable",
+                    "message": format!("Unknown template variable '{{{{{}}}}}' will appear literally in the prompt", unknown_var),
+                    "timestamp": timestamp,
+                });
+                crate::audit::append_event(&events_path, &event)?;
+            }
+        }
 
         let vars = TemplateVars {
             phase_name: run_spec.phase_name.clone(),

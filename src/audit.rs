@@ -74,6 +74,16 @@ pub struct BudgetCapEvent {
     pub timestamp: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct AdvisoryWarningEvent {
+    pub event: String,
+    pub run_id: String,
+    pub phase: String,
+    pub warning_type: String, // "unknown_variable" | "cost_spike" etc.
+    pub message: String,
+    pub timestamp: String,
+}
+
 /// Append one line to events.jsonl (creates file if absent).
 pub fn append_event(events_path: &Path, event: &serde_json::Value) -> Result<()> {
     let mut file = std::fs::OpenOptions::new()

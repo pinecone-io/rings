@@ -115,11 +115,11 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - [ ] Integration: workflow with unknown variable emits advisory_warning but execution proceeds
 
 **Steps:**
-- [ ] Define `KNOWN_VARS` constant
-- [ ] Implement sentinel pre-pass for `{{{{` escape in `render_prompt`
-- [ ] Implement `find_unknown_variables` with `lazy_static!` regex
-- [ ] Add startup scan in `engine.rs`, emit advisory_warning per unknown variable per phase
-- [ ] Write `tests/unknown_vars.rs`
+- [x] Define `KNOWN_VARS` constant
+- [x] Implement sentinel pre-pass for `{{{{` escape in `render_prompt`
+- [x] Implement `find_unknown_variables` with `lazy_static!` regex
+- [x] Add startup scan in `engine.rs`, emit advisory_warning per unknown variable per phase
+- [x] Write `tests/unknown_vars.rs`
 
 ---
 

@@ -92,6 +92,51 @@ impl BudgetTracker {
 
         Ok(tracker)
     }
+
+    /// Check if the cost spike is detected for a phase.
+    /// Returns `Some(multiplier)` if cost > 5× rolling average, else `None`.
+    /// Requires ≥3 entries in the rolling window; skips if all entries are 0.0.
+    /// The average is computed excluding the current (last) entry to avoid the spike
+    /// inflating the average itself.
+    pub fn check_spike(&self, phase: &str) -> Option<f64> {
+        let window = self.rolling_windows.get(phase)?;
+
+        // Need at least 3 entries
+        if window.len() < 3 {
+            return None;
+        }
+
+        // Get the most recent cost (last entry) - the potential spike
+        let current_cost = match window.back() {
+            Some(&cost) => cost,
+            None => return None,
+        };
+
+        // Calculate average of all entries EXCEPT the current one
+        let sum_without_current: f64 = window.iter().take(window.len() - 1).sum();
+        let avg = sum_without_current / (window.len() - 1) as f64;
+
+        // Skip if average is zero (avoid division issues and false positives)
+        if avg == 0.0 {
+            return None;
+        }
+
+        // Spike if current > 5× average (strict >)
+        if current_cost > 5.0 * avg {
+            return Some(current_cost / avg);
+        }
+
+        None
+    }
+
+    /// Update the rolling window for a phase with a new cost.
+    pub fn update_rolling_window(&mut self, phase: String, cost: f64) {
+        let window = self.rolling_windows.entry(phase).or_default();
+        if window.len() >= 5 {
+            window.pop_front();
+        }
+        window.push_back(cost);
+    }
 }
 
 /// Mutable state for the run_workflow loop.
@@ -288,6 +333,42 @@ fn signal_matches(output: &str, signal: &str, mode: &str) -> bool {
     }
 }
 
+/// Check if a cost spike is detected for a phase.
+/// Returns `Some(multiplier)` if cost > 5× rolling average, else `None`.
+/// Requires ≥3 entries in the rolling window; skips if all entries are 0.
+/// The average is computed excluding the current (last) entry to avoid the spike
+/// inflating the average itself.
+fn check_spike(rolling_windows: &HashMap<String, VecDeque<f64>>, phase: &str) -> Option<f64> {
+    let window = rolling_windows.get(phase)?;
+
+    // Need at least 3 entries total (to have 2+ for average after removing current)
+    if window.len() < 3 {
+        return None;
+    }
+
+    // Get the most recent cost (last entry) - the potential spike
+    let current_cost = match window.back() {
+        Some(&cost) => cost,
+        None => return None,
+    };
+
+    // Calculate average of all entries EXCEPT the current one
+    let sum_without_current: f64 = window.iter().take(window.len() - 1).sum();
+    let avg = sum_without_current / (window.len() - 1) as f64;
+
+    // Skip if average is zero (avoid false positives)
+    if avg == 0.0 {
+        return None;
+    }
+
+    // Spike if current > 5× average (strict >)
+    if current_cost > 5.0 * avg {
+        return Some(current_cost / avg);
+    }
+
+    None
+}
+
 /// Derive a short workflow name from a workflow file path (strips path and `.rings.toml` suffix).
 fn workflow_name_from_file(workflow_file: &str) -> String {
     let stem = std::path::Path::new(workflow_file)
@@ -372,6 +453,10 @@ pub fn run_workflow(
         std::collections::HashMap::new();
     let mut budget_warned_90_phase: std::collections::HashMap<String, bool> =
         std::collections::HashMap::new();
+
+    // Rolling windows for spike detection (per-phase, cap 5 entries)
+    let mut rolling_windows: std::collections::HashMap<String, std::collections::VecDeque<f64>> =
+        std::collections::HashMap::new();
     let mut parse_warnings = Vec::new();
 
     let workflow_name = workflow_name_from_file(&config.workflow_file);
@@ -396,6 +481,13 @@ pub fn run_workflow(
                             .entry(entry.phase.clone())
                             .and_modify(|c| *c += cost)
                             .or_insert(cost);
+
+                        // Update rolling window for spike detection
+                        let window = rolling_windows.entry(entry.phase).or_default();
+                        if window.len() >= 5 {
+                            window.pop_front();
+                        }
+                        window.push_back(cost);
                     }
                 }
             }
@@ -864,6 +956,33 @@ pub fn run_workflow(
             .entry(run_spec.phase_name.clone())
             .and_modify(|c| *c += cost.cost_usd.unwrap_or(0.0))
             .or_insert(cost.cost_usd.unwrap_or(0.0));
+
+        // Update rolling window for spike detection (only if cost is Some)
+        if let Some(cost_val) = cost.cost_usd {
+            let window = rolling_windows
+                .entry(run_spec.phase_name.clone())
+                .or_default();
+            if window.len() >= 5 {
+                window.pop_front();
+            }
+            window.push_back(cost_val);
+
+            // Check for cost spike
+            if let Some(multiplier) = check_spike(&rolling_windows, &run_spec.phase_name) {
+                let timestamp =
+                    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                let event = serde_json::json!({
+                    "event": "advisory_warning",
+                    "run_id": config.run_id,
+                    "phase": run_spec.phase_name,
+                    "warning_type": "cost_spike",
+                    "message": format!("Cost spike detected: ${:.2} is {:.1}× the rolling average", cost_val, multiplier),
+                    "multiplier": multiplier,
+                    "timestamp": timestamp,
+                });
+                crate::audit::append_event(&events_path, &event)?;
+            }
+        }
 
         // Check global budget cap
         if let Some(cap) = workflow.budget_cap_usd {

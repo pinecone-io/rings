@@ -175,23 +175,23 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - `BudgetTracker::reconstruct_from_costs(path: &Path, ...) -> Result<BudgetTracker>` uses `stream_cost_entries` (Task 1) in ONE pass to simultaneously populate `cumulative_cost`, `phase_costs`, AND `rolling_windows`. This replaces the existing resume cost-reconstruction loop; there must be no second separate pass over `costs.jsonl`.
 
 **Tests:**
-- [ ] No warning with fewer than 3 entries in window
-- [ ] No warning at exactly 5× average (boundary: strict `>`)
-- [ ] Warning when cost > 5× rolling average; message includes correct multiplier
-- [ ] Rolling window drops oldest at cap: push 7 entries, assert `len() == 5`
-- [ ] Zero rolling average: no divide-by-zero, no warning
-- [ ] `None`-cost entries skipped — do not count toward minimum, do not lower average
-- [ ] Mix of `None` and `Some` entries: average over `Some` values only
-- [ ] Integration: engine emits `advisory_warning` JSONL event on spike
-- [ ] On resume, rolling window pre-populated from `costs.jsonl` in single pass
+- [x] No warning with fewer than 3 entries in window
+- [x] No warning at exactly 5× average (boundary: strict `>`)
+- [x] Warning when cost > 5× rolling average; message includes correct multiplier
+- [x] Rolling window drops oldest at cap: push 7 entries, assert `len() == 5`
+- [x] Zero rolling average: no divide-by-zero, no warning
+- [x] `None`-cost entries skipped — do not count toward minimum, do not lower average
+- [x] Mix of `None` and `Some` entries: average over `Some` values only
+- [x] Integration: engine emits `advisory_warning` JSONL event on spike
+- [x] On resume, rolling window pre-populated from `costs.jsonl` in single pass
 
 **Steps:**
-- [ ] Add `rolling_windows` to `BudgetTracker` with per-phase `VecDeque<f64>` (cap 5)
-- [ ] Implement `check_spike` method with `None`-skip logic and exact boundary check
-- [ ] Implement `reconstruct_from_costs` single-pass method using `stream_cost_entries`
-- [ ] Hook spike check into engine loop after each completed run
-- [ ] Emit `advisory_warning` JSONL event on spike
-- [ ] Write `tests/cost_spike.rs`
+- [x] Add `rolling_windows` to `BudgetTracker` with per-phase `VecDeque<f64>` (cap 5)
+- [x] Implement `check_spike` method with `None`-skip logic and exact boundary check
+- [x] Implement `reconstruct_from_costs` single-pass method using `stream_cost_entries`
+- [x] Hook spike check into engine loop after each completed run
+- [x] Emit `advisory_warning` JSONL event on spike
+- [x] Write `tests/cost_spike.rs`
 
 ---
 

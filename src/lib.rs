@@ -7,6 +7,7 @@ pub mod display;
 pub mod dry_run;
 pub mod duration;
 pub mod engine;
+pub mod error_classify;
 pub mod executor;
 pub mod list;
 #[cfg(unix)]

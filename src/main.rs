@@ -337,19 +337,45 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
             );
         }
         3 => {
-            // Executor error: read state.json to determine which run failed and get log path
+            // Executor error: dispatch based on failure_reason
             let state_path = run_dir.join("state.json");
             if let Ok(state) = state::StateFile::read(&state_path) {
                 let failed_run_number = state.last_completed_run + 1;
                 let log_path = run_dir
                     .join("runs")
                     .join(format!("{:03}.log", failed_run_number));
-                display::print_executor_error(
-                    failed_run_number,
-                    3,
-                    &run_id,
-                    &log_path.to_string_lossy(),
-                );
+                let phase = workflow.phases.get(state.last_completed_phase_index);
+                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+
+                match result.failure_reason {
+                    Some(state::FailureReason::Quota) => {
+                        display::print_quota_error(
+                            failed_run_number,
+                            state.last_completed_cycle,
+                            phase_name,
+                            &run_id,
+                            state.cumulative_cost_usd,
+                            &log_path.to_string_lossy(),
+                        );
+                    }
+                    Some(state::FailureReason::Auth) => {
+                        display::print_auth_error(
+                            failed_run_number,
+                            state.last_completed_cycle,
+                            phase_name,
+                            &run_id,
+                            &log_path.to_string_lossy(),
+                        );
+                    }
+                    _ => {
+                        display::print_executor_error(
+                            failed_run_number,
+                            3,
+                            &run_id,
+                            &log_path.to_string_lossy(),
+                        );
+                    }
+                }
             }
         }
         4 => {
@@ -644,19 +670,45 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
             );
         }
         3 => {
-            // Executor error: read state.json to determine which run failed and get log path
+            // Executor error: dispatch based on failure_reason
             let state_path = run_dir.join("state.json");
             if let Ok(state) = state::StateFile::read(&state_path) {
                 let failed_run_number = state.last_completed_run + 1;
                 let log_path = run_dir
                     .join("runs")
                     .join(format!("{:03}.log", failed_run_number));
-                display::print_executor_error(
-                    failed_run_number,
-                    3,
-                    &new_run_id,
-                    &log_path.to_string_lossy(),
-                );
+                let phase = workflow.phases.get(state.last_completed_phase_index);
+                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+
+                match result.failure_reason {
+                    Some(state::FailureReason::Quota) => {
+                        display::print_quota_error(
+                            failed_run_number,
+                            state.last_completed_cycle,
+                            phase_name,
+                            &new_run_id,
+                            state.cumulative_cost_usd,
+                            &log_path.to_string_lossy(),
+                        );
+                    }
+                    Some(state::FailureReason::Auth) => {
+                        display::print_auth_error(
+                            failed_run_number,
+                            state.last_completed_cycle,
+                            phase_name,
+                            &new_run_id,
+                            &log_path.to_string_lossy(),
+                        );
+                    }
+                    _ => {
+                        display::print_executor_error(
+                            failed_run_number,
+                            3,
+                            &new_run_id,
+                            &log_path.to_string_lossy(),
+                        );
+                    }
+                }
             }
         }
         4 => {

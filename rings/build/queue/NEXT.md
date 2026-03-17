@@ -151,11 +151,11 @@ Add `print_quota_error(run_number: u32, cycle: u32, phase_name: &str, run_id: &s
 - [ ] Security: new CLI flags (`--quota-backoff`, `--quota-backoff-delay`, `--quota-backoff-max-retries`, `--parent-run`) do not appear in executor command arguments
 
 **Steps:**
-- [ ] Create `src/error_classify.rs` with `classify()` pure function
-- [ ] Wire `classify(output.combined, &compiled_profile)` into engine executor-error path
-- [ ] Add `print_quota_error` / `print_auth_error` to `display.rs` per spec templates
-- [ ] Update `main.rs` to dispatch display function based on `EngineResult.failure_reason`
-- [ ] Expose `error_classify` in `src/lib.rs`
+- [x] Create `src/error_classify.rs` with `classify()` pure function
+- [x] Wire `classify(output.combined, &compiled_profile)` into engine executor-error path
+- [x] Add `print_quota_error` / `print_auth_error` to `display.rs` per spec templates
+- [x] Update `main.rs` to dispatch display function based on `EngineResult.failure_reason`
+- [x] Expose `error_classify` in `src/lib.rs`
 
 ---
 

@@ -905,6 +905,30 @@ pub fn run_workflow(
         // failing run will be retried on resume.
         let resume_commands = extract_resume_commands(&response_text);
         if output.exit_code != 0 {
+            // Classify the error based on output patterns
+            let failure_reason = {
+                let output_str = &output.combined;
+                let profile = &workflow.compiled_error_profile;
+                // Check quota patterns first (first-match-wins)
+                let mut reason = FailureReason::Unknown;
+                for regex in &profile.quota_regexes {
+                    if regex.is_match(output_str) {
+                        reason = FailureReason::Quota;
+                        break;
+                    }
+                }
+                // If no quota match, check auth patterns
+                if matches!(reason, FailureReason::Unknown) {
+                    for regex in &profile.auth_regexes {
+                        if regex.is_match(output_str) {
+                            reason = FailureReason::Auth;
+                            break;
+                        }
+                    }
+                }
+                reason
+            };
+
             // Print final cycle cost before returning
             if ctx.current_display_cycle > 0 {
                 crate::display::print_cycle_cost(cycle_cost);
@@ -914,7 +938,7 @@ pub fn run_workflow(
                 &ctx,
                 config,
                 &run_spec,
-                ExitReason::ExecutorError(FailureReason::Unknown),
+                ExitReason::ExecutorError(failure_reason),
             );
             state.claude_resume_commands = resume_commands;
             state.write_atomic(&state_path)?;
@@ -942,7 +966,7 @@ pub fn run_workflow(
                 total_cost_usd: ctx.budget.cumulative_cost,
                 total_runs: ctx.total_runs,
                 parse_warnings: ctx.parse_warnings,
-                failure_reason: None,
+                failure_reason: Some(failure_reason),
             });
         }
 

@@ -442,3 +442,150 @@ fn line_mode_completion_requires_signal_on_own_line() {
     assert_eq!(result.exit_code, 0, "should complete on second run");
     assert_eq!(result.total_runs, 2);
 }
+
+#[test]
+fn engine_classifies_quota_error() {
+    use regex::Regex;
+    let dir = tempdir().unwrap();
+    let mut workflow = make_workflow("RINGS_DONE", &[("builder", 1)], 10);
+
+    // Set up error profile with quota patterns
+    workflow.compiled_error_profile = CompiledErrorProfile {
+        quota_regexes: vec![
+            Regex::new("(?i)usage limit reached").unwrap(),
+            Regex::new("(?i)quota exceeded").unwrap(),
+        ],
+        auth_regexes: vec![],
+    };
+
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "Error: quota exceeded on your account".to_string(),
+        exit_code: 1,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-quota-error".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 3);
+    assert_eq!(
+        result.failure_reason,
+        Some(state::FailureReason::Quota),
+        "should classify as quota error"
+    );
+}
+
+#[test]
+fn engine_classifies_auth_error() {
+    use regex::Regex;
+    let dir = tempdir().unwrap();
+    let mut workflow = make_workflow("RINGS_DONE", &[("builder", 1)], 10);
+
+    // Set up error profile with auth patterns
+    workflow.compiled_error_profile = CompiledErrorProfile {
+        quota_regexes: vec![],
+        auth_regexes: vec![
+            Regex::new("(?i)unauthorized").unwrap(),
+            Regex::new("(?i)invalid api key").unwrap(),
+        ],
+    };
+
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "Error: unauthorized - invalid API key".to_string(),
+        exit_code: 1,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-auth-error".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 3);
+    assert_eq!(
+        result.failure_reason,
+        Some(state::FailureReason::Auth),
+        "should classify as auth error"
+    );
+}
+
+#[test]
+fn engine_classifies_unknown_error() {
+    use regex::Regex;
+    let dir = tempdir().unwrap();
+    let mut workflow = make_workflow("RINGS_DONE", &[("builder", 1)], 10);
+
+    // Set up error profile with specific patterns
+    workflow.compiled_error_profile = CompiledErrorProfile {
+        quota_regexes: vec![Regex::new("(?i)quota").unwrap()],
+        auth_regexes: vec![Regex::new("(?i)auth").unwrap()],
+    };
+
+    // Output that doesn't match any patterns
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "Error: something went wrong".to_string(),
+        exit_code: 1,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-unknown-error".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 3);
+    assert_eq!(
+        result.failure_reason,
+        Some(state::FailureReason::Unknown),
+        "should classify as unknown error"
+    );
+}
+
+#[test]
+fn engine_saves_failure_reason_in_state() {
+    use regex::Regex;
+    let dir = tempdir().unwrap();
+    let mut workflow = make_workflow("RINGS_DONE", &[("builder", 1)], 10);
+
+    // Set up error profile with quota patterns
+    workflow.compiled_error_profile = CompiledErrorProfile {
+        quota_regexes: vec![Regex::new("(?i)quota exceeded").unwrap()],
+        auth_regexes: vec![],
+    };
+
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "quota exceeded".to_string(),
+        exit_code: 1,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-save-reason".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 3);
+
+    // Verify failure_reason is saved in state.json
+    let state_path = dir.path().join("state.json");
+    let state = state::StateFile::read(&state_path).unwrap();
+    assert_eq!(
+        state.failure_reason,
+        Some(state::FailureReason::Quota),
+        "state.json should contain failure_reason"
+    );
+}

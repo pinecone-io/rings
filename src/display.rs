@@ -79,11 +79,54 @@ pub fn print_max_cycles(max_cycles: u32, total_cost_usd: f64, total_runs: u32, r
     eprintln!("   To resume: rings resume {run_id}");
 }
 
-/// Print executor error summary.
+/// Print quota error summary.
+pub fn print_quota_error(
+    run_number: u32,
+    cycle: u32,
+    phase_name: &str,
+    run_id: &str,
+    cumulative_cost: f64,
+    log_path: &str,
+) {
+    eprintln!("✗  Executor hit a usage limit on run {run_number} (cycle {cycle}, {phase_name}).");
+    eprintln!();
+    eprintln!("   This is likely a quota or rate limit. No further runs will be attempted.");
+    eprintln!();
+    eprintln!("   Progress saved. To resume after your quota resets:");
+    eprintln!("     rings resume {run_id}");
+    eprintln!();
+    eprintln!("   Cost so far: ${cumulative_cost:.3}");
+    eprintln!("   Audit log:   {log_path}");
+}
+
+/// Print authentication error summary.
+pub fn print_auth_error(
+    run_number: u32,
+    cycle: u32,
+    phase_name: &str,
+    run_id: &str,
+    log_path: &str,
+) {
+    eprintln!("✗  Executor encountered an authentication error on run {run_number} (cycle {cycle}, {phase_name}).");
+    eprintln!();
+    eprintln!("   This is likely an invalid or expired API key / session.");
+    eprintln!("   This error is not recoverable by waiting — fix credentials before resuming.");
+    eprintln!();
+    eprintln!("   To fix: verify authentication for your executor, then:");
+    eprintln!("     rings resume {run_id}");
+    eprintln!();
+    eprintln!("   Audit log: {log_path}");
+}
+
+/// Print executor error summary (unknown error class).
 pub fn print_executor_error(run_number: u32, exit_code: i32, run_id: &str, log_path: &str) {
     eprintln!("✗  Executor exited with code {exit_code} on run {run_number}.");
-    eprintln!("   State saved. To resume: rings resume {run_id}");
-    eprintln!("   Log: {log_path}");
+    eprintln!("   Cause unknown.");
+    eprintln!();
+    eprintln!("   Progress saved. If the error is transient, you may resume:");
+    eprintln!("     rings resume {run_id}");
+    eprintln!();
+    eprintln!("   Full output: {log_path}");
 }
 
 /// Print budget cap reached message.

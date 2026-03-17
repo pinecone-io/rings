@@ -86,8 +86,9 @@ sufficient. You must actually build the functionality described by the task.
 
 Keep README.md up to date with current instructions as user-facing features are added.
 
-Commit your changes following the conventional commit rules in `CLAUDE.md`. Commit
-directly to `main`.
+Commit your changes following the conventional commit rules in `CLAUDE.md`. 
+
+Commit directly to `main` and push.
 
 Print exactly the following (no code fences, no extra text after it):
 

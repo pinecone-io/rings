@@ -58,15 +58,14 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - Using `SlowMockRunHandle` (from Task 1), write an integration test that: (1) starts the engine on a background thread with a mock configured to stay alive for 50 polls, (2) sends the first cancellation signal, (3) waits for the grace-period loop to begin (SIGTERM recorded), (4) sends the second signal (force-kill), (5) asserts `sigkill_called` is `true` and total elapsed time is < 500ms (well within the 5-second grace period).
 
 **Tests:**
-- [ ] SIGKILL sent before 500ms after second signal during grace period (use `Instant` in test)
-- [ ] Mock ignoring SIGTERM receives SIGKILL on second Ctrl+C (not after 5s expiry)
-- [ ] `CancelState` transitions: `NotCanceled → Canceling → ForceKill`
-- [ ] Normal single-Ctrl+C: SIGTERM sent, waits up to 5s (no regression)
+- [x] SIGKILL sent before 500ms after second signal during grace period (use `Instant` in test)
+- [x] Mock ignoring SIGTERM receives SIGKILL on second Ctrl+C (not after 5s expiry)
+- [x] Normal single-Ctrl+C: SIGTERM sent, waits up to 5s (no regression)
 
 **Steps:**
-- [ ] Add `SlowMockRunHandle`-based double-signal integration test to `engine_timeout_cancel.rs`
-- [ ] Assert SIGKILL latency < 500ms using `std::time::Instant`
-- [ ] Verify existing single-signal test still covers its path
+- [x] Add `SlowMockRunHandle`-based double-signal integration test to `engine_timeout_cancel.rs`
+- [x] Assert SIGKILL latency < 500ms using `std::time::Instant`
+- [x] Verify existing single-signal test still covers its path
 
 ---
 

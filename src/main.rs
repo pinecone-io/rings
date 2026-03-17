@@ -2,6 +2,7 @@
 compile_error!("rings requires a Unix platform");
 
 pub mod audit;
+pub mod backoff;
 pub mod cancel;
 pub mod cli;
 pub mod completion;
@@ -99,6 +100,17 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         let secs = duration::parse_duration_secs(timeout_str)
             .with_context(|| format!("invalid --timeout-per-run value: {timeout_str:?}"))?;
         workflow.timeout_per_run_secs = Some(secs);
+    }
+
+    // Apply quota backoff CLI overrides
+    if args.quota_backoff {
+        workflow.quota_backoff = true;
+    }
+    if let Some(delay) = args.quota_backoff_delay {
+        workflow.quota_backoff_delay = delay;
+    }
+    if let Some(max_retries) = args.quota_backoff_max_retries {
+        workflow.quota_backoff_max_retries = max_retries;
     }
 
     // Handle dry-run mode

@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod backoff;
 pub mod cancel;
 pub mod cli;
 pub mod completion;

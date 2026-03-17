@@ -190,11 +190,11 @@ Add `--quota-backoff`, `--quota-backoff-delay <SECS>`, `--quota-backoff-max-retr
 - [ ] Integration: `quota_backoff = false` (default) exits immediately on first quota error
 
 **Steps:**
-- [ ] Create `src/backoff.rs` with `QuotaBackoff` state machine
-- [ ] Extend `write_run_log` to accept `retry_count: Option<u32>`
-- [ ] Add backoff flags to `RunArgs` in `src/cli.rs`
-- [ ] Implement backoff retry loop in engine executor-error path
-- [ ] Expose `backoff` in `src/lib.rs`
+- [x] Create `src/backoff.rs` with `QuotaBackoff` state machine
+- [x] Extend `write_run_log` to accept `retry_count: Option<u32>`
+- [x] Add backoff flags to `RunArgs` in `src/cli.rs`
+- [x] Implement backoff retry loop in engine executor-error path
+- [x] Expose `backoff` in `src/lib.rs`
 
 ---
 

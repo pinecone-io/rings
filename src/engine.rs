@@ -2,6 +2,7 @@ use crate::audit::{
     append_cost_entry, append_event, extract_resume_commands, write_run_log, BudgetCapEvent,
     BudgetWarningEvent, CostEntry,
 };
+use crate::backoff::QuotaBackoff;
 use crate::cancel::CancelState;
 use crate::completion::{output_contains_signal, output_line_contains_signal};
 use crate::cost::parse_cost_from_output;
@@ -626,176 +627,246 @@ pub fn run_workflow(
             .and_then(|d| d.to_secs().ok())
             .or(workflow.timeout_per_run_secs);
 
-        // Spawn the subprocess and implement wait loop with timeout/cancellation.
-        let run_start = std::time::Instant::now();
-        let mut handle = executor.spawn(&invocation, config.verbose)?;
-        let timeout_deadline =
-            timeout_secs.map(|secs| run_start + std::time::Duration::from_secs(secs));
+        // Initialize quota backoff state
+        let mut quota_backoff = QuotaBackoff::new(
+            workflow.quota_backoff,
+            workflow.quota_backoff_delay,
+            workflow.quota_backoff_max_retries,
+        );
 
+        // Retry loop for quota backoff
         let mut output = crate::executor::ExecutorOutput {
             combined: String::new(),
             exit_code: -1,
         };
         let mut timeout_occurred = false;
         let mut cancel_occurred = false;
+        let run_start = std::time::Instant::now();
 
-        loop {
-            // Check ForceKill first (highest priority)
-            if let Some(ref cancel_state) = cancel {
-                if cancel_state.is_force_kill() {
-                    let _ = handle.send_sigkill();
-                    // Wait briefly for output collection
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    // Try to get the output, fallback to partial if process doesn't exit
-                    output = match handle.try_wait() {
-                        Ok(Some(out)) => out,
-                        _ => match handle.partial_output() {
-                            Ok(partial) => crate::executor::ExecutorOutput {
-                                combined: partial,
-                                exit_code: 137,
-                            },
-                            Err(_) => crate::executor::ExecutorOutput {
-                                combined: String::new(),
-                                exit_code: 137,
-                            },
-                        },
-                    };
-                    cancel_occurred = true;
-                    break;
-                }
-            }
+        'retry_loop: loop {
+            // Spawn the subprocess and implement wait loop with timeout/cancellation.
+            let mut handle = executor.spawn(&invocation, config.verbose)?;
+            let timeout_deadline =
+                timeout_secs.map(|secs| run_start + std::time::Duration::from_secs(secs));
 
-            // Check Canceling (second priority)
-            if let Some(ref cancel_state) = cancel {
-                if cancel_state.is_canceling() && !cancel_occurred {
-                    let _ = handle.send_sigterm();
-                    // Save state immediately after SIGTERM
-                    let mut state =
-                        make_state_snapshot(&ctx, config, &run_spec, ExitReason::Canceled);
-                    state.claude_resume_commands = vec![];
-                    let _ = state.write_atomic(&state_path);
-
-                    // Wait up to 5s for graceful shutdown
-                    let grace_deadline =
-                        std::time::Instant::now() + std::time::Duration::from_secs(5);
-                    let mut exited_gracefully = false;
-                    loop {
-                        // Check force_kill again at the start of each iteration (F-053 fix)
-                        if cancel_state.is_force_kill() {
-                            let _ = handle.send_sigkill();
-                            break;
-                        }
-
-                        match handle.try_wait() {
-                            Ok(Some(out)) => {
-                                output = out;
-                                exited_gracefully = true;
-                                break;
-                            }
-                            Ok(None) => {
-                                if std::time::Instant::now() >= grace_deadline {
-                                    // Grace period expired, SIGKILL
-                                    let _ = handle.send_sigkill();
-                                    break;
-                                }
-                                std::thread::sleep(std::time::Duration::from_millis(100));
-                            }
-                            Err(_) => break,
-                        }
-                    }
-
-                    // If didn't exit gracefully, collect partial output
-                    if !exited_gracefully {
-                        output = match handle.partial_output() {
-                            Ok(partial) => crate::executor::ExecutorOutput {
-                                combined: partial,
-                                exit_code: 130,
-                            },
-                            Err(_) => crate::executor::ExecutorOutput {
-                                combined: String::new(),
-                                exit_code: 130,
+            loop {
+                // Check ForceKill first (highest priority)
+                if let Some(ref cancel_state) = cancel {
+                    if cancel_state.is_force_kill() {
+                        let _ = handle.send_sigkill();
+                        // Wait briefly for output collection
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        // Try to get the output, fallback to partial if process doesn't exit
+                        output = match handle.try_wait() {
+                            Ok(Some(out)) => out,
+                            _ => match handle.partial_output() {
+                                Ok(partial) => crate::executor::ExecutorOutput {
+                                    combined: partial,
+                                    exit_code: 137,
+                                },
+                                Err(_) => crate::executor::ExecutorOutput {
+                                    combined: String::new(),
+                                    exit_code: 137,
+                                },
                             },
                         };
+                        cancel_occurred = true;
+                        break;
                     }
-                    cancel_occurred = true;
-                    break;
                 }
-            }
 
-            // Check timeout (third priority)
-            if let Some(deadline) = timeout_deadline {
-                if std::time::Instant::now() >= deadline {
-                    let _ = handle.send_sigterm();
-                    // Save state immediately after SIGTERM
-                    let mut state =
-                        make_state_snapshot(&ctx, config, &run_spec, ExitReason::TimedOut);
-                    state.claude_resume_commands = vec![];
-                    let _ = state.write_atomic(&state_path);
+                // Check Canceling (second priority)
+                if let Some(ref cancel_state) = cancel {
+                    if cancel_state.is_canceling() && !cancel_occurred {
+                        let _ = handle.send_sigterm();
+                        // Save state immediately after SIGTERM
+                        let mut state =
+                            make_state_snapshot(&ctx, config, &run_spec, ExitReason::Canceled);
+                        state.claude_resume_commands = vec![];
+                        let _ = state.write_atomic(&state_path);
 
-                    // Wait up to 5s for graceful shutdown
-                    let grace_deadline =
-                        std::time::Instant::now() + std::time::Duration::from_secs(5);
-                    let mut exited_gracefully = false;
-                    loop {
-                        // Check force_kill again at the start of each iteration (F-053 fix)
-                        if let Some(ref cancel_state) = cancel {
+                        // Wait up to 5s for graceful shutdown
+                        let grace_deadline =
+                            std::time::Instant::now() + std::time::Duration::from_secs(5);
+                        let mut exited_gracefully = false;
+                        loop {
+                            // Check force_kill again at the start of each iteration (F-053 fix)
                             if cancel_state.is_force_kill() {
                                 let _ = handle.send_sigkill();
                                 break;
                             }
+
+                            match handle.try_wait() {
+                                Ok(Some(out)) => {
+                                    output = out;
+                                    exited_gracefully = true;
+                                    break;
+                                }
+                                Ok(None) => {
+                                    if std::time::Instant::now() >= grace_deadline {
+                                        // Grace period expired, SIGKILL
+                                        let _ = handle.send_sigkill();
+                                        break;
+                                    }
+                                    std::thread::sleep(std::time::Duration::from_millis(100));
+                                }
+                                Err(_) => break,
+                            }
                         }
 
-                        match handle.try_wait() {
-                            Ok(Some(out)) => {
-                                output = out;
-                                exited_gracefully = true;
-                                break;
-                            }
-                            Ok(None) => {
-                                if std::time::Instant::now() >= grace_deadline {
-                                    // Grace period expired, SIGKILL
+                        // If didn't exit gracefully, collect partial output
+                        if !exited_gracefully {
+                            output = match handle.partial_output() {
+                                Ok(partial) => crate::executor::ExecutorOutput {
+                                    combined: partial,
+                                    exit_code: 130,
+                                },
+                                Err(_) => crate::executor::ExecutorOutput {
+                                    combined: String::new(),
+                                    exit_code: 130,
+                                },
+                            };
+                        }
+                        cancel_occurred = true;
+                        break;
+                    }
+                }
+
+                // Check timeout (third priority)
+                if let Some(deadline) = timeout_deadline {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = handle.send_sigterm();
+                        // Save state immediately after SIGTERM
+                        let mut state =
+                            make_state_snapshot(&ctx, config, &run_spec, ExitReason::TimedOut);
+                        state.claude_resume_commands = vec![];
+                        let _ = state.write_atomic(&state_path);
+
+                        // Wait up to 5s for graceful shutdown
+                        let grace_deadline =
+                            std::time::Instant::now() + std::time::Duration::from_secs(5);
+                        let mut exited_gracefully = false;
+                        loop {
+                            // Check force_kill again at the start of each iteration (F-053 fix)
+                            if let Some(ref cancel_state) = cancel {
+                                if cancel_state.is_force_kill() {
                                     let _ = handle.send_sigkill();
                                     break;
                                 }
-                                std::thread::sleep(std::time::Duration::from_millis(100));
                             }
-                            Err(_) => break,
+
+                            match handle.try_wait() {
+                                Ok(Some(out)) => {
+                                    output = out;
+                                    exited_gracefully = true;
+                                    break;
+                                }
+                                Ok(None) => {
+                                    if std::time::Instant::now() >= grace_deadline {
+                                        // Grace period expired, SIGKILL
+                                        let _ = handle.send_sigkill();
+                                        break;
+                                    }
+                                    std::thread::sleep(std::time::Duration::from_millis(100));
+                                }
+                                Err(_) => break,
+                            }
+                        }
+
+                        // If didn't exit gracefully, collect partial output with timeout exit code
+                        if !exited_gracefully {
+                            output = match handle.partial_output() {
+                                Ok(partial) => crate::executor::ExecutorOutput {
+                                    combined: partial,
+                                    exit_code: 2,
+                                },
+                                Err(_) => crate::executor::ExecutorOutput {
+                                    combined: String::new(),
+                                    exit_code: 2,
+                                },
+                            };
+                        }
+                        timeout_occurred = true;
+                        break;
+                    }
+                }
+
+                // Try to wait for normal completion
+                match handle.try_wait() {
+                    Ok(Some(out)) => {
+                        output = out;
+                        break;
+                    }
+                    Ok(None) => {
+                        // Process still running, poll again in 100ms
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err(e) => {
+                        // Error waiting for process
+                        return Err(e);
+                    }
+                }
+            }
+
+            // Check if we should retry due to quota error
+            if !timeout_occurred && !cancel_occurred && output.exit_code != 0 {
+                // Classify the error
+                let failure_reason = {
+                    let output_str = &output.combined;
+                    let profile = &workflow.compiled_error_profile;
+                    // Check quota patterns first (first-match-wins)
+                    let mut reason = FailureReason::Unknown;
+                    for regex in &profile.quota_regexes {
+                        if regex.is_match(output_str) {
+                            reason = FailureReason::Quota;
+                            break;
                         }
                     }
-
-                    // If didn't exit gracefully, collect partial output with timeout exit code
-                    if !exited_gracefully {
-                        output = match handle.partial_output() {
-                            Ok(partial) => crate::executor::ExecutorOutput {
-                                combined: partial,
-                                exit_code: 2,
-                            },
-                            Err(_) => crate::executor::ExecutorOutput {
-                                combined: String::new(),
-                                exit_code: 2,
-                            },
-                        };
+                    // If no quota match, check auth patterns
+                    if matches!(reason, FailureReason::Unknown) {
+                        for regex in &profile.auth_regexes {
+                            if regex.is_match(output_str) {
+                                reason = FailureReason::Auth;
+                                break;
+                            }
+                        }
                     }
-                    timeout_occurred = true;
-                    break;
+                    reason
+                };
+
+                // If quota error and should retry, write log with retry count and retry
+                if matches!(failure_reason, FailureReason::Quota) && quota_backoff.should_retry() {
+                    // Write run log with retry count
+                    write_run_log(
+                        &runs_dir,
+                        run_spec.global_run_number,
+                        &output.combined,
+                        Some(quota_backoff.current_retries + 1),
+                    )?;
+
+                    // Record the retry
+                    quota_backoff.record_retry();
+
+                    // Wait before retrying (interruptible)
+                    let sleep_result = interruptible_sleep(
+                        quota_backoff.delay_duration(),
+                        cancel.as_ref(),
+                        |_| {},
+                    );
+
+                    // If cancellation occurred during wait, stop retrying
+                    if sleep_result == SleepResult::Canceled {
+                        cancel_occurred = true;
+                        break 'retry_loop;
+                    }
+
+                    // Continue the retry loop
+                    continue 'retry_loop;
                 }
             }
 
-            // Try to wait for normal completion
-            match handle.try_wait() {
-                Ok(Some(out)) => {
-                    output = out;
-                    break;
-                }
-                Ok(None) => {
-                    // Process still running, poll again in 100ms
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-                Err(e) => {
-                    // Error waiting for process
-                    return Err(e);
-                }
-            }
+            // If we reach here, we're not retrying, so break out of the retry loop
+            break 'retry_loop;
         }
 
         let elapsed_secs = run_start.elapsed().as_secs();
@@ -830,8 +901,13 @@ pub fn run_workflow(
         // Accumulate cycle cost
         cycle_cost += cost.cost_usd.unwrap_or(0.0);
 
-        // Write run log
-        write_run_log(&runs_dir, run_spec.global_run_number, &output.combined)?;
+        // Write run log (None = final attempt, not a retry)
+        write_run_log(
+            &runs_dir,
+            run_spec.global_run_number,
+            &output.combined,
+            None,
+        )?;
 
         // Handle timeout
         if timeout_occurred {

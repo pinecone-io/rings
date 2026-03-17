@@ -126,10 +126,20 @@ pub fn append_event(events_path: &Path, event: &serde_json::Value) -> Result<()>
 }
 
 /// Write the full raw output of one run to its log file (e.g. runs/001.log).
-pub fn write_run_log(runs_dir: &Path, run_number: u32, output: &str) -> Result<()> {
+/// When `retry_count` is None, writes to `{run_number:03}.log`.
+/// When `retry_count` is Some(n), writes to `{run_number:03}-retry-{n}.log`.
+pub fn write_run_log(
+    runs_dir: &Path,
+    run_number: u32,
+    output: &str,
+    retry_count: Option<u32>,
+) -> Result<()> {
     std::fs::create_dir_all(runs_dir)
         .with_context(|| format!("Failed to create runs dir: {}", runs_dir.display()))?;
-    let filename = format!("{run_number:03}.log");
+    let filename = match retry_count {
+        None => format!("{run_number:03}.log"),
+        Some(n) => format!("{run_number:03}-retry-{n}.log"),
+    };
     let path = runs_dir.join(filename);
     std::fs::write(&path, output)
         .with_context(|| format!("Failed to write run log: {}", path.display()))

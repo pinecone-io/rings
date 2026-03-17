@@ -72,7 +72,8 @@ impl ContextLock {
             run_id: run_id.to_string(),
             pid: std::process::id(),
         };
-        let lock_json = serde_json::to_string(&lock_data).unwrap();
+        let lock_json = serde_json::to_string(&lock_data)
+            .map_err(|e| LockError::Io(std::io::Error::other(e)))?;
 
         if force {
             // Force overwrite

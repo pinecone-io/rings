@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "testing")]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 pub struct Invocation {
     pub prompt: String,
@@ -359,6 +359,52 @@ impl RunHandle for MockRunHandle {
             std::thread::sleep(std::time::Duration::from_millis(self.wait_delay_ms));
         }
         Ok(Some(self.output.clone()))
+    }
+
+    fn pid(&self) -> u32 {
+        0
+    }
+
+    fn send_sigterm(&self) -> Result<()> {
+        self.sigterm_called.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn send_sigkill(&self) -> Result<()> {
+        self.sigkill_called.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn partial_output(&self) -> Result<String> {
+        Ok(self.output.combined.clone())
+    }
+}
+
+/// Mock handle that returns None for N calls to try_wait, then returns the output.
+/// Used for testing cancellation and timeout grace periods.
+#[cfg(feature = "testing")]
+pub struct SlowMockRunHandle {
+    pub output: ExecutorOutput,
+    pub try_wait_returns_none_count: Arc<AtomicU32>,
+    pub sigterm_called: Arc<AtomicBool>,
+    pub sigkill_called: Arc<AtomicBool>,
+}
+
+#[cfg(feature = "testing")]
+impl RunHandle for SlowMockRunHandle {
+    fn wait(&mut self) -> Result<ExecutorOutput> {
+        Ok(self.output.clone())
+    }
+
+    fn try_wait(&mut self) -> Result<Option<ExecutorOutput>> {
+        let count = self.try_wait_returns_none_count.load(Ordering::SeqCst);
+        if count > 0 {
+            self.try_wait_returns_none_count
+                .store(count - 1, Ordering::SeqCst);
+            Ok(None)
+        } else {
+            Ok(Some(self.output.clone()))
+        }
     }
 
     fn pid(&self) -> u32 {

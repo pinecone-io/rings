@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static TEMP_FILE_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateFile {
@@ -30,11 +33,16 @@ impl StateFile {
 
     /// Atomic write: write to a temp file then rename into place.
     pub fn write_atomic(&self, path: &Path) -> Result<()> {
-        let tmp_path = path.with_extension("tmp");
+        let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = path.with_extension(format!("{}.{}.tmp", std::process::id(), counter));
         let content = serde_json::to_string_pretty(self).context("Failed to serialize state")?;
         std::fs::write(&tmp_path, &content)
             .with_context(|| format!("Failed to write temp state file: {}", tmp_path.display()))?;
         std::fs::rename(&tmp_path, path)
+            .inspect_err(|_| {
+                // Delete temp file on rename failure to avoid orphans
+                let _ = std::fs::remove_file(&tmp_path);
+            })
             .with_context(|| format!("Failed to rename state file into place: {}", path.display()))
     }
 }
@@ -58,11 +66,16 @@ impl RunMeta {
 
     /// Atomic write: write to a temp file then rename into place.
     pub fn write(&self, path: &Path) -> Result<()> {
-        let tmp_path = path.with_extension("tmp");
+        let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = path.with_extension(format!("{}.{}.tmp", std::process::id(), counter));
         let content = toml::to_string_pretty(self).context("Failed to serialize run.toml")?;
         std::fs::write(&tmp_path, &content)
             .with_context(|| format!("Failed to write temp run.toml: {}", tmp_path.display()))?;
         std::fs::rename(&tmp_path, path)
+            .inspect_err(|_| {
+                // Delete temp file on rename failure to avoid orphans
+                let _ = std::fs::remove_file(&tmp_path);
+            })
             .with_context(|| format!("Failed to rename run.toml into place: {}", path.display()))
     }
 

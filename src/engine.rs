@@ -11,8 +11,129 @@ use crate::template::{render_prompt, TemplateVars};
 use crate::workflow::PhaseConfig;
 use crate::workflow::Workflow;
 use anyhow::Result;
-use std::path::PathBuf;
+use std::collections::{HashMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+/// Tracks cumulative and per-phase budget costs with rolling windows for spike detection.
+#[derive(Debug)]
+pub struct BudgetTracker {
+    pub cumulative_cost: f64,
+    pub phase_costs: HashMap<String, f64>,
+    pub budget_warned_80_global: bool,
+    pub budget_warned_90_global: bool,
+    pub budget_warned_80_phase: HashMap<String, bool>,
+    pub budget_warned_90_phase: HashMap<String, bool>,
+    pub rolling_windows: HashMap<String, VecDeque<f64>>, // per-phase rolling window, cap 5
+}
+
+impl Default for BudgetTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BudgetTracker {
+    pub fn new() -> Self {
+        Self {
+            cumulative_cost: 0.0,
+            phase_costs: HashMap::new(),
+            budget_warned_80_global: false,
+            budget_warned_90_global: false,
+            budget_warned_80_phase: HashMap::new(),
+            budget_warned_90_phase: HashMap::new(),
+            rolling_windows: HashMap::new(),
+        }
+    }
+
+    /// Reconstruct BudgetTracker from costs.jsonl in a single pass.
+    pub fn reconstruct_from_costs(path: &Path) -> Result<Self> {
+        let mut tracker = Self::new();
+
+        // If costs.jsonl doesn't exist, return empty tracker
+        if !path.exists() {
+            return Ok(tracker);
+        }
+
+        for entry_result in crate::audit::stream_cost_entries(path)? {
+            let entry = entry_result.unwrap_or_else(|_| {
+                // Skip malformed lines
+                CostEntry {
+                    run: 0,
+                    cycle: 0,
+                    phase: String::new(),
+                    iteration: 0,
+                    cost_usd: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    cost_confidence: String::new(),
+                }
+            });
+
+            // Skip entries with None cost
+            if let Some(cost) = entry.cost_usd {
+                tracker.cumulative_cost += cost;
+
+                // Update phase costs
+                tracker
+                    .phase_costs
+                    .entry(entry.phase.clone())
+                    .and_modify(|c| *c += cost)
+                    .or_insert(cost);
+
+                // Update rolling window for spike detection
+                let window = tracker.rolling_windows.entry(entry.phase).or_default();
+                if window.len() >= 5 {
+                    window.pop_front();
+                }
+                window.push_back(cost);
+            }
+        }
+
+        Ok(tracker)
+    }
+}
+
+/// Mutable state for the run_workflow loop.
+#[derive(Debug)]
+pub struct RunContext {
+    pub total_runs: u32,
+    pub last_cycle: u32,
+    pub last_successful_run: u32,
+    pub current_display_cycle: u32,
+    pub parse_warnings: Vec<crate::cost::ParseWarning>,
+    pub budget: BudgetTracker,
+}
+
+impl Default for RunContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RunContext {
+    pub fn new() -> Self {
+        Self {
+            total_runs: 0,
+            last_cycle: 0,
+            last_successful_run: 0,
+            current_display_cycle: 0,
+            parse_warnings: Vec::new(),
+            budget: BudgetTracker::new(),
+        }
+    }
+}
+
+/// Exit reason for state snapshots.
+#[derive(Debug, Clone, Copy)]
+pub enum ExitReason {
+    Success,
+    Canceled,
+    TimedOut,
+    ExecutorError,
+    BudgetCap,
+    MaxCycles,
+}
 
 #[derive(Debug, Clone)]
 pub struct RunSpec {
@@ -174,6 +295,50 @@ fn workflow_name_from_file(workflow_file: &str) -> String {
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
     stem.trim_end_matches(".rings.toml").to_string()
+}
+
+/// Create a state snapshot for the current run context.
+#[allow(dead_code)]
+fn make_state_snapshot(
+    ctx: &RunContext,
+    config: &EngineConfig,
+    run_spec: &RunSpec,
+    reason: ExitReason,
+) -> StateFile {
+    let (canceled_at, failure_reason) = match reason {
+        ExitReason::Canceled => (Some(chrono::Utc::now().to_rfc3339()), None),
+        ExitReason::TimedOut => (None, Some("timeout".to_string())),
+        ExitReason::ExecutorError => (None, None),
+        ExitReason::Success | ExitReason::BudgetCap | ExitReason::MaxCycles => (None, None),
+    };
+
+    StateFile {
+        schema_version: 1,
+        run_id: config.run_id.clone(),
+        workflow_file: config.workflow_file.clone(),
+        last_completed_run: ctx.last_successful_run,
+        last_completed_cycle: ctx.last_cycle,
+        last_completed_phase_index: run_spec.phase_index,
+        last_completed_iteration: run_spec.phase_iteration,
+        total_runs_completed: ctx.total_runs,
+        cumulative_cost_usd: ctx.budget.cumulative_cost,
+        claude_resume_commands: vec![], // Will be populated by caller if needed
+        canceled_at,
+        failure_reason,
+    }
+}
+
+/// Save state to the state file.
+#[allow(dead_code)]
+fn save_state(
+    ctx: &RunContext,
+    config: &EngineConfig,
+    run_spec: &RunSpec,
+    reason: ExitReason,
+    state_path: &Path,
+) -> Result<()> {
+    let state = make_state_snapshot(ctx, config, run_spec, reason);
+    state.write_atomic(state_path)
 }
 
 /// Run a workflow to completion (or until max_cycles, error, or cancellation).
@@ -370,6 +535,12 @@ pub fn run_workflow(
                         std::time::Instant::now() + std::time::Duration::from_secs(5);
                     let mut exited_gracefully = false;
                     loop {
+                        // Check force_kill again at the start of each iteration (F-053 fix)
+                        if cancel_state.is_force_kill() {
+                            let _ = handle.send_sigkill();
+                            break;
+                        }
+
                         match handle.try_wait() {
                             Ok(Some(out)) => {
                                 output = out;
@@ -432,6 +603,14 @@ pub fn run_workflow(
                         std::time::Instant::now() + std::time::Duration::from_secs(5);
                     let mut exited_gracefully = false;
                     loop {
+                        // Check force_kill again at the start of each iteration (F-053 fix)
+                        if let Some(ref cancel_state) = cancel {
+                            if cancel_state.is_force_kill() {
+                                let _ = handle.send_sigkill();
+                                break;
+                            }
+                        }
+
                         match handle.try_wait() {
                             Ok(Some(out)) => {
                                 output = out;

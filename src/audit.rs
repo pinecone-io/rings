@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 lazy_static! {
@@ -21,6 +21,23 @@ pub struct CostEntry {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cost_confidence: String, // "full" | "partial" | "low" | "none"
+}
+
+/// Stream cost entries from a costs.jsonl file without loading the entire file into memory.
+/// Returns an iterator that yields Result<CostEntry> for each line.
+pub fn stream_cost_entries(path: &Path) -> Result<Box<dyn Iterator<Item = Result<CostEntry>>>> {
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("Failed to open costs.jsonl: {}", path.display()))?;
+    let reader = BufReader::new(file);
+    let lines = reader.lines();
+
+    let iter = lines.map(|line_result| {
+        let line = line_result.with_context(|| "Failed to read line from costs.jsonl")?;
+        serde_json::from_str::<CostEntry>(line.trim())
+            .with_context(|| format!("Failed to parse cost entry: {}", line))
+    });
+
+    Ok(Box::new(iter))
 }
 
 /// Append one line to costs.jsonl (creates file if absent).

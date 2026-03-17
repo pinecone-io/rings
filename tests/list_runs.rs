@@ -1,6 +1,6 @@
 use chrono::{Duration, Utc};
 use rings::duration::SinceSpec;
-use rings::list::{list_runs, ListFilters, RunSummary};
+use rings::list::{list_runs, ListFilters};
 use rings::state::{RunMeta, RunStatus, StateFile};
 use std::fs;
 use std::path::PathBuf;

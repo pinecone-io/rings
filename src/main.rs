@@ -183,6 +183,9 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         rings_version: env!("CARGO_PKG_VERSION").to_string(),
         status: state::RunStatus::Running,
         phase_fingerprint: Some(workflow.structural_fingerprint()),
+        parent_run_id: None,
+        continuation_of: None,
+        ancestry_depth: 0,
     };
     meta.write(&run_dir.join("run.toml"))?;
 

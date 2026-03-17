@@ -22,6 +22,7 @@ fn valid_state_file_loads_ok() {
         claude_resume_commands: vec![],
         canceled_at: None,
         failure_reason: None,
+        ancestry: None,
     };
 
     state.write_atomic(&state_path).unwrap();
@@ -54,6 +55,11 @@ fn corrupt_state_with_valid_costs_recovers() {
             input_tokens: Some(1000),
             output_tokens: Some(200),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         },
         CostEntry {
             run: 2,
@@ -64,6 +70,11 @@ fn corrupt_state_with_valid_costs_recovers() {
             input_tokens: Some(1200),
             output_tokens: Some(250),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         },
         CostEntry {
             run: 3,
@@ -74,6 +85,11 @@ fn corrupt_state_with_valid_costs_recovers() {
             input_tokens: Some(800),
             output_tokens: Some(150),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         },
     ];
 
@@ -144,6 +160,11 @@ fn malformed_jsonl_lines_skipped() {
             input_tokens: Some(1000),
             output_tokens: Some(200),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         })
         .unwrap(),
     );
@@ -159,6 +180,11 @@ fn malformed_jsonl_lines_skipped() {
             input_tokens: Some(500),
             output_tokens: Some(100),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         })
         .unwrap(),
     );
@@ -195,6 +221,11 @@ fn none_cost_entries_included_in_recovery() {
             input_tokens: None,
             output_tokens: None,
             cost_confidence: "none".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         })
         .unwrap(),
     );
@@ -209,6 +240,11 @@ fn none_cost_entries_included_in_recovery() {
             input_tokens: Some(1200),
             output_tokens: Some(250),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         })
         .unwrap(),
     );
@@ -244,6 +280,11 @@ fn crash_scenario_state_lags_costs() {
             input_tokens: Some(1000),
             output_tokens: Some(200),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         };
         content.push_str(&serde_json::to_string(&entry).unwrap());
         content.push_str("\n");

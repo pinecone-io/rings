@@ -6,7 +6,7 @@ use crate::cancel::CancelState;
 use crate::completion::{output_contains_signal, output_line_contains_signal};
 use crate::cost::parse_cost_from_output;
 use crate::executor::{extract_response_text, Executor, Invocation};
-use crate::state::StateFile;
+use crate::state::{FailureReason, StateFile};
 use crate::template::{render_prompt, TemplateVars};
 use crate::workflow::PhaseConfig;
 use crate::workflow::Workflow;
@@ -74,6 +74,11 @@ impl BudgetTracker {
                     input_tokens: None,
                     output_tokens: None,
                     cost_confidence: String::new(),
+                    files_added: 0,
+                    files_modified: 0,
+                    files_deleted: 0,
+                    files_changed: 0,
+                    event: None,
                 }
             });
 
@@ -182,7 +187,7 @@ pub enum ExitReason {
     Success,
     Canceled,
     TimedOut,
-    ExecutorError,
+    ExecutorError(FailureReason),
     BudgetCap,
     MaxCycles,
 }
@@ -327,6 +332,7 @@ pub struct EngineResult {
     pub total_cost_usd: f64,
     pub total_runs: u32,
     pub parse_warnings: Vec<crate::cost::ParseWarning>,
+    pub failure_reason: Option<FailureReason>,
 }
 
 /// Detect whether `signal` appears in `output` using the given mode.
@@ -395,8 +401,8 @@ fn make_state_snapshot(
 ) -> StateFile {
     let (canceled_at, failure_reason) = match reason {
         ExitReason::Canceled => (Some(chrono::Utc::now().to_rfc3339()), None),
-        ExitReason::TimedOut => (None, Some("timeout".to_string())),
-        ExitReason::ExecutorError => (None, None),
+        ExitReason::TimedOut => (None, Some(FailureReason::Timeout)),
+        ExitReason::ExecutorError(reason) => (None, Some(reason)),
         ExitReason::Success | ExitReason::BudgetCap | ExitReason::MaxCycles => (None, None),
     };
 
@@ -413,6 +419,7 @@ fn make_state_snapshot(
         claude_resume_commands: vec![], // Will be populated by caller if needed
         canceled_at,
         failure_reason,
+        ancestry: None,
     }
 }
 
@@ -679,6 +686,7 @@ pub fn run_workflow(
                         claude_resume_commands: vec![],
                         canceled_at: Some(chrono::Utc::now().to_rfc3339()),
                         failure_reason: None,
+                        ancestry: None,
                     };
                     let _ = state.write_atomic(&state_path);
 
@@ -746,7 +754,8 @@ pub fn run_workflow(
                         cumulative_cost_usd: cumulative_cost,
                         claude_resume_commands: vec![],
                         canceled_at: None,
-                        failure_reason: Some("timeout".to_string()),
+                        failure_reason: Some(FailureReason::Timeout),
+                        ancestry: None,
                     };
                     let _ = state.write_atomic(&state_path);
 
@@ -868,6 +877,11 @@ pub fn run_workflow(
                     input_tokens: cost.input_tokens,
                     output_tokens: cost.output_tokens,
                     cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                    files_added: 0,
+                    files_modified: 0,
+                    files_deleted: 0,
+                    files_changed: 0,
+                    event: None,
                 },
             )?;
             return Ok(EngineResult {
@@ -876,6 +890,7 @@ pub fn run_workflow(
                 total_cost_usd: cumulative_cost,
                 total_runs,
                 parse_warnings,
+                failure_reason: None,
             });
         }
 
@@ -896,6 +911,11 @@ pub fn run_workflow(
                     input_tokens: cost.input_tokens,
                     output_tokens: cost.output_tokens,
                     cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                    files_added: 0,
+                    files_modified: 0,
+                    files_deleted: 0,
+                    files_changed: 0,
+                    event: None,
                 },
             )?;
             return Ok(EngineResult {
@@ -904,6 +924,7 @@ pub fn run_workflow(
                 total_cost_usd: cumulative_cost,
                 total_runs,
                 parse_warnings,
+                failure_reason: None,
             });
         }
 
@@ -929,6 +950,7 @@ pub fn run_workflow(
                 claude_resume_commands: resume_commands,
                 canceled_at: None,
                 failure_reason: None,
+                ancestry: None,
             };
             state.write_atomic(&state_path)?;
             append_cost_entry(
@@ -942,6 +964,11 @@ pub fn run_workflow(
                     input_tokens: cost.input_tokens,
                     output_tokens: cost.output_tokens,
                     cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                    files_added: 0,
+                    files_modified: 0,
+                    files_deleted: 0,
+                    files_changed: 0,
+                    event: None,
                 },
             )?;
             return Ok(EngineResult {
@@ -950,6 +977,7 @@ pub fn run_workflow(
                 total_cost_usd: cumulative_cost,
                 total_runs,
                 parse_warnings,
+                failure_reason: None,
             });
         }
 
@@ -968,6 +996,7 @@ pub fn run_workflow(
             claude_resume_commands: resume_commands.clone(),
             canceled_at: None,
             failure_reason: None,
+            ancestry: None,
         };
         state.write_atomic(&state_path)?;
 
@@ -983,6 +1012,11 @@ pub fn run_workflow(
                 input_tokens: cost.input_tokens,
                 output_tokens: cost.output_tokens,
                 cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                files_added: 0,
+                files_modified: 0,
+                files_deleted: 0,
+                files_changed: 0,
+                event: None,
             },
         )?;
 
@@ -1060,6 +1094,7 @@ pub fn run_workflow(
                     claude_resume_commands: vec![],
                     canceled_at: None,
                     failure_reason: None,
+                    ancestry: None,
                 };
                 state.write_atomic(&state_path)?;
 
@@ -1069,6 +1104,7 @@ pub fn run_workflow(
                     total_cost_usd: cumulative_cost,
                     total_runs,
                     parse_warnings,
+                    failure_reason: None,
                 });
             }
 
@@ -1152,6 +1188,7 @@ pub fn run_workflow(
                             claude_resume_commands: vec![],
                             canceled_at: None,
                             failure_reason: None,
+                            ancestry: None,
                         };
                         state.write_atomic(&state_path)?;
 
@@ -1161,6 +1198,7 @@ pub fn run_workflow(
                             total_cost_usd: cumulative_cost,
                             total_runs,
                             parse_warnings,
+                            failure_reason: None,
                         });
                     }
 
@@ -1233,6 +1271,7 @@ pub fn run_workflow(
                     claude_resume_commands: resume_commands.clone(),
                     canceled_at: Some(chrono::Utc::now().to_rfc3339()),
                     failure_reason: None,
+                    ancestry: None,
                 };
                 state.write_atomic(&state_path)?;
                 return Ok(EngineResult {
@@ -1241,6 +1280,7 @@ pub fn run_workflow(
                     total_cost_usd: cumulative_cost,
                     total_runs,
                     parse_warnings,
+                    failure_reason: None,
                 });
             }
         }
@@ -1267,6 +1307,7 @@ pub fn run_workflow(
                 total_cost_usd: cumulative_cost,
                 total_runs,
                 parse_warnings,
+                failure_reason: None,
             });
         }
 
@@ -1298,5 +1339,6 @@ pub fn run_workflow(
         total_cost_usd: cumulative_cost,
         total_runs,
         parse_warnings,
+        failure_reason: None,
     })
 }

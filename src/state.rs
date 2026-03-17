@@ -53,6 +53,27 @@ impl FromStr for RunStatus {
     }
 }
 
+/// Error classification for executor failures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FailureReason {
+    Quota,
+    Auth,
+    Timeout,
+    Unknown,
+}
+
+/// Ancestry information for runs in a chain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AncestryInfo {
+    #[serde(default)]
+    pub parent_run_id: Option<String>,
+    #[serde(default)]
+    pub continuation_of: Option<String>,
+    #[serde(default)]
+    pub ancestry_depth: u32,
+}
+
 /// Control-flow type for state loading with recovery fallback.
 /// Do NOT derive Serialize/Deserialize.
 #[derive(Debug)]
@@ -83,7 +104,9 @@ pub struct StateFile {
     pub claude_resume_commands: Vec<String>,
     pub canceled_at: Option<String>,
     #[serde(default)]
-    pub failure_reason: Option<String>,
+    pub failure_reason: Option<FailureReason>,
+    #[serde(default)]
+    pub ancestry: Option<AncestryInfo>,
 }
 
 impl StateFile {
@@ -118,6 +141,7 @@ impl StateFile {
                             claude_resume_commands: vec![],
                             canceled_at: None,
                             failure_reason: None,
+                            ancestry: None,
                         };
                         let warning = format!(
                             "Warning: state.json is corrupt but costs.jsonl has {} completed run(s). \
@@ -170,6 +194,12 @@ pub struct RunMeta {
     pub status: RunStatus,
     #[serde(default)]
     pub phase_fingerprint: Option<Vec<String>>,
+    #[serde(default)]
+    pub parent_run_id: Option<String>,
+    #[serde(default)]
+    pub continuation_of: Option<String>,
+    #[serde(default)]
+    pub ancestry_depth: u32,
 }
 
 impl RunMeta {

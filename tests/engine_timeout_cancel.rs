@@ -2,7 +2,7 @@
 use rings::cancel::CancelState;
 use rings::engine::{run_workflow, EngineConfig};
 use rings::executor::{Executor, ExecutorOutput, Invocation, MockExecutor, RunHandle};
-use rings::state::StateFile;
+use rings::state::{FailureReason, StateFile};
 use rings::workflow::Workflow;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -144,13 +144,14 @@ fn timeout_failure_reason_recorded_in_state() {
         cumulative_cost_usd: 0.0,
         claude_resume_commands: vec![],
         canceled_at: None,
-        failure_reason: Some("timeout".to_string()),
+        failure_reason: Some(FailureReason::Timeout),
+        ancestry: None,
     };
 
     state.write_atomic(&path).unwrap();
     let loaded = StateFile::read(&path).unwrap();
 
-    assert_eq!(loaded.failure_reason, Some("timeout".to_string()));
+    assert_eq!(loaded.failure_reason, Some(FailureReason::Timeout));
 }
 
 #[test]
@@ -199,6 +200,7 @@ fn cancellation_state_recorded_with_null_failure_reason() {
         claude_resume_commands: vec![],
         canceled_at: Some("2026-03-15T14:30:00Z".to_string()),
         failure_reason: None,
+        ancestry: None,
     };
 
     state.write_atomic(&path).unwrap();

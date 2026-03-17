@@ -48,11 +48,11 @@ Three schema changes that must land together before any other feature writes to 
 - [ ] `EngineResult` carries `failure_reason: Some(FailureReason::Quota)` after executor emits quota pattern
 
 **Steps:**
-- [ ] Define `FailureReason` enum with `#[serde(rename_all = "lowercase")]`
-- [ ] Parameterize `ExitReason::ExecutorError(FailureReason)`; update `make_state_snapshot`
-- [ ] Add `failure_reason: Option<FailureReason>` to `EngineResult`
-- [ ] Add `AncestryInfo` struct; add `ancestry: Option<AncestryInfo>` to `StateFile`; add flat ancestry fields to `RunMeta`
-- [ ] Add `event`, `files_added/modified/deleted/changed` to `CostEntry` with `#[serde(default)]`
+- [x] Define `FailureReason` enum with `#[serde(rename_all = "lowercase")]`
+- [x] Parameterize `ExitReason::ExecutorError(FailureReason)`; update `make_state_snapshot`
+- [x] Add `failure_reason: Option<FailureReason>` to `EngineResult`
+- [x] Add `AncestryInfo` struct; add `ancestry: Option<AncestryInfo>` to `StateFile`; add flat ancestry fields to `RunMeta`
+- [x] Add `event`, `files_added/modified/deleted/changed` to `CostEntry` with `#[serde(default)]`
 
 ---
 

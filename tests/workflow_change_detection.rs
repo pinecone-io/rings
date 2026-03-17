@@ -42,6 +42,9 @@ fn test_runmeta_with_phase_fingerprint() {
         rings_version: "0.1.0".to_string(),
         status: rings::state::RunStatus::Running,
         phase_fingerprint: Some(vec!["phase_a".to_string(), "phase_b".to_string()]),
+        parent_run_id: None,
+        continuation_of: None,
+        ancestry_depth: 0,
     };
 
     let toml_str = toml::to_string(&meta).unwrap();

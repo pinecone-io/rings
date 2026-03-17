@@ -20,6 +20,7 @@ fn state_file_roundtrip() {
         claude_resume_commands: vec!["claude resume abc".to_string()],
         canceled_at: None,
         failure_reason: None,
+        ancestry: None,
     };
 
     state.write_atomic(&path).unwrap();
@@ -42,6 +43,9 @@ fn run_meta_roundtrip() {
         rings_version: "0.1.0".to_string(),
         status: RunStatus::Running,
         phase_fingerprint: None,
+        parent_run_id: None,
+        continuation_of: None,
+        ancestry_depth: 0,
     };
 
     meta.write(&path).unwrap();
@@ -71,6 +75,7 @@ fn state_write_is_atomic() {
             claude_resume_commands: vec![],
             canceled_at: None,
             failure_reason: None,
+            ancestry: None,
         };
         state.write_atomic(&path).unwrap();
         // File must be readable after every write

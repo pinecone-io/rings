@@ -26,6 +26,9 @@ fn create_test_run(
         rings_version: "0.1.0".to_string(),
         status,
         phase_fingerprint: None,
+        parent_run_id: None,
+        continuation_of: None,
+        ancestry_depth: 0,
     };
     meta.write(&run_dir.join("run.toml")).unwrap();
 
@@ -44,6 +47,7 @@ fn create_test_run(
             claude_resume_commands: vec![],
             canceled_at: None,
             failure_reason: None,
+            ancestry: None,
         };
         state.write_atomic(&run_dir.join("state.json")).unwrap();
     }
@@ -71,6 +75,9 @@ fn test_runstatus_roundtrip() {
             rings_version: "0.1.0".to_string(),
             status: variant,
             phase_fingerprint: None,
+            parent_run_id: None,
+            continuation_of: None,
+            ancestry_depth: 0,
         };
 
         let toml_str = toml::to_string_pretty(&meta).unwrap();
@@ -407,6 +414,9 @@ fn test_list_runs_missing_state_json() {
         rings_version: "0.1.0".to_string(),
         status: RunStatus::Running,
         phase_fingerprint: None,
+        parent_run_id: None,
+        continuation_of: None,
+        ancestry_depth: 0,
     };
     let run_dir = dir.path().join("run_no_state");
     fs::create_dir_all(&run_dir).unwrap();

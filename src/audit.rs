@@ -21,6 +21,16 @@ pub struct CostEntry {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cost_confidence: String, // "full" | "partial" | "low" | "none"
+    #[serde(default)]
+    pub files_added: u32,
+    #[serde(default)]
+    pub files_modified: u32,
+    #[serde(default)]
+    pub files_deleted: u32,
+    #[serde(default)]
+    pub files_changed: u32,
+    #[serde(default)]
+    pub event: Option<String>,
 }
 
 /// Stream cost entries from a costs.jsonl file without loading the entire file into memory.
@@ -172,6 +182,11 @@ mod tests {
             input_tokens: Some(1000),
             output_tokens: Some(200),
             cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
         };
         append_cost_entry(&path, &entry).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();

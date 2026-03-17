@@ -40,7 +40,7 @@ fn test_runmeta_with_phase_fingerprint() {
         workflow_file: "/path/to/workflow.toml".to_string(),
         started_at: "2024-01-01T00:00:00Z".to_string(),
         rings_version: "0.1.0".to_string(),
-        status: "running".to_string(),
+        status: rings::state::RunStatus::Running,
         phase_fingerprint: Some(vec!["phase_a".to_string(), "phase_b".to_string()]),
     };
 

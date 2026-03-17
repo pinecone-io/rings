@@ -11,6 +11,7 @@ pub mod dry_run;
 pub mod duration;
 pub mod engine;
 pub mod executor;
+pub mod list;
 #[cfg(unix)]
 pub mod lock;
 pub mod state;
@@ -55,6 +56,7 @@ fn main() {
     let exit_code = match cli.command {
         Command::Run(args) => cmd_run(args, Arc::clone(&cancel)),
         Command::Resume(args) => cmd_resume(args, Arc::clone(&cancel)),
+        Command::List(args) => cmd_list(args, cli.output_format),
     };
     std::process::exit(exit_code);
 }
@@ -179,7 +181,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
             .to_string(),
         started_at: chrono::Utc::now().to_rfc3339(),
         rings_version: env!("CARGO_PKG_VERSION").to_string(),
-        status: "running".to_string(),
+        status: state::RunStatus::Running,
         phase_fingerprint: Some(workflow.structural_fingerprint()),
     };
     meta.write(&run_dir.join("run.toml"))?;
@@ -274,11 +276,11 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     let total_elapsed_secs = run_start.elapsed().as_secs();
 
     let final_status = match result.exit_code {
-        0 => "completed",
-        1 => "incomplete", // max_cycles reached without completion signal
-        4 => "stopped",    // budget cap reached
-        130 => "canceled",
-        _ => "failed",
+        0 => state::RunStatus::Completed,
+        1 => state::RunStatus::Incomplete, // max_cycles reached without completion signal
+        4 => state::RunStatus::Stopped,    // budget cap reached
+        130 => state::RunStatus::Canceled,
+        _ => state::RunStatus::Failed,
     };
     meta.update_status(&run_dir.join("run.toml"), final_status)?;
 
@@ -554,11 +556,11 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
 
     // Update run.toml status based on exit code
     let final_status = match result.exit_code {
-        0 => "completed",
-        1 => "incomplete",
-        4 => "stopped", // budget cap reached
-        130 => "canceled",
-        _ => "failed",
+        0 => state::RunStatus::Completed,
+        1 => state::RunStatus::Incomplete,
+        4 => state::RunStatus::Stopped, // budget cap reached
+        130 => state::RunStatus::Canceled,
+        _ => state::RunStatus::Failed,
     };
     meta.update_status(&meta_path, final_status)?;
 
@@ -634,6 +636,104 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     display::print_parse_warnings(&result.parse_warnings);
 
     Ok(result.exit_code)
+}
+
+fn cmd_list(args: cli::ListArgs, output_format: cli::OutputFormat) -> i32 {
+    match list_inner(args, output_format) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            2
+        }
+    }
+}
+
+fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i32> {
+    // Resolve base directory for scanning runs
+    let base_dir = resolve_output_dir(None, None);
+
+    // Parse since filter
+    let since_filter = if let Some(since_str) = args.since {
+        Some(since_str.parse::<duration::SinceSpec>()?)
+    } else {
+        None
+    };
+
+    // Parse status filter
+    let status_filter = if let Some(status_str) = args.status {
+        Some(status_str.parse::<state::RunStatus>()?)
+    } else {
+        None
+    };
+
+    let filters = list::ListFilters {
+        since: since_filter,
+        status: status_filter,
+        workflow: args.workflow,
+        limit: args.limit,
+    };
+
+    let runs = list::list_runs(&filters, &base_dir)?;
+
+    // Output results
+    match output_format {
+        cli::OutputFormat::Human => {
+            // Print human-readable table
+            if runs.is_empty() {
+                eprintln!("No runs found.");
+            } else {
+                eprintln!(
+                    "{:<20} {:<20} {:<40} {:<12} {:<8} {:<10}",
+                    "RUN ID", "DATE", "WORKFLOW", "STATUS", "CYCLES", "COST"
+                );
+                eprintln!("{}", "-".repeat(110));
+                for run in &runs {
+                    let date_str = run.started_at.format("%Y-%m-%d %H:%M:%S").to_string();
+                    let cost_str = run
+                        .total_cost_usd
+                        .map(|c| format!("${:.3}", c))
+                        .unwrap_or_else(|| "—".to_string());
+                    let status_display = if run.status == state::RunStatus::Running {
+                        // Check if it looks stale (started > 24h ago with no lock file)
+                        let now = chrono::Utc::now();
+                        let hours_ago = (now - run.started_at).num_hours();
+                        if hours_ago > 24 {
+                            "Running (stale?)".to_string()
+                        } else {
+                            run.status.to_string()
+                        }
+                    } else {
+                        run.status.to_string()
+                    };
+                    eprintln!(
+                        "{:<20} {:<20} {:<40} {:<12} {:<8} {:<10}",
+                        run.run_id,
+                        date_str,
+                        run.workflow,
+                        status_display,
+                        run.cycles_completed,
+                        cost_str
+                    );
+                }
+            }
+        }
+        cli::OutputFormat::Jsonl => {
+            // Print JSONL output
+            for run in &runs {
+                let json = serde_json::json!({
+                    "run_id": run.run_id,
+                    "started_at": run.started_at.to_rfc3339(),
+                    "workflow": run.workflow,
+                    "status": run.status.to_string(),
+                    "cycles_completed": run.cycles_completed,
+                    "total_cost_usd": run.total_cost_usd,
+                });
+                println!("{}", json);
+            }
+        }
+    }
+
+    Ok(0)
 }
 
 fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str>) -> PathBuf {

@@ -8,6 +8,7 @@ pub mod dry_run;
 pub mod duration;
 pub mod engine;
 pub mod executor;
+pub mod list;
 #[cfg(unix)]
 pub mod lock;
 pub mod state;

@@ -333,13 +333,13 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - [ ] Integration: JSONL mode emits one JSON object per run with correct fields
 
 **Steps:**
-- [ ] Add `d` suffix to `parse_duration_secs`; add `SinceSpec` enum with `FromStr` and `to_cutoff_datetime`
-- [ ] Define `RunStatus` enum; update `RunMeta.status` from `String` to `RunStatus`
-- [ ] Move `--output-format` to global `Cli` level
-- [ ] Add `List(ListArgs)` subcommand with typed value parsers
-- [ ] Implement `RunSummary` and `list_runs` in `src/list.rs` with early-termination
-- [ ] Add `cmd_list` in `main.rs`
-- [ ] Write `tests/list_runs.rs`
+- [x] Add `d` suffix to `parse_duration_secs`; add `SinceSpec` enum with `FromStr` and `to_cutoff_datetime`
+- [x] Define `RunStatus` enum; update `RunMeta.status` from `String` to `RunStatus`
+- [x] Move `--output-format` to global `Cli` level
+- [x] Add `List(ListArgs)` subcommand with typed value parsers
+- [x] Implement `RunSummary` and `list_runs` in `src/list.rs` with early-termination
+- [x] Add `cmd_list` in `main.rs`
+- [x] Write `tests/list_runs.rs`
 
 ---
 

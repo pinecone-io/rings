@@ -1,5 +1,5 @@
 // tests/state_roundtrip.rs
-use rings::state::{RunMeta, StateFile};
+use rings::state::{RunMeta, RunStatus, StateFile};
 use tempfile::tempdir;
 
 #[test]
@@ -40,14 +40,14 @@ fn run_meta_roundtrip() {
         workflow_file: "/abs/path.toml".to_string(),
         started_at: "2026-03-15T14:30:00Z".to_string(),
         rings_version: "0.1.0".to_string(),
-        status: "running".to_string(),
+        status: RunStatus::Running,
         phase_fingerprint: None,
     };
 
     meta.write(&path).unwrap();
     let loaded = RunMeta::read(&path).unwrap();
     assert_eq!(loaded.run_id, meta.run_id);
-    assert_eq!(loaded.status, "running");
+    assert_eq!(loaded.status, RunStatus::Running);
 }
 
 #[test]

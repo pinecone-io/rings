@@ -1,9 +1,57 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static TEMP_FILE_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+/// Run status enum for serialization/deserialization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RunStatus {
+    Running,
+    Completed,
+    Canceled,
+    Failed,
+    #[serde(rename = "incomplete")]
+    Incomplete,
+    #[serde(rename = "stopped")]
+    Stopped,
+}
+
+impl fmt::Display for RunStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RunStatus::Running => write!(f, "running"),
+            RunStatus::Completed => write!(f, "completed"),
+            RunStatus::Canceled => write!(f, "canceled"),
+            RunStatus::Failed => write!(f, "failed"),
+            RunStatus::Incomplete => write!(f, "incomplete"),
+            RunStatus::Stopped => write!(f, "stopped"),
+        }
+    }
+}
+
+impl FromStr for RunStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "running" => Ok(RunStatus::Running),
+            "completed" => Ok(RunStatus::Completed),
+            "canceled" => Ok(RunStatus::Canceled),
+            "failed" => Ok(RunStatus::Failed),
+            "incomplete" => Ok(RunStatus::Incomplete),
+            "stopped" => Ok(RunStatus::Stopped),
+            _ => Err(anyhow::anyhow!(
+                "invalid run status: {}; expected one of: running, completed, canceled, failed, incomplete, stopped",
+                s
+            )),
+        }
+    }
+}
 
 /// Control-flow type for state loading with recovery fallback.
 /// Do NOT derive Serialize/Deserialize.
@@ -119,7 +167,7 @@ pub struct RunMeta {
     pub workflow_file: String,
     pub started_at: String,
     pub rings_version: String,
-    pub status: String, // "running" | "completed" | "canceled" | "failed"
+    pub status: RunStatus,
     #[serde(default)]
     pub phase_fingerprint: Option<Vec<String>>,
 }
@@ -147,8 +195,8 @@ impl RunMeta {
             .with_context(|| format!("Failed to rename run.toml into place: {}", path.display()))
     }
 
-    pub fn update_status(&mut self, path: &Path, status: &str) -> Result<()> {
-        self.status = status.to_string();
+    pub fn update_status(&mut self, path: &Path, status: RunStatus) -> Result<()> {
+        self.status = status;
         self.write(path)
     }
 }

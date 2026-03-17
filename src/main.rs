@@ -7,6 +7,7 @@ pub mod cli;
 pub mod completion;
 pub mod cost;
 pub mod display;
+pub mod dry_run;
 pub mod duration;
 pub mod engine;
 pub mod executor;
@@ -92,6 +93,61 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         let secs = duration::parse_duration_secs(timeout_str)
             .with_context(|| format!("invalid --timeout-per-run value: {timeout_str:?}"))?;
         workflow.timeout_per_run_secs = Some(secs);
+    }
+
+    // Handle dry-run mode
+    if args.dry_run {
+        let plan = dry_run::DryRunPlan::from_workflow(&workflow, &args.workflow_file)?;
+
+        // Output in human format (table with ✓/✗)
+        println!("Dry run: {}", args.workflow_file);
+        println!("  completion_signal: {:?}", workflow.completion_signal);
+        println!("  context_dir:       {}", workflow.context_dir);
+        println!("  max_cycles:        {}", workflow.max_cycles);
+        println!();
+        println!("  Cycle structure (repeating):");
+        for phase in &plan.phases {
+            println!(
+                "    Phase {}: {} ×{} (prompt: {})",
+                plan.phases
+                    .iter()
+                    .position(|p| p.name == phase.name)
+                    .unwrap()
+                    + 1,
+                phase.name,
+                phase.runs_per_cycle,
+                phase.prompt_source
+            );
+        }
+        println!();
+        println!("  Total runs per cycle: {}", plan.runs_per_cycle_total);
+        if let Some(max_total) = plan.max_total_runs {
+            println!("  Maximum total runs:   {}", max_total);
+        }
+        println!();
+        println!("  Prompt check:");
+        for phase in &plan.phases {
+            if phase.signal_check.found {
+                if let Some(line_num) = phase.signal_check.line_number {
+                    println!(
+                        "    ✓ \"{}\" found in {} (line {})",
+                        workflow.completion_signal, phase.prompt_source, line_num
+                    );
+                } else {
+                    println!(
+                        "    ✓ \"{}\" found in {}",
+                        workflow.completion_signal, phase.prompt_source
+                    );
+                }
+            } else {
+                println!(
+                    "    ✗ \"{}\" not found in {}",
+                    workflow.completion_signal, phase.prompt_source
+                );
+            }
+        }
+
+        return Ok(0);
     }
 
     // Check executor is available

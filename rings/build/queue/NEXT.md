@@ -141,23 +141,23 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - Validate `completion_signal_mode = "regex"` patterns via `Regex::new()` at workflow load time; fail with exit 2 if invalid.
 
 **Tests:**
-- [ ] `DryRunPlan.total_runs_per_cycle` correct for multi-phase workflow
-- [ ] `DryRunPlan.max_total_runs` = `total_runs_per_cycle × max_cycles` when both defined
-- [ ] Signal found in file prompt with correct line number
-- [ ] Signal not found: `SignalCheck { found: false, line_number: None }`
+- [x] `DryRunPlan.total_runs_per_cycle` correct for multi-phase workflow
+- [x] `DryRunPlan.max_total_runs` = `total_runs_per_cycle × max_cycles` when both defined
+- [x] Signal found in file prompt with correct line number
+- [x] Signal not found: `SignalCheck { found: false, line_number: None }`
 - [ ] JSONL mode: valid `dry_run_plan` event with fields `found`, `line_number`, `phase_name`
 - [ ] Integration: `rings run --dry-run workflow.toml` exits 0; no executor subprocess spawned (use mock that panics on spawn)
 - [ ] Integration: `rings run --dry-run invalid.toml` exits 2
-- [ ] Integration: `--dry-run` also reports unknown template variables (F-029 interaction)
-- [ ] Inline `prompt_text` phase: signal check against inline text
+- [x] Integration: `--dry-run` also reports unknown template variables (F-029 interaction)
+- [x] Inline `prompt_text` phase: signal check against inline text
 
 **Steps:**
-- [ ] Add `dry_run: bool` to `RunArgs`
-- [ ] Create `src/dry_run.rs` with all types
-- [ ] Implement dry-run plan generation
-- [ ] Implement human + JSONL output
-- [ ] Branch on `--dry-run` in `main.rs` before engine invocation
-- [ ] Write `tests/dry_run.rs`
+- [x] Add `dry_run: bool` to `RunArgs`
+- [x] Create `src/dry_run.rs` with all types
+- [x] Implement dry-run plan generation
+- [x] Implement human + JSONL output
+- [x] Branch on `--dry-run` in `main.rs` before engine invocation
+- [x] Write `tests/dry_run.rs`
 
 ---
 

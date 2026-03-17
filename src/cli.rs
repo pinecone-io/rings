@@ -55,6 +55,10 @@ pub struct RunArgs {
     /// Override an existing lock on context_dir
     #[arg(long)]
     pub force_lock: bool,
+
+    /// Preview execution plan without running anything
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Debug)]

@@ -4,6 +4,7 @@ pub mod cli;
 pub mod completion;
 pub mod cost;
 pub mod display;
+pub mod dry_run;
 pub mod duration;
 pub mod engine;
 pub mod executor;

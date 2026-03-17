@@ -15,6 +15,13 @@ use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// Result of interruptible sleep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SleepResult {
+    Completed,
+    Canceled,
+}
+
 /// Tracks cumulative and per-phase budget costs with rolling windows for spike detection.
 #[derive(Debug)]
 pub struct BudgetTracker {
@@ -420,6 +427,36 @@ fn save_state(
 ) -> Result<()> {
     let state = make_state_snapshot(ctx, config, run_spec, reason);
     state.write_atomic(state_path)
+}
+
+/// Sleep for up to `duration` while polling the cancel state at 100ms intervals.
+/// Returns `Canceled` if the cancel state transitions to canceling during the sleep.
+/// Returns `Completed` if the full duration elapses without cancellation.
+pub fn interruptible_sleep(
+    duration: std::time::Duration,
+    cancel: Option<&Arc<CancelState>>,
+    _tick_callback: impl FnMut(std::time::Duration),
+) -> SleepResult {
+    if duration.is_zero() {
+        return SleepResult::Completed;
+    }
+
+    let deadline = std::time::Instant::now() + duration;
+    while std::time::Instant::now() < deadline {
+        // Check for cancellation
+        if let Some(cs) = cancel {
+            if cs.is_canceling() {
+                return SleepResult::Canceled;
+            }
+        }
+
+        let remaining = deadline - std::time::Instant::now();
+        let sleep_duration = std::cmp::min(remaining, std::time::Duration::from_millis(100));
+        if !sleep_duration.is_zero() {
+            std::thread::sleep(sleep_duration);
+        }
+    }
+    SleepResult::Completed
 }
 
 /// Run a workflow to completion (or until max_cycles, error, or cancellation).
@@ -1242,15 +1279,10 @@ pub fn run_workflow(
 
         // Inter-run delay: poll in 100ms slices so cancellation is detected promptly.
         if workflow.delay_between_runs > 0 {
-            let deadline = std::time::Instant::now()
-                + std::time::Duration::from_secs(workflow.delay_between_runs);
-            while std::time::Instant::now() < deadline {
-                if let Some(ref cs) = cancel {
-                    if cs.is_canceling() {
-                        break;
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
+            let duration = std::time::Duration::from_secs(workflow.delay_between_runs);
+            let sleep_result = interruptible_sleep(duration, cancel.as_ref(), |_elapsed| {});
+            if sleep_result == SleepResult::Canceled {
+                break;
             }
         }
     }

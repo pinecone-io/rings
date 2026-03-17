@@ -64,7 +64,7 @@ The `rings/process-bugs/process-bugs.rings.toml` workflow will pick it up in a f
 Each workflow owns its files under `rings/<workflow-name>/`. When writing or modifying rings workflows, follow these conventions:
 
 - **`rings/<workflow-name>/queue/`** — input files for this workflow. Contains only unprocessed and in-flight items. When another workflow produces output that this workflow consumes, it writes directly into this workflow's `queue/` directory (consumer-owns). Examples: `rings/process-bugs/queue/BUG_REPORT.md`, `rings/build/queue/READY_TO_IMPLEMENT.md`.
-- **`rings/<workflow-name>/activities/`** — permanent records of completed work produced by this workflow. Nothing reads these as input; they are append-only audit logs. Examples: `rings/process-bugs/activities/BUGS_RESOLVED.md`, `rings/prioritize/activities/PRIORITIZED_FEATURES.md`.
+- **`rings/<workflow-name>/activities/`** — permanent records of completed work produced by this workflow. Nothing reads these as input; they are append-only audit logs. Examples: `rings/process-bugs/activities/BUGS_RESOLVED.md`, `rings/plan-prioritize/activities/PRIORITIZED_FEATURES.md`.
 - **`rings/<workflow-name>/wip/`** — ephemeral state internal to a workflow's cycles. These files are scratch space for intermediate outputs within a run and must never be treated as durable. They should be cleaned up by the workflow itself (typically in the final synthesizing phase).
 - **First-phase cleanup** — the first phase of a cycle should delete any stale debris in its `wip/` directory before beginning new work. This prevents leftover files from an interrupted prior run from corrupting the current run's state detection logic.
 

@@ -1,345 +1,310 @@
-## Batch: Resilience, Discovery & Safety Feedback — 2026-03-16
+## Batch: Error Handling, File Lineage & Inspect Foundation — 2026-03-17
 
-**Features:** F-081 (--dry-run), F-056 (Stale Lock Detection), F-070 (rings list), F-050 (Workflow File Change Detection), F-029 (Unknown Variable Warnings), F-149 (Cost Spike Detection), F-049 (Resume State Recovery), F-053 (Double Ctrl+C)
-
----
-
-### Task 1: Engine Refactor + Critical Bug Fixes (Prerequisite)
-
-**Files:** `src/engine.rs`, `src/executor.rs`, `src/lock.rs`, `src/state.rs`, `src/audit.rs`
-
-Extract mutable state from the `run_workflow` monolith and fix two confirmed bugs before any feature work begins.
-
-**Engine refactor:**
-- Define `BudgetTracker` struct (in `src/engine.rs` or `src/budget.rs`) owning: `phase_costs: HashMap<String, f64>`, `cumulative_cost: f64`, budget warning flags (`HashMap<String, bool>`), and per-phase rolling windows (`rolling_windows: HashMap<String, VecDeque<f64>>`, cap 5 per phase — see Open Decision OD-1).
-- Define `RunContext` struct owning all remaining mutable loop state: `total_runs`, `last_cycle`, `last_successful_run`, `current_display_cycle`, `parse_warnings: Vec<ParseWarning>`, and a `BudgetTracker`.
-- Create `make_state_snapshot(ctx: &RunContext, spec: &RunSpec, reason: ExitReason) -> StateFile` to replace the six near-identical `StateFile { ... }` construction sites in `engine.rs`. The cancellation path and success path currently diverge on `last_completed_run`; the helper must unify them.
-- Create `save_state(ctx: &RunContext, spec: &RunSpec, reason: ExitReason) -> Result<()>` that calls `make_state_snapshot` then `write_atomic`.
-
-**F-053 bug fix (blocker):**
-- The grace-period inner loop (`engine.rs` lines ~372–389) polls `handle.try_wait()` every 100ms but never re-checks `cancel_state.is_force_kill()`. Add `if cancel_state.is_force_kill() { let _ = handle.send_sigkill(); break; }` as the first statement inside both grace-period inner loops (cancellation path and timeout path). Without this fix the entire F-053 feature is non-functional.
-
-**`lock.rs` `unwrap()` fix (blocker per CLAUDE.md):**
-- `src/lock.rs` ~line 75: `serde_json::to_string(&lock_data).unwrap()` must become `serde_json::to_string(&lock_data).map_err(|e| LockError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?`
-
-**`write_atomic` temp-file collision fix (blocker):**
-- `StateFile::write_atomic` uses `path.with_extension("tmp")`, producing a fixed `state.tmp`. Two concurrent callers (e.g., cancellation + budget-cap exit racing) will silently overwrite each other. Change the temp path to include PID and a monotonic counter: `path.with_extension(format!("{}.{}.tmp", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)))`. Delete the temp file on rename failure (do not leave orphan `.tmp` files).
-
-**`SlowMockRunHandle` (required for F-053 tests):**
-- `MockRunHandle::try_wait` always returns `Some(output)` immediately. Add `try_wait_returns_none_count: Arc<AtomicU32>`. When the counter is > 0, `try_wait` decrements it and returns `Ok(None)`. When it reaches 0, returns `Ok(Some(output))`.
-
-**Shared `stream_cost_entries` helper:**
-- Add `pub fn stream_cost_entries(path: &Path) -> impl Iterator<Item = Result<CostEntry>>` to `src/audit.rs` using `BufReader` + `lines()`. All three future consumers (`BudgetTracker::reconstruct_from_costs`, `StateFile::load_or_recover`, and the existing resume cost-reconstruction) must use this single iterator — not `read_to_string` slurp.
-
-**Tests:**
-- [ ] `SlowMockRunHandle::try_wait` returns `Ok(None)` for N calls then `Ok(Some(output))`
-- [ ] `stream_cost_entries` on a 1,000-line `costs.jsonl` returns correct entries without slurping
-- [ ] All existing tests in `engine_integration.rs` and `engine_timeout_cancel.rs` pass after refactor
-
-**Steps:**
-- [x] Define `BudgetTracker` struct with per-phase `VecDeque<f64>` windows (cap 5)
-- [x] Define `RunContext` struct and migrate local variables from `run_workflow`
-- [x] Create `make_state_snapshot` + `save_state` helpers; replace all 6 construction sites
-- [x] Add `is_force_kill()` check inside both grace-period inner loops
-- [x] Fix `lock.rs` `serde_json::to_string` unwrap
-- [x] Fix `write_atomic` temp-file naming to include PID+counter; delete on rename failure
-- [x] Add `SlowMockRunHandle` with configurable `try_wait` behavior
-- [x] Extract `stream_cost_entries` into `audit.rs`
+**Features:** F-037 (Error Classification), F-038 (Quota Error Detection), F-039 (Auth Error Detection), F-117 (File Manifest), F-118 (File Diff Detection), F-072 (`rings inspect`), F-097 (Summary View), F-044 (Quota Backoff), F-058 (Parent Run ID)
 
 ---
 
-### Task 2: F-053 — Double Ctrl+C Grace-Period Fix
+### Task 1: Engine Refactor — Extract RunContext, BudgetTracker, exit_workflow, interruptible_sleep
 
-**Files:** `src/engine.rs`, `tests/engine_timeout_cancel.rs`
+**Files:** `src/engine.rs`
 
-The engine loop bug fix is done in Task 1. This task adds meaningful test coverage proving the fix works.
-
-**Implementation:**
-- Using `SlowMockRunHandle` (from Task 1), write an integration test that: (1) starts the engine on a background thread with a mock configured to stay alive for 50 polls, (2) sends the first cancellation signal, (3) waits for the grace-period loop to begin (SIGTERM recorded), (4) sends the second signal (force-kill), (5) asserts `sigkill_called` is `true` and total elapsed time is < 500ms (well within the 5-second grace period).
+Extract the ~750-line `run_workflow` monolith into reusable components before any new features touch the engine. The `RunContext` struct and `BudgetTracker` are already defined but unused in the actual loop — wire them in. The six inline `StateFile` construction sites must collapse into a single `make_state_snapshot` call (fix the `phase_index` bug first: on executor error, `last_completed_phase_index` must point to the *failing* run's position so it retries on resume, not the last successful position). Extract an `exit_workflow` helper that handles the duplicated "print final cycle cost, append cost entry, return EngineResult" sequences that appear at timeout, cancel, executor error, budget cap global, and budget cap per-phase paths. Extract `interruptible_sleep(duration: Duration, cancel: &CancelState, tick_callback: impl Fn(Duration)) -> SleepResult` where `SleepResult` is `Completed | Canceled`, polling at 100 ms intervals — this replaces the ad-hoc delay loop at engine.rs ~1244–1255 and will be reused by quota backoff.
 
 **Tests:**
-- [x] SIGKILL sent before 500ms after second signal during grace period (use `Instant` in test)
-- [x] Mock ignoring SIGTERM receives SIGKILL on second Ctrl+C (not after 5s expiry)
-- [x] Normal single-Ctrl+C: SIGTERM sent, waits up to 5s (no regression)
+- [ ] Existing engine tests still pass after refactor (no behavior change)
+- [ ] `interruptible_sleep` with `cancel_state` set before call returns `Canceled` immediately
+- [ ] `interruptible_sleep` with `cancel_state` set mid-sleep returns `Canceled` within ~200 ms
+- [ ] `make_state_snapshot(ExitReason::ExecutorError(...))` sets `last_completed_phase_index` to the failing run's position (not the last successful position)
 
 **Steps:**
-- [x] Add `SlowMockRunHandle`-based double-signal integration test to `engine_timeout_cancel.rs`
-- [x] Assert SIGKILL latency < 500ms using `std::time::Instant`
-- [x] Verify existing single-signal test still covers its path
+- [ ] Wire `RunContext` and `BudgetTracker` into the main loop (they exist but are unused)
+- [ ] Fix `make_state_snapshot` phase_index invariant for `ExitReason::ExecutorError`
+- [ ] Replace all six inline `StateFile { ... }` construction sites with `make_state_snapshot` calls
+- [ ] Extract `exit_workflow` helper unifying all five exit-path sequences
+- [x] Extract `interruptible_sleep` helper; replace existing inter-run delay loop with it
 
 ---
 
-### Task 3: F-056 — Stale Lock Detection Warning
+### Task 2: Schema Migration — FailureReason Enum, Ancestry Fields, CostEntry Extension
 
-**Files:** `src/lock.rs`, `src/main.rs`
+**Files:** `src/state.rs`, `src/audit.rs`, `Cargo.toml`
 
-**Implementation:**
-- Add `pub struct StaleLockInfo { pub run_id: String, pub pid: u32 }` to `lock.rs`.
-- Add `pub struct LockAcquireResult { pub lock: ContextLock, pub stale_removed: Option<StaleLockInfo> }`.
-- Change `ContextLock::acquire()` to return `Result<LockAcquireResult, LockError>`. When a stale lock is removed, populate `stale_removed`. Do NOT `eprintln!` from inside `lock.rs` — return the info for the caller to emit.
-- In `main.rs`, match on `LockAcquireResult`. When `stale_removed` is `Some(info)`, emit to stderr: `Warning: Removed stale lock file from previous run {} (PID={} no longer running).` (exact spec wording). Stale lock warning goes to stderr unconditionally (not a JSONL event) because it occurs before `--output-format` is established — record in `REVIEW.md`.
-- Update both `acquire()` call sites in `main.rs`.
+Three schema changes that must land together before any other feature writes to these files:
+
+**FailureReason enum:** Replace `failure_reason: Option<String>` in `StateFile` with `failure_reason: Option<FailureReason>`. Add `#[serde(rename_all = "lowercase")]` on `FailureReason { Quota, Auth, Timeout, Unknown }`. The `Timeout` variant is already written by the existing timeout path — confirm it is consistent with the executor-integration spec and record in `REVIEW.md`. Use `#[serde(default)]` on the field for absent-key compat. Parameterize `ExitReason::ExecutorError(FailureReason)` so classification flows through `make_state_snapshot` without a separate local variable. Add `failure_reason: Option<FailureReason>` to `EngineResult` so `main.rs` can dispatch to the correct display function without re-reading state.
+
+**Ancestry fields:** Add a nested `AncestryInfo { parent_run_id: Option<String>, continuation_of: Option<String>, ancestry_depth: u32 }` struct. In `state.json`, include as `#[serde(default)] pub ancestry: Option<AncestryInfo>`. In `run.toml` via `RunMeta`, add the three fields flat (matching the run.toml spec layout) with `#[serde(default)]`. Note: `toml::to_string_pretty` on `Option<String> = None` emits nothing (not `null`) — the spec example `parent_run_id = null` is misleading; record this in `REVIEW.md` under Decisions.
+
+**CostEntry extension:** Add `#[serde(default)] pub files_added: u32`, `files_modified: u32`, `files_deleted: u32`, `files_changed: u32`, and `#[serde(default)] pub event: Option<String>` to `CostEntry` in `audit.rs`. The `event` field distinguishes `run_start` from `run_end` records — required by `rings inspect --show files-changed` and `--show costs`. Without `#[serde(default)]`, `stream_cost_entries` will fail to deserialize any existing `costs.jsonl` line lacking these fields, including the state-recovery path.
 
 **Tests:**
-- [ ] `stale_removed` is `Some(StaleLockInfo { run_id, pid })` when stale lock removed
-- [ ] `stale_removed` is `None` when no stale lock existed
-- [ ] Captured stderr contains run_id and PID when stale lock emits warning
-- [ ] Active PID lock still returns `LockError::ActiveProcess` (no regression)
-- [ ] `--force-lock` still bypasses lock check (no regression)
+- [ ] `FailureReason` round-trip: deserializing existing `state.json` with `"failure_reason": "quota"` (string) succeeds
+- [ ] `FailureReason` round-trip: deserializing `state.json` with `"failure_reason": "timeout"` succeeds
+- [ ] `FailureReason` round-trip: deserializing `state.json` without `failure_reason` field succeeds (None default)
+- [ ] `RunMeta` deserializing old `run.toml` without ancestry fields succeeds with None/0 defaults (use a literal TOML string fixture matching current output format)
+- [ ] `AncestryInfo` in `state.json` uses nested `"ancestry"` key, not flat fields
+- [ ] `CostEntry` deserializing a `costs.jsonl` line without file-diff fields succeeds with 0/None defaults
+- [ ] `CostEntry` deserializing a line without `event` field succeeds with None default
+- [ ] `EngineResult` carries `failure_reason: Some(FailureReason::Quota)` after executor emits quota pattern
 
 **Steps:**
-- [x] Add `StaleLockInfo` and `LockAcquireResult` to `lock.rs`
-- [x] Change `acquire()` return type; populate `stale_removed` on stale removal
-- [x] Update both call sites in `main.rs`; emit warning string to stderr
+- [ ] Define `FailureReason` enum with `#[serde(rename_all = "lowercase")]`
+- [ ] Parameterize `ExitReason::ExecutorError(FailureReason)`; update `make_state_snapshot`
+- [ ] Add `failure_reason: Option<FailureReason>` to `EngineResult`
+- [ ] Add `AncestryInfo` struct; add `ancestry: Option<AncestryInfo>` to `StateFile`; add flat ancestry fields to `RunMeta`
+- [ ] Add `event`, `files_added/modified/deleted/changed` to `CostEntry` with `#[serde(default)]`
 
 ---
 
-### Task 4: F-029 — Unknown Variable Warnings
+### Task 3: Workflow Config Extension — ErrorProfile, New Fields, Workflow::validate() Promotion
 
-**Files:** `src/template.rs`, `src/engine.rs`, `tests/unknown_vars.rs`
+**Files:** `src/workflow.rs`, `src/lib.rs`
 
-**Implementation:**
-- Define `KNOWN_VARS: &[&str]` = the 7 spec variables (`phase_name`, `cycle`, `max_cycles`, `iteration`, `runs_per_cycle`, `run`, `cost_so_far_usd`) PLUS `workflow_name` and `context_dir` (currently substituted but undocumented). Including them prevents spurious warnings for existing users. Record this under Conflicts in `REVIEW.md` with a note to update the spec.
-- Add `pub fn find_unknown_variables(template: &str, known: &[&str]) -> Vec<String>` as a pure function. Implementation: (1) replace `{{{{` with a placeholder (e.g., `\x00ESCAPE\x00`), (2) scan for `{{([^{}]+)}}` patterns not in `known` using a `lazy_static!` compiled regex, (3) return deduplicated unknown variable names. Do NOT scan the post-substitution output.
-- Handle `{{{{` escape in `render_prompt` via the same sentinel pre-pass ordering: replace `{{{{` with `\x00ESCAPE\x00` before variable substitutions, replace `\x00ESCAPE\x00` with `{{` at the end.
-- At workflow startup (once per phase, before any runs), call `find_unknown_variables` on the raw template string and emit one `advisory_warning` JSONL event (or stderr in human mode) per unknown variable. Keep `render_prompt` returning `String` — do not change its signature.
+Add `error_profile: Option<ErrorProfile>` to `ExecutorConfig`. Add `quota_backoff: bool`, `quota_backoff_delay: u64`, `quota_backoff_max_retries: u32`, `manifest_enabled: bool`, `manifest_ignore: Vec<String>`, `snapshot_cycles: bool`, `manifest_mtime_optimization: bool` to `WorkflowConfig`. Also add `delay_between_cycles: u64` (consistent with `delay_between_runs: u64`; record the duration-string inconsistency between these fields and `delay_between_runs` in `REVIEW.md` under Open Questions).
+
+**Critical:** All new fields must be promoted through `Workflow::validate()` into the `Workflow` struct itself — the engine receives `Workflow`, not `WorkflowFile`. The plan's "add to `WorkflowConfig`" step is insufficient without also updating `validate()`. When `executor` is `None`, the compiled error profile defaults to `ClaudeCode`.
+
+Build `CompiledErrorProfile` at `Workflow::validate()` time (pre-compiled regex sets), not per-run. Store on the validated `Workflow` struct. This prevents regex recompilation inside the engine loop.
+
+`ErrorProfile` TOML deserialization requires `#[serde(untagged)]`:
+```rust
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ErrorProfile {
+    Named(ErrorProfileName),
+    Custom { quota_patterns: Vec<String>, auth_patterns: Vec<String> },
+}
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ErrorProfileName { ClaudeCode, None }
+```
+`ErrorProfile` should only derive `Deserialize`, not `Serialize` (it is never serialized back to state files).
 
 **Tests:**
-- [ ] All 9 known variables (`phase_name`, `cycle`, `max_cycles`, `iteration`, `runs_per_cycle`, `run`, `cost_so_far_usd`, `workflow_name`, `context_dir`) produce no warning
-- [ ] `{{typo}}` in `unknown_vars`; remains as literal `{{typo}}` in rendered output
-- [ ] `{{{{` → `{{` in rendered output; `unknown_vars` is empty
-- [ ] `{{{{phase_name}}}}` → `{{phase_name}}` in rendered output; NOT flagged as unknown
-- [ ] Two different unknown variables in same template: both reported
-- [ ] Same unknown variable appearing twice: reported only once (deduplication)
-- [ ] Unknown variables across multiple phases: all reported at startup
-- [ ] Integration: workflow with unknown variable emits advisory_warning but execution proceeds
+- [ ] `ErrorProfile` TOML deser: bare string `"claude-code"` → `Named(ClaudeCode)`
+- [ ] `ErrorProfile` TOML deser: bare string `"none"` → `Named(None)`
+- [ ] `ErrorProfile` TOML deser: inline table `{ quota_patterns = [...], auth_patterns = [...] }` → `Custom`
+- [ ] `ErrorProfile` does not derive `Serialize` (confirm at compile time via no `.serialize()` call)
+- [ ] `Workflow::validate()` returns `CompiledErrorProfile` populated from `ClaudeCode` patterns when `executor` is None
+- [ ] `Workflow::validate()` compiles custom patterns correctly
 
 **Steps:**
-- [x] Define `KNOWN_VARS` constant
-- [x] Implement sentinel pre-pass for `{{{{` escape in `render_prompt`
-- [x] Implement `find_unknown_variables` with `lazy_static!` regex
-- [x] Add startup scan in `engine.rs`, emit advisory_warning per unknown variable per phase
-- [x] Write `tests/unknown_vars.rs`
+- [ ] Add `ErrorProfile` and `ErrorProfileName` enums with `#[serde(untagged)]`
+- [ ] Add all new fields to `ExecutorConfig` and `WorkflowConfig`
+- [ ] Update `Workflow::validate()` to promote new fields into `Workflow`, compile `CompiledErrorProfile`
 
 ---
 
-### Task 5: F-081 — `--dry-run`
+### Task 4: F-058 — Parent Run ID (Architectural Decision Required)
 
-**Files:** `src/dry_run.rs` (new), `src/cli.rs`, `src/main.rs`, `tests/dry_run.rs`
+**Files:** `src/main.rs`, `src/state.rs`, `src/cli.rs`
 
-**Depends on:** Task 4 (F-029 unknown variable scan)
+**⚠️ Architectural decision must be resolved before implementation:** The spec (`specs/state/run-ancestry.md`) says `rings resume` "creates a new run" with `parent_run_id` set. The current implementation reuses the same `run_dir` and `run_id`. These are incompatible. Before implementing, record the resolution in `REVIEW.md` under Conflicts and Decisions:
+- Option A: Change `resume_inner` to create a new run directory with a new `run_id`, writing the old `run_id` as `parent_run_id`. The old run directory's `costs.jsonl` and logs are not carried over — the new run starts fresh but links back. **This is the spec-compliant path.**
+- Option B: Continue in same directory; `parent_run_id` is a no-op (self-reference). The spec says "creates a new run" which makes this non-compliant.
+- **Recommended default:** Option A. The spec is explicit. Record in `REVIEW.md`.
 
-**Implementation:**
-- Add `#[arg(long)] dry_run: bool` to `RunArgs` in `cli.rs`.
-- Create `src/dry_run.rs` with types:
-  - `DryRunPhase { name: String, prompt_source: String, runs_per_cycle: u32, signal_check: SignalCheck, unknown_vars: Vec<String> }`
-  - `SignalCheck { found: bool, line_number: Option<u32> }` — for inline `prompt_text`, `line_number` is the offset within the TOML value; `found` checks for the signal string as a substring
-  - `DryRunPlan { phases: Vec<DryRunPhase>, runs_per_cycle_total: u32, max_cycles: Option<u32>, max_total_runs: Option<u32> }`
-  - JSONL event wrapper: `DryRunPlanEvent { event: String, plan: DryRunPlan, timestamp: String }` with `#[serde(rename_all = "snake_case")]`
-- Signal check for `completion_signal_mode = "regex"`: search for the literal pattern string as a substring of the prompt source (not run the regex against the prompt). Record in `REVIEW.md`.
-- In dry-run mode: load workflow, scan unknown variables (Task 4), check signal per phase, build `DryRunPlan`, emit output (human: table with `✓`/`✗`; JSONL: `dry_run_plan` event), exit 0. No executor subprocess spawned. If TOML is malformed, exit 2.
-- Validate `completion_signal_mode = "regex"` patterns via `Regex::new()` at workflow load time; fail with exit 2 if invalid.
+Pending that decision: add `--parent-run <RUN_ID>` to `RunArgs` with a `value_parser` that validates `s.starts_with("run_")`. Add `continuation_of` field set from `--parent-run`. Set `ancestry_depth` by reading parent's depth + 1 (if parent directory exists; otherwise 0 + 1 = 1). Handle `rings resume` creating a new run directory with `parent_run_id` set.
+
+Add `rings show` as `Command::Show(ShowArgs)` where `ShowArgs { run_id: String }`, dispatching to `rings inspect --show summary`. This is required by the spec and is a prerequisite for `rings inspect` to be spec-compliant.
 
 **Tests:**
-- [x] `DryRunPlan.total_runs_per_cycle` correct for multi-phase workflow
-- [x] `DryRunPlan.max_total_runs` = `total_runs_per_cycle × max_cycles` when both defined
-- [x] Signal found in file prompt with correct line number
-- [x] Signal not found: `SignalCheck { found: false, line_number: None }`
-- [ ] JSONL mode: valid `dry_run_plan` event with fields `found`, `line_number`, `phase_name`
-- [ ] Integration: `rings run --dry-run workflow.toml` exits 0; no executor subprocess spawned (use mock that panics on spawn)
-- [ ] Integration: `rings run --dry-run invalid.toml` exits 2
-- [x] Integration: `--dry-run` also reports unknown template variables (F-029 interaction)
-- [x] Inline `prompt_text` phase: signal check against inline text
+- [ ] Fresh run: `parent_run_id = None`, `ancestry_depth = 0` in `run.toml`
+- [ ] `rings resume <id>`: new run has `parent_run_id = <id>`, `ancestry_depth = 1`
+- [ ] `rings run --parent-run <id>`: sets `continuation_of = <id>`, `ancestry_depth = depth(parent) + 1`
+- [ ] `--parent-run` with nonexistent run ID: produces clear error, not panic
+- [ ] `--parent-run` with malformed value (no `run_` prefix): rejected at parse time by `value_parser`
+- [ ] Old `run.toml` without ancestry fields deserializes with None/0 defaults (literal TOML fixture)
+- [ ] `rings show <id>` dispatches to inspect summary view
 
 **Steps:**
-- [x] Add `dry_run: bool` to `RunArgs`
-- [x] Create `src/dry_run.rs` with all types
-- [x] Implement dry-run plan generation
-- [x] Implement human + JSONL output
-- [x] Branch on `--dry-run` in `main.rs` before engine invocation
-- [x] Write `tests/dry_run.rs`
+- [ ] Resolve new-run-vs-same-directory architectural question; record decision in `REVIEW.md`
+- [ ] Add `Show(ShowArgs)` to `Command`; wire to inspect summary rendering
+- [ ] Add `--parent-run` to `RunArgs` with `value_parser`
+- [ ] Update `resume_inner` per architectural decision
+- [ ] Write ancestry fields to `run.toml` and `state.json` at run start
 
 ---
 
-### Task 6: F-149 — Cost Spike Detection
+### Task 5: F-037/F-038/F-039 — Error Classification
 
-**Files:** `src/engine.rs` (or `src/budget.rs`), `src/audit.rs`, `tests/cost_spike.rs`
+**Files:** `src/error_classify.rs` (new), `src/engine.rs`, `src/display.rs`, `src/lib.rs`
 
-**Depends on:** Task 1 (engine refactor; `BudgetTracker` struct exists)
+Create `src/error_classify.rs` with `ErrorClass { Quota, Auth, Unknown }` and `classify(output: &str, profile: &CompiledErrorProfile) -> ErrorClass`. `classify()` must receive `output.combined` (raw combined stdout+stderr from the executor), not `response_text` — quota and auth messages are typically in stderr and will not appear in the JSON `result` field. Classification runs only on non-zero exit codes.
 
-**Implementation:**
-- `BudgetTracker.rolling_windows: HashMap<String, VecDeque<f64>>` — one deque per phase name, cap 5. This is per-phase to prevent false positives from cross-phase cost variation (see OD-1).
-- Cap enforcement inline: `if window.len() == 5 { window.pop_front(); } window.push_back(cost);`
-- `None`-cost runs are SKIPPED: do not push to window, do not count toward the 3-run minimum (see OD-6).
-- Spike detection after each run: if the phase's window has ≥ 3 entries, compute average. If current cost > 5× average (strict `>`), emit `advisory_warning` JSONL event with multiplier. Zero-average guard: skip spike check if all entries are 0.0.
-- `BudgetTracker::reconstruct_from_costs(path: &Path, ...) -> Result<BudgetTracker>` uses `stream_cost_entries` (Task 1) in ONE pass to simultaneously populate `cumulative_cost`, `phase_costs`, AND `rolling_windows`. This replaces the existing resume cost-reconstruction loop; there must be no second separate pass over `costs.jsonl`.
+Wire `classify()` into the engine's executor-error path: call after collecting `output.combined`, pass result into `ExitReason::ExecutorError(failure_reason)`, propagate through `make_state_snapshot` and `EngineResult`.
+
+Add `print_quota_error(run_number: u32, cycle: u32, phase_name: &str, run_id: &str, cumulative_cost: f64)` and `print_auth_error(...)` to `display.rs` matching spec output templates from error-handling.md lines 62–76. Update `print_executor_error` to dispatch by `ErrorClass`. Define display function signatures before implementation — record the spec-required format in `REVIEW.md` under Decisions.
 
 **Tests:**
-- [x] No warning with fewer than 3 entries in window
-- [x] No warning at exactly 5× average (boundary: strict `>`)
-- [x] Warning when cost > 5× rolling average; message includes correct multiplier
-- [x] Rolling window drops oldest at cap: push 7 entries, assert `len() == 5`
-- [x] Zero rolling average: no divide-by-zero, no warning
-- [x] `None`-cost entries skipped — do not count toward minimum, do not lower average
-- [x] Mix of `None` and `Some` entries: average over `Some` values only
-- [x] Integration: engine emits `advisory_warning` JSONL event on spike
-- [x] On resume, rolling window pre-populated from `costs.jsonl` in single pass
+- [ ] `classify()` returns `Quota` for each quota pattern (case-insensitive): `"usage limit reached"`, `"rate limit"`, `"quota exceeded"`, `"too many requests"`, `"429"`, `"claude.ai/settings"`
+- [ ] `classify()` returns `Auth` for each auth pattern (case-insensitive): `"authentication"`, `"invalid api key"`, `"unauthorized"`, `"401"`, `"please log in"`, `"not logged in"`
+- [ ] First-match-wins: both patterns present → `Quota` (quota patterns checked first)
+- [ ] `classify()` returns `Unknown` when no patterns match
+- [ ] `"none"` profile always returns `Unknown` regardless of output content
+- [ ] Custom profile matches specified strings only
+- [ ] `classify()` on a string where the quota pattern is only in the "stderr half" (after the `\n` separator) returns `Quota` — verifies `output.combined` is used, not `response_text`
+- [ ] `"429"` appearing in non-error context (e.g., `"processing 429 records"`) on non-zero exit still classifies — confirming classification is gated on non-zero exit, not pattern location
+- [ ] Integration: engine exits code 3 with `failure_reason = "quota"` (lowercase in `state.json`) when executor output contains quota pattern
+- [ ] Integration: engine exits code 3 with `failure_reason = "auth"` for auth patterns
+- [ ] Integration: engine exits code 3 with `failure_reason = "unknown"` for unmatched non-zero exit
+- [ ] Security: new CLI flags (`--quota-backoff`, `--quota-backoff-delay`, `--quota-backoff-max-retries`, `--parent-run`) do not appear in executor command arguments
 
 **Steps:**
-- [x] Add `rolling_windows` to `BudgetTracker` with per-phase `VecDeque<f64>` (cap 5)
-- [x] Implement `check_spike` method with `None`-skip logic and exact boundary check
-- [x] Implement `reconstruct_from_costs` single-pass method using `stream_cost_entries`
-- [x] Hook spike check into engine loop after each completed run
-- [x] Emit `advisory_warning` JSONL event on spike
-- [x] Write `tests/cost_spike.rs`
+- [ ] Create `src/error_classify.rs` with `classify()` pure function
+- [ ] Wire `classify(output.combined, &compiled_profile)` into engine executor-error path
+- [ ] Add `print_quota_error` / `print_auth_error` to `display.rs` per spec templates
+- [ ] Update `main.rs` to dispatch display function based on `EngineResult.failure_reason`
+- [ ] Expose `error_classify` in `src/lib.rs`
 
 ---
 
-### Task 7: F-049 — Resume State Recovery
+### Task 6: F-044 — Quota Backoff
 
-**Files:** `src/state.rs`, `src/audit.rs`, `src/main.rs`, `tests/state_recovery.rs`
+**Files:** `src/backoff.rs` (new), `src/engine.rs`, `src/audit.rs`, `src/cli.rs`, `src/lib.rs`
 
-**Implementation:**
-- Define `pub enum StateLoadResult` in `src/state.rs`. Do NOT derive `Serialize`/`Deserialize` — control-flow type only.
-  ```rust
-  pub enum StateLoadResult {
-      Ok(StateFile),
-      Recovered { state: StateFile, warning: String },
-      Unrecoverable { state_path: PathBuf, costs_path: PathBuf },
-  }
-  ```
-- Implement `StateFile::load_or_recover(state_path: &Path, costs_path: &Path) -> StateLoadResult`. Call `StateFile::read(state_path)`; on failure, call `audit::recover_last_run_from_costs(costs_path)`. If recovery returns `Some(n)`, construct minimal `StateFile` with `last_completed_run = n`, synthesize cycle/phase/iteration via `RunSchedule::resume_from` (count-based). Record in `REVIEW.md` that cycle/phase/iteration cannot be recovered from `costs.jsonl` alone.
-- If `costs.jsonl` absent OR has no parseable entries, return `Unrecoverable` (see OD-3).
-- `Unrecoverable` exact error message: `"Cannot resume: state.json is corrupt and costs.jsonl could not reconstruct the run position.\n  state.json: {state_path}\n  costs.jsonl: {costs_path}\nPlease inspect these files manually."` Use `std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())` for path display.
-- In `resume_inner` (`main.rs`), replace `StateFile::read(...)?` with a match on `StateLoadResult`:
-  - `Ok(state)` → proceed
-  - `Recovered { state, warning }` → emit warning to stderr, proceed
-  - `Unrecoverable` → print error message, `return Ok(2)` (not `Err(...)` — preserves message format)
-- `audit::recover_last_run_from_costs(path: &Path) -> Result<Option<u32>>`: use `stream_cost_entries` to find the maximum `run` field from parseable entries, skipping malformed lines.
+Create `src/backoff.rs` with `QuotaBackoff { enabled: bool, delay_secs: u64, max_retries: u32, current_retries: u32 }`. Methods: `should_retry() -> bool` (returns false immediately when `enabled = false` or retries exhausted), `record_retry(&mut self)`. The `wait()` method must call `interruptible_sleep` (from Task 1) — **not** `std::thread::sleep` — so Ctrl+C during the backoff delay is honored within ~200 ms. Tests must pass `duration = 0` to avoid real-time delays.
+
+The backoff retry loop in the engine must wrap the executor call without advancing `RunSchedule` — `total_runs` increments only on a final (non-retried) execution. Discard the old `RunHandle` entirely after a failed run; spawn a fresh handle for the retry. Do not re-signal an already-exited process.
+
+If a retry exits non-zero with a non-quota classification (auth or unknown), exit immediately with that classification — do not consume a retry attempt. Record this design decision in `REVIEW.md`.
+
+On backoff exhaustion, write `failure_reason = "quota"` to state. Record this in `REVIEW.md` under Decisions.
+
+Extend `write_run_log` in `audit.rs` to accept `retry_count: Option<u32>`: when `Some(n)`, write to `{run:03}-retry-{n}.log`; when `None`, write to `{run:03}.log`. The original failed log (`007.log`) is retained; each retry gets its own file.
+
+Add `--quota-backoff`, `--quota-backoff-delay <SECS>`, `--quota-backoff-max-retries <N>` to CLI with `#[arg(help = "...")]` doc comments including defaults. Add `requires = "quota_backoff"` on the delay and max-retries flags. TOML overrides apply; CLI takes precedence.
 
 **Tests:**
-- [ ] Valid `state.json` → `StateLoadResult::Ok`
-- [ ] Corrupt `state.json` + valid `costs.jsonl` with ≥1 entry → `Recovered` with run number in warning string
-- [ ] Corrupt `state.json` + empty `costs.jsonl` → `Unrecoverable`
-- [ ] Corrupt `state.json` + absent `costs.jsonl` → `Unrecoverable`
-- [ ] Both files corrupt → `Unrecoverable`
-- [ ] Integration: captured stderr contains both absolute file paths on `Unrecoverable`
-- [ ] Malformed JSONL lines skipped; max run from valid lines only
-- [ ] Ordering invariant: `costs.jsonl` has entry N, `state.json` records N-1 (crash simulated) → recovery returns N
-- [ ] `costs.jsonl` with one `cost_usd = null` entry followed by valid entry → recovery picks valid entry's run number
-- [ ] Integration: `rings resume` from corrupt state reconstructs position and continues
+- [ ] `QuotaBackoff::should_retry()` returns `false` immediately when `enabled = false`
+- [ ] `QuotaBackoff` state machine: `should_retry()` returns true until max_retries exhausted, then false
+- [ ] TOML deserialization of backoff config fields
+- [ ] CLI `--quota-backoff-delay` and `--quota-backoff-max-retries` rejected when `--quota-backoff` absent
+- [ ] Integration: quota error triggers retry; second attempt succeeds — run number not incremented, total_runs unchanged
+- [ ] Integration: max retries exhausted — exits code 3 with `failure_reason = "quota"`, state saved
+- [ ] Integration: Ctrl+C during backoff delay triggers cancellation within ~200 ms (delay set to 0 in test)
+- [ ] Integration: retry log file sequence: `007.log` exists (original failed attempt), `007-retry-1.log` exists (first retry), `007-retry-2.log` exists (second retry)
+- [ ] Integration: `quota_backoff = true` + `error_profile = "none"` → no retry (classify returns Unknown)
+- [ ] Integration: auth error does NOT trigger quota backoff even when `quota_backoff = true`; exits immediately with `failure_reason = "auth"`
+- [ ] Integration: retry exits with non-quota error → exits immediately without consuming retry attempt
+- [ ] Integration: `quota_backoff = false` (default) exits immediately on first quota error
 
 **Steps:**
-- [x] Define `StateLoadResult` enum in `src/state.rs`
-- [x] Implement `StateFile::load_or_recover` with fallback to `recover_last_run_from_costs`
-- [x] Implement `recover_last_run_from_costs` in `audit.rs` using `stream_cost_entries`
-- [x] Update `resume_inner` in `main.rs` to match on `StateLoadResult`
-- [x] Write `tests/state_recovery.rs`
+- [ ] Create `src/backoff.rs` with `QuotaBackoff` state machine
+- [ ] Extend `write_run_log` to accept `retry_count: Option<u32>`
+- [ ] Add backoff flags to `RunArgs` in `src/cli.rs`
+- [ ] Implement backoff retry loop in engine executor-error path
+- [ ] Expose `backoff` in `src/lib.rs`
 
 ---
 
-### Task 8: F-050 — Workflow File Change Detection
+### Task 7: F-117/F-118 — File Manifest + Diff Detection
 
-**Files:** `src/workflow.rs`, `src/state.rs`, `src/main.rs`, `tests/workflow_change_detection.rs`
+**Files:** `src/manifest.rs` (new), `src/engine.rs`, `src/audit.rs`, `src/lib.rs`, `Cargo.toml`
 
-**Depends on:** Task 7 (F-049 — `StateFile::load_or_recover` must succeed before fingerprint comparison)
+Create `src/manifest.rs` implementing `compute_manifest`, `write_manifest_gz`, `read_manifest_gz`, `diff_manifests`.
 
-**Implementation:**
-- `WorkflowFingerprint` is `Vec<String>` — phase names in order ONLY. `runs_per_cycle` is excluded because the spec classifies it as non-structural. Record under Decisions in `REVIEW.md`. (See also OD-5 for `runs_per_cycle` clamping on resume.)
-- Store `phase_fingerprint: Option<Vec<String>>` in `RunMeta` (`run.toml`), NOT in `state.json`. The fingerprint is static; writing it to `state.json` (updated every cycle) would repeat an O(phases) blob each cycle unnecessarily (see OD-2). Add `#[serde(default)]` so old `run.toml` files without this field parse cleanly.
-- `Workflow::structural_fingerprint(&self) -> Vec<String>` in `src/workflow.rs` returns phase names in declaration order.
-- On `rings resume`, after loading state, read `run_meta.phase_fingerprint` and compare with `workflow.structural_fingerprint()`:
-  - Absent fingerprint → skip check, emit advisory warning, proceed
-  - Match → proceed
-  - Added phase → exit code 2: `"Cannot resume: workflow has phases not present in the saved run."`
-  - Removed phase → exit code 2: `"Cannot resume: saved run has phases removed from the current workflow."`
-  - Reordered phases → exit code 2: `"Cannot resume: phase order has changed since this run was created."`
-  - Non-structural change detected (`runs_per_cycle`, `max_cycles`, `completion_signal`, or prompt text differs) → emit warning to stderr and proceed: `"Workflow file has changed since this run was created. Non-structural changes will take effect from the resume point."`
-- Record exit code 2 for structural changes in `REVIEW.md` under Decisions (spec does not assign a code).
-- When `runs_per_cycle` changes (non-structural), clamp `last_completed_iteration` to the new `runs_per_cycle` to prevent position overflow (see OD-5).
+**Atomicity:** `write_manifest_gz` must write to a `.tmp` companion file in the same directory, then `rename` to final name — same pattern as `StateFile::write_atomic`. Never write directly to the final path.
+
+**Directory creation:** `write_manifest_gz` must call `create_dir_all` on the `manifests/` parent before writing.
+
+**Manifest path:** `output_dir/<run-id>/manifests/` per spec. The `000-before.json.gz` baseline is captured before the first executor spawn. On resume, if `000-before.json.gz` already exists, skip it (preserve original baseline). Record this in `REVIEW.md` under Decisions.
+
+**Exclusions (hardcoded, cannot be overridden):**
+```
+**/.env, **/.env.*, **/*_rsa, **/*_ed25519, **/*.pem, **/*.key, **/.netrc, **/*.pfx, **/*.p12, **/.git/**
+```
+These are checked as a non-overridable second pass, after `manifest_ignore` glob processing. Additionally, `output_dir` itself is excluded as an absolute-path prefix check (separate from glob patterns) — this covers the case where `output_dir` is inside `context_dir`.
+
+**Glob patterns:** Use `globset = "0.4"` crate (not `glob = "0.3"` — unmaintained, broken `**` semantics). Compile `GlobSet` at workflow-load time.
+
+**`FileEntry`:** Use `chrono::DateTime<Utc>` for `modified`, formatted as RFC 3339 for JSON serialization. Keep `SystemTime` in the in-memory mtime cache only.
+
+**mtime cache:** Load from previous manifest file on disk at the start of each `compute_manifest` call; build a `HashMap<PathBuf, (SystemTime, [u8;32])>` in memory. Re-reading from disk is simpler and correct for resume cases.
+
+**`FileDiff`:** Internal struct `{ added, modified, deleted }`. When appending to `CostEntry`, use `files_added: u32`, `files_modified: u32`, `files_deleted: u32`, `files_changed: u32` (sum). Use `#[serde(rename)]` to ensure wire format matches spec field names.
+
+**Manifest write ordering:** After state and costs persistence (manifest is observability, not correctness-critical). Manifest write errors are logged as advisory warnings; they do not fail the run.
+
+**Symlinks:** Follow them; skip broken symlinks with a warning. Record this in `REVIEW.md` under Decisions.
+
+**Large-file-count warning:** Emit advisory warning when `compute_manifest` finds >10,000 files.
+
+**New dependencies:**
+- `flate2 = { version = "1", default-features = false, features = ["rust_backend"] }`
+- `sha2 = "0.10"`
+- `globset = "0.4"`
 
 **Tests:**
-- [ ] Identical fingerprints → no error, no warning
-- [ ] Added phase → exit code 2, error message contains "phases not present"
-- [ ] Removed phase → exit code 2, error message contains "phases removed"
-- [ ] Reordered phases → exit code 2, error message contains "phase order has changed"
-- [ ] Changed `runs_per_cycle` only → exit 0 with exact non-structural warning text
-- [ ] Changed `max_cycles` only → exit 0 with non-structural warning text
-- [ ] Changed `completion_signal` → exit 0 with non-structural warning text
-- [ ] Changed prompt text only → exit 0 with non-structural warning text
-- [ ] Missing `phase_fingerprint` in old `run.toml` → skip check, advisory warning, proceed
-- [ ] Integration: captured stderr contains exact non-structural change warning text
-- [ ] Integration: `rings resume` with structurally changed workflow exits code 2
+- [ ] `compute_manifest` produces correct SHA-256 for known file content
+- [ ] mtime optimization reuses SHA-256 when mtime unchanged from previous manifest
+- [ ] All 9 credential patterns are excluded (test each individually): `.env`, `.env.*`, `*_rsa`, `*_ed25519`, `*.pem`, `*.key`, `.netrc`, `*.pfx`, `*.p12`
+- [ ] `.git/` directory always excluded
+- [ ] Credential patterns excluded even when `manifest_ignore = []` (no user-specified patterns)
+- [ ] `output_dir` excluded when it is inside `context_dir` (e.g., `context_dir = "."`, `output_dir = "./rings-output"`)
+- [ ] Custom `manifest_ignore` patterns work correctly
+- [ ] `write_manifest_gz` / `read_manifest_gz` gzip roundtrip preserves content
+- [ ] Manifest gzip roundtrip with non-ASCII / unicode filenames
+- [ ] Non-UTF-8 path produces clear error or is skipped (not silent corruption)
+- [ ] Atomic write: truncated `.tmp` file does not leave a corrupt final manifest
+- [ ] `diff_manifests` detects added, modified, and deleted files correctly
+- [ ] Unchanged files do not appear in any diff category
+- [ ] Integration: `000-before.json.gz` created before first run
+- [ ] Integration: manifests written to correct paths after each run
+- [ ] Integration: diff data appended to `costs.jsonl` `run_end` records
+- [ ] Integration: manifest not written when executor exits non-zero (no `NNN-after.json.gz` for failed runs)
+- [ ] Integration: large-file-count warning emitted when >10,000 files
 
 **Steps:**
-- [x] Implement `Workflow::structural_fingerprint` returning `Vec<String>`
-- [x] Add `phase_fingerprint: Option<Vec<String>>` to `RunMeta` with `#[serde(default)]`
-- [x] Write fingerprint to `run.toml` at run-start in `main.rs`
-- [x] Implement fingerprint comparison in `resume_inner`; emit appropriate error or warning
-- [x] Clamp `last_completed_iteration` to new `runs_per_cycle` when it changes
-- [x] Write `tests/workflow_change_detection.rs`
+- [ ] Add `globset` to `Cargo.toml`; remove `glob` (do not add `glob = "0.3"`)
+- [ ] Add `flate2`, `sha2` to `Cargo.toml`
+- [ ] Create `src/manifest.rs`
+- [ ] Integrate `compute_manifest` hooks into engine (before first run, after each successful run)
+- [ ] Expose `manifest` in `src/lib.rs`
 
 ---
 
-### Task 9: F-070 — `rings list`
+### Task 8: F-072/F-097 — `rings inspect` + Summary View
 
-**Files:** `src/list.rs` (new), `src/cli.rs`, `src/state.rs`, `src/main.rs`, `src/duration.rs`, `tests/list_runs.rs`
+**Files:** `src/inspect.rs` (new), `src/cli.rs`, `src/main.rs`, `src/lib.rs`
 
-**Implementation:**
+Create `src/inspect.rs` with `build_summary(run_dir: &Path) -> Result<RunSummary>` aggregating `run.toml`, `state.json`, `costs.jsonl`. `RunSummary` includes status, cycles, cost, phase breakdown (`Vec<PhaseSummary>`), files changed (sum across all runs), and ancestry.
 
-**`RunStatus` enum (do first within this task):**
-- Add to `src/state.rs`: `pub enum RunStatus { Running, Completed, Canceled, Failed, Incomplete, Stopped }` with `#[serde(rename_all = "lowercase")]`, `Display`, `FromStr`. Include `Incomplete` and `Stopped` to match strings written by current `main.rs`. Do NOT add new on-disk strings. Record in `REVIEW.md` that spec's `--status` filter table omits `incomplete`/`stopped`.
-- Change `RunMeta.status` from `String` to `RunStatus`.
-- Test: round-trip each variant through `toml::to_string` / `toml::from_str`.
-- Test: old `run.toml` with bare `status = "running"` deserializes without error.
+`InspectView` with `#[derive(ValueEnum)]`: use `#[value(name = "files-changed")]` for kebab-case names. `DataFlow` view should degrade gracefully with a "phase contracts not yet available" message — phase contract spec does not exist yet; record in `REVIEW.md` under Open Questions.
 
-**`--output-format` global flag (do early):**
-- Move `output_format: OutputFormat` to the top-level `Cli` struct with `#[arg(long, global = true, alias = "format", default_value = "human")]` (see OD-4). This ensures all subcommands inherit it and shell completions/man pages show it correctly.
+`InspectArgs`: `run_id: String`, `show: Vec<InspectView>` with `#[arg(long, action = clap::ArgAction::Append)]`, `cycle: Option<u32>`, `phase: Option<String>`. **Do not add a local `--output-format` / `--format` field** — the global `--output-format` flag on `Cli` is inherited automatically; a local copy would produce duplicate-flag errors. Record this decision in `REVIEW.md`.
 
-**`SinceSpec` type:**
-- In `src/duration.rs`, add `d` suffix (86,400 seconds) to `parse_duration_secs`.
-- Define `pub enum SinceSpec { AbsoluteDate(chrono::NaiveDate), Relative(chrono::Duration) }` with `FromStr`: try ISO 8601 date first, then relative duration. Reject `0d` (consistent with `0s` rejection).
-- `SinceSpec::to_cutoff_datetime() -> DateTime<Utc>`: for `AbsoluteDate`, use `d.and_hms_opt(0, 0, 0).unwrap().and_utc()` (midnight UTC — see OD-4). Record in `REVIEW.md`.
+Default view when `show.is_empty()`: use `if show.is_empty() { show = vec![InspectView::Summary] }` in dispatch, not a clap `default_value` (which would always include `summary` even when `--show cycles` is given).
 
-**`rings list` command:**
-- Add `List(ListArgs)` to `Commands` in `cli.rs`. `ListArgs`: `since: Option<SinceSpec>` (value_parser `SinceSpec::from_str`), `status: Option<RunStatus>` (value_parser `EnumValueParser::<RunStatus>::new()`), `workflow: Option<String>`, `limit: Option<usize>` (short `-n`, default 20).
-- Note: `-n` is also used for `--max-cycles` on `rings run`. This is valid in clap (separate subcommands), but do NOT share an `Args` base struct between the two.
-- Implement `list_runs(filters: &ListFilters, base_dir: &Path) -> Result<Vec<RunSummary>>` in `src/list.rs`. Strategy: sort directory names descending (names are `run_YYYYMMDD_...`, lexicographic == chronological descending), iterate reading `run.toml` per directory, apply `since`/`status`/`workflow` filters inline, break once `limit` matching entries are accumulated. This is O(limit) in the common case.
-- If `base_dir` missing: return `Ok(vec![])`. Silently skip unreadable or partially-written run directories (missing/corrupt `run.toml`). Scan scope = same path as `resolve_output_dir` (see OD-10).
-- `RunSummary { run_id: String, started_at: DateTime<Utc>, workflow: String, status: RunStatus, cycles_completed: u32, total_cost_usd: Option<f64> }`.
-- For `RunStatus::Running` with `started_at` > 24h ago and no lock file in run directory: display status as `Running (stale?)` (heuristic, see OD-7).
-- Add `cmd_list` in `main.rs` that dispatches to `list_runs`, maps errors to exit code 2.
-- Output: human (tabular `RUN ID | DATE | WORKFLOW | STATUS | CYCLES | COST`), JSONL (one JSON object per run). Use "session" instead of "run" in help text where ambiguous (see spec gap 14).
+`rings lineage` traversal: follow `parent_run_id` chain across run directories. Guard against cycles (cap at 1000 hops) and missing run directories (stop with warning when linked run directory not found).
+
+Handle partial runs gracefully: missing `state.json`, empty `costs.jsonl`, runs still in `"running"` status. Exit code 2 for run ID not found or data unreadable.
+
+`rings completions <SHELL>` hidden subcommand: add `Completions(CompletionsArgs)` variant to `Command` with `#[command(hide = true)]`, wire to `clap_complete::generate()`. Required for shell completions to include new `inspect`, `lineage`, `show` subcommands.
 
 **Tests:**
-- [ ] `RunStatus` round-trip: each variant via `toml::to_string` / `toml::from_str`
-- [ ] Old `run.toml` with bare `status = "running"` deserializes correctly
-- [ ] `rings list --format jsonl` and `rings list --output-format jsonl` parse identically
-- [ ] `rings list --status bogus` exits non-zero and lists valid choices
-- [ ] `scan_runs` returns entries sorted by date descending
-- [ ] `--status` filter excludes non-matching runs
-- [ ] `--workflow` substring filter matches partial path
-- [ ] `--since 7d` excludes runs older than 7 days
-- [ ] `--since 2024-03-15` excludes runs before that date (midnight UTC)
-- [ ] Run at `2024-03-15T23:30:00-05:00` (UTC `2024-03-16T04:30:00Z`) included with `--since 2024-03-16` (UTC-day test)
-- [ ] `--since 2024-13-01` exits with clap error at parse time
-- [ ] `--since 0d` exits with error
-- [ ] `--limit N` truncates to N most recent entries
-- [ ] `--limit 5` on 50-run directory: exactly 5 `run.toml` files opened (early termination)
-- [ ] Empty base directory: returns empty list, no error
-- [ ] Unreadable run directory: silently skipped
-- [ ] Two runs with identical `started_at` second: sort is deterministic (stable by run_id tiebreaker)
-- [ ] `rings list --status incomplete` filters correctly (record spec gap in REVIEW.md)
-- [ ] Integration: JSONL mode emits one JSON object per run with correct fields
+- [ ] `build_summary` correctly parses a well-formed run directory with `run.toml`, `state.json`, `costs.jsonl`
+- [ ] Phase breakdown aggregation from `costs.jsonl`
+- [ ] Human rendering format matches spec layout
+- [ ] JSONL rendering produces valid JSON
+- [ ] `--cycle` and `--phase` filters work correctly
+- [ ] Summary gracefully degrades when manifests absent (`manifest_enabled = false`)
+- [ ] Summary gracefully degrades when `costs.jsonl` is absent or empty
+- [ ] `InspectView::from_str("files-changed")` succeeds (kebab-case validation)
+- [ ] `--show summary --show costs` (two `--show` flags) renders both views without duplication — verify `args.show.len() == 2`
+- [ ] `rings inspect <unknown_run_id>` exits code 2, writes error to stderr, nothing to stdout
+- [ ] `rings inspect <id>` on a run still in `"running"` status handles partial data gracefully
+- [ ] `rings lineage` traversal stops with warning when linked run directory not found
+- [ ] `rings lineage` traversal caps at 1000 hops (cycle detection)
+- [ ] Summary shows ancestry info when `parent_run_id` present
+- [ ] Integration: `rings inspect <run_id>` after a completed run shows correct summary
 
 **Steps:**
-- [x] Add `d` suffix to `parse_duration_secs`; add `SinceSpec` enum with `FromStr` and `to_cutoff_datetime`
-- [x] Define `RunStatus` enum; update `RunMeta.status` from `String` to `RunStatus`
-- [x] Move `--output-format` to global `Cli` level
-- [x] Add `List(ListArgs)` subcommand with typed value parsers
-- [x] Implement `RunSummary` and `list_runs` in `src/list.rs` with early-termination
-- [x] Add `cmd_list` in `main.rs`
-- [x] Write `tests/list_runs.rs`
+- [ ] Add `Show(ShowArgs)`, `Inspect(InspectArgs)`, `Lineage(LineageArgs)`, `Completions(CompletionsArgs)` to `Command` in `src/cli.rs`
+- [ ] Ensure all new flags have `#[arg(help = "...")]` doc comments with defaults
+- [ ] Create `src/inspect.rs` with `build_summary`, view rendering, lineage traversal
+- [ ] Wire `Command::Inspect`, `Command::Show`, `Command::Lineage`, `Command::Completions` in `src/main.rs`
+- [ ] Expose `inspect` in `src/lib.rs`
 
 ---
 
@@ -347,48 +312,31 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 
 | ID | Decision | Recommendation |
 |----|----------|----------------|
-| OD-1 | Cost spike rolling window: per-phase `HashMap<String, VecDeque<f64>>` vs. single global `VecDeque<f64>` | **Per-phase.** Cross-phase cost variation (e.g., reviewer ~$0.01 vs. builder ~$0.40) causes false positives with a global window. Spec is ambiguous — record in `REVIEW.md`. |
-| OD-2 | `phase_fingerprint` storage: `run.toml` (once) vs. `state.json` (every cycle) | **`run.toml`.** Fingerprint is static for the run lifetime; no reason to repeat it in `state.json` on every write. |
-| OD-3 | `StateLoadResult::Unrecoverable` when `costs.jsonl` is absent | **Treat absent as empty → Unrecoverable.** Distinct user message: "No runs completed before interruption." Record in `REVIEW.md`. |
-| OD-4 | `--output-format` scope: global `Cli` level vs. per-subcommand `Args` struct | **Global** on `Cli` with `#[arg(global = true)]`. Correct completions and man pages require it. |
-| OD-5 | `runs_per_cycle` changes: structural error vs. non-structural warning | **Non-structural (warning).** Spec explicitly says non-structural. Exclude from fingerprint. Clamp `last_completed_iteration` to new value on resume. Record in `REVIEW.md`. |
-| OD-6 | `None`-cost runs in `BudgetTracker` rolling window | **Skip entirely** — do not count toward 3-run minimum, do not add 0.0. Avoids suppressing legitimate spikes. |
-| OD-7 | `rings list` stale `status = "running"` display | Show `Running (stale?)` if started > 24h ago with no lock file. Non-authoritative heuristic; document in help text. |
-| OD-8 | `workflow_name` / `context_dir` in `KNOWN_VARS` | **Include them.** Currently substituted; excluding causes spurious warnings for existing users. File spec conflict in `REVIEW.md`. |
-| OD-9 | `completion_signal_mode = "regex"` signal check in `--dry-run` | **Literal substring search** for the pattern string in prompt source — not running the regex against the prompt. Validate regex at workflow load time. |
-| OD-10 | `rings list` scan scope | **Same as `resolve_output_dir`** (resume search path). Record as decision in `REVIEW.md`. |
-
----
+| D-1 | `rings resume` creates new run directory vs continues in same directory | **Create new run directory** per spec ("creates a new run"); record run_id of old dir as `parent_run_id`. Record architectural decision in REVIEW.md before starting Task 4. |
+| D-2 | `FailureReason::Timeout` present in plan but not in error-handling spec | Retain it — existing code already writes `"timeout"`. Confirm against executor-integration spec. Record in REVIEW.md under Open Questions if spec is ambiguous. |
+| D-3 | On quota backoff exhaustion, what `failure_reason` is written? | Write `failure_reason = "quota"` — the triggering cause was quota. Record in REVIEW.md under Decisions before F-044. |
+| D-4 | Retry exits non-zero with non-quota error | Exit immediately without consuming a retry attempt. Record in REVIEW.md. |
+| D-5 | Manifest ordering relative to state persistence | After state and costs; manifest errors are advisory warnings, not run failures. |
+| D-6 | On resume, should `000-before.json.gz` be re-captured? | Preserve original baseline; skip if already exists. Record in REVIEW.md. |
+| D-7 | `ancestry_depth = 0` on root runs: omit or include? | Serialize all three ancestry fields unconditionally (format is self-describing). |
+| D-8 | `--output-format` global vs local on `InspectArgs` | Use global flag only; no local copy. |
+| D-9 | `glob = "0.3"` vs `globset = "0.4"` | Use `globset = "0.4"` — maintained, correct `**` semantics. |
+| D-10 | fsync before rename for manifests | Accept theoretical power-loss window; document in REVIEW.md. |
+| D-11 | `delay_between_cycles` type (`u64` vs `DurationField`) | Use `u64` (consistent with `delay_between_runs`); record inconsistency with duration-string fields in REVIEW.md under Open Questions. |
+| D-12 | Manifest symlinks | Follow symlinks; skip broken symlinks with advisory warning. |
 
 ### Spec Gaps
 
-1. **`workflow_name` / `context_dir` undocumented** — substituted by `template.rs` but absent from `specs/execution/prompt-templating.md`. Include in `KNOWN_VARS`; update spec. Record under Conflicts in `REVIEW.md`.
-
-2. **`WorkflowFingerprint` is phase names only** — draft plan incorrectly included `runs_per_cycle`. Spec says `runs_per_cycle` is non-structural. Record under Decisions in `REVIEW.md`.
-
-3. **Rolling window per-phase vs. global** — `specs/execution/engine.md` says "last 5 runs" without defining scope. Record under Open Questions in `REVIEW.md`.
-
-4. **`rings list --status` missing `incomplete` / `stopped`** — `specs/cli/commands-and-flags.md` lists only 4 values; engine writes both. Record under Open Questions in `REVIEW.md`.
-
-5. **F-053 "immediately" latency** — spec says "immediately"; acceptable = within one 100ms poll interval. Record under Decisions in `REVIEW.md`.
-
-6. **`rings list` scan scope** — spec does not specify which directories are scanned. Use `resolve_output_dir`. Record under Decisions in `REVIEW.md`.
-
-7. **Unknown variable detection timing** — spec says "startup advisory warning"; implementation scans raw template once per phase before any runs. Record under Decisions in `REVIEW.md`.
-
-8. **F-050 exit code for structural changes** — spec says "exits with an error" without a code. Use exit code 2 (consistent with other resume errors). Record under Decisions in `REVIEW.md`.
-
-9. **`costs.jsonl` absent (not corrupt, not empty)** — treat as empty → `Unrecoverable`. Record under Decisions in `REVIEW.md`.
-
-10. **`last_completed_cycle` semantics on cycle-1 cancellation** — engine sets it to the in-progress cycle, not the last completed one. Ambiguity affects F-049 recovery. Record under Open Questions in `REVIEW.md`.
-
-11. **`state.json` inconsistency across specs** — `cancellation-resume.md` includes `workflow_file`; `audit-logs.md` omits it. Current code includes it. Record under Open Questions in `REVIEW.md`.
-
-12. **F-050 fingerprint and prompt source type** — spec lists structural changes as name/order only; changing a phase from file-based `prompt` to inline `prompt_text` is not addressed. Record under Open Questions in `REVIEW.md`.
-
-13. **Stale `status = "running"` display** — no spec-defined heuristic. Using 24h age + no lock file. Record under Decisions in `REVIEW.md`.
-
-14. **"run" vocabulary collision** — spec glossary defines "run" as a single `claude` invocation, but `rings list` exposes `RUN_ID` meaning a full workflow session. Use "session" in `rings list` help text where ambiguous; do not rename other interfaces in this batch. Record under Open Questions in `REVIEW.md`.
+- **`continuation_of` vs `parent_run_id` ambiguity:** `run-ancestry.md` does not define behavior when both `rings resume <id>` and `--parent-run <other-id>` are specified simultaneously. Record in REVIEW.md under Open Questions before Task 4.
+- **`manifest_mtime_optimization` not in spec config block:** `file-lineage.md` mentions it only in a security note, not in the config block. Record in REVIEW.md under Open Questions; do not edit the spec.
+- **`FailureReason::Timeout` not explicitly listed in error-handling spec:** Verify against executor-integration spec. Record if unresolved.
+- **`snapshot_cycles` startup warning behavior:** spec shows a TTY-gated `[y/N]` prompt with no defined non-interactive fallback. Record as Open Question; default behavior for non-TTY must be decided during implementation (recommend: skip warning, proceed).
+- **`rings show` existing vs new:** spec (`inspect-command.md` line 188) refers to it as an "existing command, updated" but no `Show` variant exists in `src/cli.rs`. Treat as new. Record in REVIEW.md.
+- **`rings lineage` not in `completion-and-manpage.md`:** man page spec omits `rings-lineage(1)` detail. Record as Open Question; implement `--output-format` via global flag.
+- **`--show data-flow` requires phase contracts:** No phase contract schema exists in `PhaseConfig` or any spec. `DataFlow` view should degrade gracefully. Record as Open Question.
+- **Limit detection in executor output** (error-handling.md lines 109–118, "N requests remaining"): not in this batch's feature list. Record as explicit deferral in REVIEW.md.
+- **`000-before.json.gz` timing on first-ever run:** manifests must go into `output_dir/<run-id>/manifests/` but the run directory may not exist yet when the before-manifest is captured. Engine must `create_dir_all` for the manifests directory before spawning the first executor.
+- **`quota_backoff_delay` integer-only vs duration string:** inconsistent with `delay_between_runs`. Record in REVIEW.md under Open Questions.
+- **`build.rs` for man page generation:** `completion-and-manpage.md` specifies man pages generated at build time via `clap_mangen`. No `build.rs` exists. Defer to a separate task; file in `TECH_DEBT.md`.
 
 ---
-

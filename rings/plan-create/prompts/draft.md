@@ -6,11 +6,19 @@ You are the `draft` phase of `plan-create`.
 
 ## Setup
 
-Read `rings/plan-create/wip/SELECTED_FEATURES.md`. Find the batch header (`## Batch: ...`) and extract the feature table (F-NNN, feature name, spec file path).
+First, delete any stale files in `rings/plan-create/wip/` before starting new work.
+
+Read `rings/plan-create/queue/PRIORITIZED_FEATURES.md`. Select a batch of 5–10 features from the top of the priority queue (lowest priority numbers first) that have not yet been planned. Use these criteria:
+
+1. **Priority order** — features with lower priority numbers come first
+2. **Logical grouping** — prefer features that share a spec file or implementation surface
+3. **Coherent scope** — the batch should be reviewable and implementable together
+
+Extract the feature list (F-NNN, feature name, spec file path) for the selected batch.
 
 For each selected feature, read its spec file in full.
 
-If `rings/plan-create/wip/SELECTED_FEATURES.md` is empty or contains no batch header, stop immediately and print:
+If `rings/plan-create/queue/PRIORITIZED_FEATURES.md` is empty or contains no priority entries, stop immediately and print:
 
 ```
 PLAN_DRAFT_DONE

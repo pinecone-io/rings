@@ -1,9 +1,9 @@
 [workflow]
 # Runs feature elections until all backlog features are prioritized.
 # Each cycle elects up to 3 features, marks them PRIORITIZED in feature_inventory.md,
-# and appends them (in priority order) to queues/PRIORITIZED_FEATURES.md.
+# and appends them (in priority order) to rings/plan-create/queue/PRIORITIZED_FEATURES.md.
 #
-# Run with: rings run rings/prioritize/prioritize.rings.toml
+# Run with: rings run rings/plan-prioritize/plan-prioritize.rings.toml
 # Resume with: rings resume <run-id>
 
 completion_signal = "ALL_FEATURES_PRIORITIZED"
@@ -13,5 +13,5 @@ delay_between_runs = 5
 
 [[phases]]
 name = "elect"
-prompt = "rings/prioritize/prompts/prioritize.md"
+prompt = "rings/plan-prioritize/prompts/prioritize.md"
 runs_per_cycle = 1

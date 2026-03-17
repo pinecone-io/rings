@@ -1,24 +1,22 @@
 [workflow]
-# Elects the highest-priority unblocked backlog features via a 15-agent voting
-# round, then dispatches 3 core technical agents to produce an initial draft plan.
-# Appends a [DRAFT] plan entry to queues/PLAN_DRAFTS.md.
+# Reads the prioritized feature queue and dispatches 3 core technical agents to
+# produce an initial draft plan. Appends a [DRAFT] plan entry to
+# rings/plan-review/queue/PLAN_DRAFTS.md.
+#
+# Prereq: rings/plan-create/queue/PRIORITIZED_FEATURES.md must be populated
+#         (run plan-prioritize first).
 #
 # Run with: rings run rings/plan-create/plan-create.rings.toml
 # Resume with: rings resume <run-id>
 
 completion_signal = "PLAN_DRAFT_DONE"
 completion_signal_mode = "line"
-completion_signal_phases = ["draft"]
 context_dir = "."
 max_cycles = 1
 
 [executor]
 binary = "claude"
 args = ["--dangerously-skip-permissions", "--output-format", "json", "-p", "-"]
-
-[[phases]]
-name = "elect"
-prompt = "rings/plan-create/prompts/elect.md"
 
 [[phases]]
 name = "draft"

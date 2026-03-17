@@ -7,7 +7,7 @@ run the next reviewer agent that has not yet produced findings for the current d
 
 ## Reviewer roster
 
-The authoritative ordered list of reviewers (12 total):
+The authoritative ordered list of reviewers (7 total):
 
 1. impl-testing
 2. impl-error-handling
@@ -15,12 +15,7 @@ The authoritative ordered list of reviewers (12 total):
 4. impl-serialization
 5. impl-process-mgmt
 6. impl-filesystem
-7. impl-cross-platform
-8. impl-performance
-9. impl-memory
-10. impl-regex
-11. impl-agent-ux
-12. impl-docs
+7. impl-agent-ux
 
 ## Setup
 
@@ -28,7 +23,7 @@ The authoritative ordered list of reviewers (12 total):
 
 **This is cycle {{cycle}} of {{max_cycles}}.**
 
-Assert that `{{max_cycles}}` equals 12 (the number of reviewers in the roster). If it
+Assert that `{{max_cycles}}` equals 7 (the number of reviewers in the roster). If it
 does not, stop and note the mismatch in `REVIEW.md` — misconfigured `max_cycles` causes
 synthesize to run too early or too late.
 
@@ -91,7 +86,7 @@ Write the agent's full output to `rings/{{workflow_name}}/wip/review-{persona}.m
 
 ### Step 6: Signal
 
-Check whether all 12 reviewers now have a `review-{persona}.md` file in
+Check whether all 7 reviewers now have a `review-{persona}.md` file in
 `rings/{{workflow_name}}/wip/`.
 
 **If any reviewers remain:**
@@ -102,6 +97,6 @@ Print the following on its own line:
 RINGS_CONTINUE
 ```
 
-**If all 12 reviewers have run:**
+**If all 7 reviewers have run:**
 
 Do NOT print `RINGS_CONTINUE`. Exit normally. The cycle will fall through to `synthesize`.

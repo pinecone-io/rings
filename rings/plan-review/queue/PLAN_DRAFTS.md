@@ -156,4 +156,147 @@ Files to create or modify, deduplicated across all three reviewers:
 8. F-050 (Workflow file change detection) — depends on F-049 for recovery path
 9. F-070 (rings list) — independent, can be done in parallel after step 1
 
-<!-- No pending drafts. -->
+## [REVIEWED] Batch: Error Handling, File Lineage & Inspect Foundation — 2026-03-17
+
+### Selected Features
+
+| F-NNN | Feature | Spec file |
+|-------|---------|-----------|
+| F-037 | Error Classification | specs/execution/error-handling.md |
+| F-038 | Quota Error Detection | specs/execution/error-handling.md |
+| F-039 | Auth Error Detection | specs/execution/error-handling.md |
+| F-117 | File Manifest | specs/observability/file-lineage.md |
+| F-118 | File Diff Detection | specs/observability/file-lineage.md |
+| F-072 | `rings inspect` | specs/cli/inspect-command.md |
+| F-097 | Summary View | specs/cli/inspect-command.md |
+| F-044 | Quota Backoff | specs/execution/rate-limiting.md |
+| F-058 | Parent Run ID | specs/state/run-ancestry.md |
+
+### Source Files
+
+**Create (new files):**
+- `src/error_classify.rs` — `ErrorProfile` enum, compiled pattern matching, `classify()` function (F-037/038/039)
+- `src/backoff.rs` — `QuotaBackoff` state machine encapsulating retry-with-delay logic (F-044)
+- `src/manifest.rs` — manifest computation, SHA-256 hashing, mtime caching, gzip write/read, diff detection (F-117/118)
+- `src/inspect.rs` — `rings inspect` rendering logic, `RunSummary` aggregation, view dispatching (F-072/097)
+- `tests/error_classify.rs` — integration tests for error classification and error-specific exit behavior
+- `tests/quota_backoff.rs` — integration tests for quota retry logic
+- `tests/manifest.rs` — integration tests for manifest computation and diff detection
+- `tests/inspect.rs` — integration tests for inspect command output
+
+**Modify (existing files):**
+- `src/workflow.rs` — add `error_profile` to `ExecutorConfig`; add `quota_backoff`, `quota_backoff_delay`, `quota_backoff_max_retries`, `delay_between_cycles` to `WorkflowConfig`; add `manifest_enabled`, `manifest_ignore`, `snapshot_cycles`, `manifest_mtime_optimization`
+- `src/engine.rs` — call `classify()` on non-zero executor exits and populate `failure_reason`; add quota backoff retry loop around quota error path; invoke manifest computation before first run and after each run; use `RunContext`/`BudgetTracker` (prerequisite refactor)
+- `src/state.rs` — add `parent_run_id`, `continuation_of`, `ancestry_depth` to `RunMeta` and `StateFile`; change `failure_reason` from `Option<String>` to `Option<FailureReason>` enum
+- `src/cli.rs` — add `Inspect(InspectArgs)` and `Lineage(LineageArgs)` subcommand variants; add `--quota-backoff`, `--quota-backoff-delay`, `--quota-backoff-max-retries` flags; add `--parent-run` to `RunArgs`
+- `src/display.rs` — add `print_quota_error()`, `print_auth_error()` functions matching spec output templates; add `print_quota_backoff_waiting()` and `print_quota_backoff_exhausted()`; update `print_executor_error()` to dispatch by `ErrorClass`
+- `src/audit.rs` — extend `CostEntry` with `files_added`, `files_modified`, `files_deleted`, `files_changed` fields; add retry log file naming (`007-retry-1.log`)
+- `src/main.rs` — dispatch `Command::Inspect` and `Command::Lineage`; set `parent_run_id` on resume; pass `--parent-run` on fresh run
+- `src/lib.rs` — declare `error_classify`, `backoff`, `manifest`, `inspect` modules
+- `Cargo.toml` — add `flate2`, `glob`, `sha2` dependencies
+
+### Key Types, Traits, and Structs
+
+| Type / Trait | Purpose | Feature |
+|---|---|---|
+| `ErrorClass` | Enum: `Quota`, `Auth`, `Unknown` — typed classification of executor failures | F-037 |
+| `ErrorProfile` | Enum: `ClaudeCode`, `None`, `Custom { quota_patterns, auth_patterns }` — deserialized from TOML | F-037 |
+| `CompiledErrorProfile` | Pre-compiled regex/pattern sets for quota and auth detection, created at workflow load time | F-037/038/039 |
+| `FailureReason` | Enum: `Quota`, `Auth`, `Timeout`, `Unknown` with `#[serde(rename_all = "lowercase")]` — replaces stringly-typed `failure_reason` | F-037 |
+| `QuotaBackoff` | State machine: `enabled`, `delay_secs`, `max_retries`, `current_retries`; methods `should_retry()`, `record_retry()` | F-044 |
+| `FileEntry` | Struct: `path`, `sha256`, `size_bytes`, `modified` — one entry in a manifest | F-117 |
+| `Manifest` | Struct: `timestamp`, `run`, `cycle`, `phase`, `iteration`, `root`, `files: Vec<FileEntry>` | F-117 |
+| `FileDiff` | Struct: `added`, `modified`, `deleted` (each `Vec<String>`) — diff between two manifests | F-118 |
+| `InspectView` | Enum (clap `ValueEnum`): `Summary`, `Cycles`, `FilesChanged`, `DataFlow`, `Costs`, `ClaudeOutput` | F-072 |
+| `InspectArgs` | Struct: `run_id`, `show: Vec<InspectView>`, `cycle: Option<u32>`, `phase: Option<String>`, `format: OutputFormat` | F-072 |
+| `RunSummary` | Aggregated per-run data for summary view: status, cycles, cost, phase breakdown, files changed, ancestry | F-097 |
+| `PhaseSummary` | Struct: `name`, `runs`, `cost_usd` — used within `RunSummary.phase_breakdown` | F-097 |
+
+### Test Cases Required
+
+**F-037/038/039 (Error Classification):**
+- Unit: `classify()` returns `Quota` for each quota pattern (case-insensitive): "usage limit reached", "rate limit", "quota exceeded", "too many requests", "429", "claude.ai/settings"
+- Unit: `classify()` returns `Auth` for each auth pattern (case-insensitive): "authentication", "invalid api key", "unauthorized", "401", "please log in", "not logged in"
+- Unit: first-match-wins when both quota and auth patterns present in output
+- Unit: `classify()` returns `Unknown` when no patterns match
+- Unit: `"none"` profile always returns `Unknown` regardless of output content
+- Unit: custom profile with provided patterns matches specified strings only
+- Unit: `ErrorProfile` deserializes from all three TOML shapes (string `"claude-code"`, string `"none"`, inline table)
+- Integration: engine exits code 3 with `failure_reason = "quota"` when executor output contains quota patterns
+- Integration: engine exits code 3 with `failure_reason = "auth"` for auth patterns
+- Integration: engine exits code 3 with `failure_reason = "unknown"` for unmatched non-zero exit
+- Integration: display functions emit spec-matching output for each error class
+
+**F-044 (Quota Backoff):**
+- Unit: `QuotaBackoff` state machine transitions: `should_retry()` returns true until max_retries exhausted
+- Unit: TOML deserialization of backoff config fields, CLI override precedence
+- Integration: quota error triggers retry, second attempt succeeds — run number not incremented
+- Integration: max retries exhausted — exits with code 3, state saved
+- Integration: Ctrl+C during backoff delay triggers cancellation
+- Integration: retry log file naming (`007-retry-1.log`)
+- Integration: `quota_backoff = false` (default) exits immediately on first quota error
+
+**F-117 (File Manifest):**
+- Unit: `compute_manifest` produces correct SHA256 for known file content
+- Unit: mtime optimization reuses SHA256 when mtime unchanged
+- Unit: credential patterns (`.env`, `*_rsa`, `*.pem`, `*.key`) always excluded regardless of `manifest_ignore`
+- Unit: custom `manifest_ignore` patterns work correctly
+- Unit: `write_manifest_gz` / `read_manifest_gz` gzip roundtrip preserves content
+- Unit: manifest excludes rings output directory itself
+- Integration: `000-before.json.gz` created before first run
+- Integration: manifests written to correct paths after each run
+- Integration: large-file-count warning emitted when >10,000 files
+
+**F-118 (File Diff Detection):**
+- Unit: `diff_manifests` correctly detects added files (in after but not before)
+- Unit: `diff_manifests` correctly detects modified files (same path, different sha256)
+- Unit: `diff_manifests` correctly detects deleted files (in before but not after)
+- Unit: unchanged files do not appear in any diff category
+- Integration: diff data appended to `costs.jsonl` `run_end` records
+
+**F-072/097 (Inspect / Summary View):**
+- Unit: `build_summary` correctly parses a well-formed run directory with `run.toml`, `state.json`, `costs.jsonl`
+- Unit: phase breakdown aggregation from costs.jsonl
+- Unit: human rendering format matches spec layout
+- Unit: JSONL rendering produces valid JSON
+- Unit: `--cycle` and `--phase` filters work correctly
+- Unit: summary gracefully degrades when manifests absent (`manifest_enabled = false`)
+- Unit: `InspectView::from_str("files-changed")` succeeds (kebab-case validation)
+- Integration: `rings inspect <run_id>` after a completed run shows correct summary
+- Integration: summary shows ancestry info when `parent_run_id` present
+
+**F-058 (Parent Run ID):**
+- Unit: fresh run has `parent_run_id = None`, `ancestry_depth = 0`
+- Unit: resume sets `parent_run_id` to the resumed run's ID
+- Unit: `--parent-run` sets both `parent_run_id` and `continuation_of`
+- Unit: `ancestry_depth` increments correctly through a chain
+- Unit: old `run.toml` without ancestry fields deserializes with `None` defaults (backward compatibility)
+- Integration: `rings resume` creates a new run with `parent_run_id` set
+- Integration: `rings run --parent-run <id>` sets ancestry correctly
+
+### Cross-Feature Dependencies
+
+- **F-038 and F-039 depend on F-037**: `ErrorProfile` and `classify()` must exist before specific quota and auth detection can be wired into the engine
+- **F-044 depends on F-038**: quota backoff fires only when `classify()` returns `ErrorClass::Quota`
+- **F-118 depends on F-117**: diff detection requires two consecutive manifests to compare
+- **F-097 depends on F-072**: summary view is one of inspect's view modes
+- **F-072/097 depend on F-058**: summary view displays ancestry info (`parent_run_id`)
+- **F-072/097 depend on F-117/118**: `--show files-changed` requires manifest data on disk; summary shows files-changed count
+
+**Prerequisite refactors (identified by all three reviewers):**
+- **Engine refactor [blocker]**: `run_workflow` is ~750 lines with 15+ local mutable variables and 6+ duplicated `StateFile` construction sites. The `make_state_snapshot` helper exists but is `#[allow(dead_code)]`. `RunContext` and `BudgetTracker` are defined but unused in the actual loop. Before adding error classification, backoff loops, and manifest hooks, extract state into `RunContext`, use `make_state_snapshot`, and switch to `BudgetTracker`. This prevents all subsequent features from compounding the copy-paste debt.
+- **`FailureReason` enum [concern]**: Replace stringly-typed `failure_reason: Option<String>` with a proper enum using `#[serde(rename_all = "lowercase")]`
+- **`interruptible_sleep` helper [concern]**: Extract the polling sleep pattern (used for inter-run delay, will be needed for quota backoff delay) into a reusable helper
+
+**New Cargo dependencies:**
+- `flate2 = { version = "1", default-features = false, features = ["rust_backend"] }` — gzip compression for manifest storage (pure Rust, no C FFI)
+- `glob = "0.3"` — glob pattern matching for manifest ignore patterns (no transitive deps)
+- `sha2 = "0.10"` — SHA-256 file fingerprinting (pure Rust, RustCrypto org, minimal transitive surface)
+
+**Recommended implementation order:**
+1. Engine refactor (extract `RunContext`/`BudgetTracker`, use `make_state_snapshot`, extract `interruptible_sleep`)
+2. F-058 (Parent Run ID) — state schema only, no engine changes, unblocks inspect ancestry display
+3. F-037/F-038/F-039 (Error Classification) — new module + small engine integration
+4. F-044 (Quota Backoff) — depends on error classification
+5. F-117/F-118 (File Manifest + Diff) — independent of error features, parallel-safe after refactor
+6. F-072/F-097 (Inspect + Summary View) — read-only, depends on all prior state/audit changes being in place

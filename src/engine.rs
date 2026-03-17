@@ -392,7 +392,6 @@ fn workflow_name_from_file(workflow_file: &str) -> String {
 }
 
 /// Create a state snapshot for the current run context.
-#[allow(dead_code)]
 fn make_state_snapshot(
     ctx: &RunContext,
     config: &EngineConfig,
@@ -423,7 +422,7 @@ fn make_state_snapshot(
     }
 }
 
-/// Save state to the state file.
+/// Save state to the state file (currently unused, kept for future use).
 #[allow(dead_code)]
 fn save_state(
     ctx: &RunContext,
@@ -482,26 +481,9 @@ pub fn run_workflow(
 
     std::fs::create_dir_all(&config.output_dir)?;
 
-    let mut cumulative_cost = 0.0f64;
-    let mut total_runs = 0u32;
-    let mut last_cycle = 0u32;
-    let mut last_successful_run: u32 = 0;
-    let mut current_display_cycle = 0u32;
+    // Initialize RunContext to consolidate mutable state
+    let mut ctx = RunContext::new();
     let mut cycle_cost = 0.0f64;
-
-    // Budget cap tracking
-    let mut phase_costs: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
-    let mut budget_warned_80_global = false;
-    let mut budget_warned_90_global = false;
-    let mut budget_warned_80_phase: std::collections::HashMap<String, bool> =
-        std::collections::HashMap::new();
-    let mut budget_warned_90_phase: std::collections::HashMap<String, bool> =
-        std::collections::HashMap::new();
-
-    // Rolling windows for spike detection (per-phase, cap 5 entries)
-    let mut rolling_windows: std::collections::HashMap<String, std::collections::VecDeque<f64>> =
-        std::collections::HashMap::new();
-    let mut parse_warnings = Vec::new();
 
     let workflow_name = workflow_name_from_file(&config.workflow_file);
 
@@ -520,14 +502,15 @@ pub fn run_workflow(
             for line in content.lines() {
                 if let Ok(entry) = serde_json::from_str::<crate::audit::CostEntry>(line.trim()) {
                     if let Some(cost) = entry.cost_usd {
-                        cumulative_cost += cost;
-                        phase_costs
+                        ctx.budget.cumulative_cost += cost;
+                        ctx.budget
+                            .phase_costs
                             .entry(entry.phase.clone())
                             .and_modify(|c| *c += cost)
                             .or_insert(cost);
 
                         // Update rolling window for spike detection
-                        let window = rolling_windows.entry(entry.phase).or_default();
+                        let window = ctx.budget.rolling_windows.entry(entry.phase).or_default();
                         if window.len() >= 5 {
                             window.pop_front();
                         }
@@ -539,20 +522,24 @@ pub fn run_workflow(
 
         // Initialize warning flags based on reconstructed costs
         if let Some(cap) = workflow.budget_cap_usd {
-            let pct_global = (cumulative_cost / cap * 100.0) as u32;
-            budget_warned_80_global = pct_global >= 80;
-            budget_warned_90_global = pct_global >= 90;
+            let pct_global = (ctx.budget.cumulative_cost / cap * 100.0) as u32;
+            ctx.budget.budget_warned_80_global = pct_global >= 80;
+            ctx.budget.budget_warned_90_global = pct_global >= 90;
         }
 
         for phase in &workflow.phases {
             if let Some(cap) = phase.budget_cap_usd {
-                if let Some(&phase_cost) = phase_costs.get(&phase.name) {
+                if let Some(&phase_cost) = ctx.budget.phase_costs.get(&phase.name) {
                     let pct = (phase_cost / cap * 100.0) as u32;
                     if pct >= 80 {
-                        budget_warned_80_phase.insert(phase.name.clone(), true);
+                        ctx.budget
+                            .budget_warned_80_phase
+                            .insert(phase.name.clone(), true);
                     }
                     if pct >= 90 {
-                        budget_warned_90_phase.insert(phase.name.clone(), true);
+                        ctx.budget
+                            .budget_warned_90_phase
+                            .insert(phase.name.clone(), true);
                     }
                 }
             }
@@ -560,18 +547,18 @@ pub fn run_workflow(
     }
 
     while let Some(run_spec) = schedule.next() {
-        last_cycle = run_spec.cycle;
+        ctx.last_cycle = run_spec.cycle;
 
         // Check if entering a new cycle
-        if run_spec.cycle != current_display_cycle {
+        if run_spec.cycle != ctx.current_display_cycle {
             // Print cost for previous cycle if not the first one
-            if current_display_cycle > 0 {
+            if ctx.current_display_cycle > 0 {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             // Print header for new cycle
             crate::display::print_cycle_header(run_spec.cycle, workflow.max_cycles);
             cycle_cost = 0.0;
-            current_display_cycle = run_spec.cycle;
+            ctx.current_display_cycle = run_spec.cycle;
         }
 
         // Resolve prompt text
@@ -611,7 +598,7 @@ pub fn run_workflow(
             run: run_spec.global_run_number,
             iteration: run_spec.phase_iteration,
             runs_per_cycle: run_spec.phase_total_iterations,
-            cost_so_far_usd: cumulative_cost,
+            cost_so_far_usd: ctx.budget.cumulative_cost,
             workflow_name: workflow_name.clone(),
             context_dir: workflow.context_dir.clone(),
         };
@@ -673,21 +660,9 @@ pub fn run_workflow(
                 if cancel_state.is_canceling() && !cancel_occurred {
                     let _ = handle.send_sigterm();
                     // Save state immediately after SIGTERM
-                    let state = StateFile {
-                        schema_version: 1,
-                        run_id: config.run_id.clone(),
-                        workflow_file: config.workflow_file.clone(),
-                        last_completed_run: last_successful_run,
-                        last_completed_cycle: last_cycle,
-                        last_completed_phase_index: run_spec.phase_index,
-                        last_completed_iteration: run_spec.phase_iteration,
-                        total_runs_completed: total_runs,
-                        cumulative_cost_usd: cumulative_cost,
-                        claude_resume_commands: vec![],
-                        canceled_at: Some(chrono::Utc::now().to_rfc3339()),
-                        failure_reason: None,
-                        ancestry: None,
-                    };
+                    let mut state =
+                        make_state_snapshot(&ctx, config, &run_spec, ExitReason::Canceled);
+                    state.claude_resume_commands = vec![];
                     let _ = state.write_atomic(&state_path);
 
                     // Wait up to 5s for graceful shutdown
@@ -742,21 +717,9 @@ pub fn run_workflow(
                 if std::time::Instant::now() >= deadline {
                     let _ = handle.send_sigterm();
                     // Save state immediately after SIGTERM
-                    let state = StateFile {
-                        schema_version: 1,
-                        run_id: config.run_id.clone(),
-                        workflow_file: config.workflow_file.clone(),
-                        last_completed_run: last_successful_run,
-                        last_completed_cycle: last_cycle,
-                        last_completed_phase_index: run_spec.phase_index,
-                        last_completed_iteration: run_spec.phase_iteration,
-                        total_runs_completed: total_runs,
-                        cumulative_cost_usd: cumulative_cost,
-                        claude_resume_commands: vec![],
-                        canceled_at: None,
-                        failure_reason: Some(FailureReason::Timeout),
-                        ancestry: None,
-                    };
+                    let mut state =
+                        make_state_snapshot(&ctx, config, &run_spec, ExitReason::TimedOut);
+                    state.claude_resume_commands = vec![];
                     let _ = state.write_atomic(&state_path);
 
                     // Wait up to 5s for graceful shutdown
@@ -834,15 +797,15 @@ pub fn run_workflow(
 
         // Record cost
         let cost = parse_cost_from_output(&output.combined);
-        cumulative_cost += cost.cost_usd.unwrap_or(0.0);
-        total_runs += 1;
+        ctx.budget.cumulative_cost += cost.cost_usd.unwrap_or(0.0);
+        ctx.total_runs += 1;
 
         // Accumulate low-confidence parse warnings
         if matches!(
             cost.confidence,
             crate::cost::ParseConfidence::Low | crate::cost::ParseConfidence::None
         ) {
-            parse_warnings.push(crate::cost::ParseWarning {
+            ctx.parse_warnings.push(crate::cost::ParseWarning {
                 run_number: run_spec.global_run_number,
                 cycle: run_spec.cycle,
                 phase: run_spec.phase_name.clone(),
@@ -863,7 +826,7 @@ pub fn run_workflow(
         // Handle timeout
         if timeout_occurred {
             // Print final cycle cost before returning
-            if current_display_cycle > 0 {
+            if ctx.current_display_cycle > 0 {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             append_cost_entry(
@@ -886,10 +849,10 @@ pub fn run_workflow(
             )?;
             return Ok(EngineResult {
                 exit_code: 2,
-                completed_cycles: last_cycle,
-                total_cost_usd: cumulative_cost,
-                total_runs,
-                parse_warnings,
+                completed_cycles: ctx.last_cycle,
+                total_cost_usd: ctx.budget.cumulative_cost,
+                total_runs: ctx.total_runs,
+                parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
             });
         }
@@ -897,7 +860,7 @@ pub fn run_workflow(
         // Handle cancellation
         if cancel_occurred {
             // Print final cycle cost before returning
-            if current_display_cycle > 0 {
+            if ctx.current_display_cycle > 0 {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             append_cost_entry(
@@ -920,10 +883,10 @@ pub fn run_workflow(
             )?;
             return Ok(EngineResult {
                 exit_code: 130,
-                completed_cycles: last_cycle,
-                total_cost_usd: cumulative_cost,
-                total_runs,
-                parse_warnings,
+                completed_cycles: ctx.last_cycle,
+                total_cost_usd: ctx.budget.cumulative_cost,
+                total_runs: ctx.total_runs,
+                parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
             });
         }
@@ -933,25 +896,17 @@ pub fn run_workflow(
         let resume_commands = extract_resume_commands(&response_text);
         if output.exit_code != 0 {
             // Print final cycle cost before returning
-            if current_display_cycle > 0 {
+            if ctx.current_display_cycle > 0 {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             // Write state BEFORE costs.jsonl to prevent duplicate cost entries on resume.
-            let state = StateFile {
-                schema_version: 1,
-                run_id: config.run_id.clone(),
-                workflow_file: config.workflow_file.clone(),
-                last_completed_run: last_successful_run,
-                last_completed_cycle: run_spec.cycle,
-                last_completed_phase_index: run_spec.phase_index,
-                last_completed_iteration: run_spec.phase_iteration,
-                total_runs_completed: total_runs,
-                cumulative_cost_usd: cumulative_cost,
-                claude_resume_commands: resume_commands,
-                canceled_at: None,
-                failure_reason: None,
-                ancestry: None,
-            };
+            let mut state = make_state_snapshot(
+                &ctx,
+                config,
+                &run_spec,
+                ExitReason::ExecutorError(FailureReason::Unknown),
+            );
+            state.claude_resume_commands = resume_commands;
             state.write_atomic(&state_path)?;
             append_cost_entry(
                 &costs_path,
@@ -973,31 +928,18 @@ pub fn run_workflow(
             )?;
             return Ok(EngineResult {
                 exit_code: 3,
-                completed_cycles: last_cycle,
-                total_cost_usd: cumulative_cost,
-                total_runs,
-                parse_warnings,
+                completed_cycles: ctx.last_cycle,
+                total_cost_usd: ctx.budget.cumulative_cost,
+                total_runs: ctx.total_runs,
+                parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
             });
         }
 
         // Run succeeded — persist state first (C-2: state before costs prevents duplicate entries
         // on resume if interrupted between the two writes).
-        let state = StateFile {
-            schema_version: 1,
-            run_id: config.run_id.clone(),
-            workflow_file: config.workflow_file.clone(),
-            last_completed_run: run_spec.global_run_number,
-            last_completed_cycle: run_spec.cycle,
-            last_completed_phase_index: run_spec.phase_index,
-            last_completed_iteration: run_spec.phase_iteration,
-            total_runs_completed: total_runs,
-            cumulative_cost_usd: cumulative_cost,
-            claude_resume_commands: resume_commands.clone(),
-            canceled_at: None,
-            failure_reason: None,
-            ancestry: None,
-        };
+        let mut state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::Success);
+        state.claude_resume_commands = resume_commands.clone();
         state.write_atomic(&state_path)?;
 
         // Append cost entry after state is safely checkpointed.
@@ -1020,17 +962,20 @@ pub fn run_workflow(
             },
         )?;
 
-        last_successful_run = run_spec.global_run_number;
+        ctx.last_successful_run = run_spec.global_run_number;
 
         // Update phase costs and check budget caps
-        phase_costs
+        ctx.budget
+            .phase_costs
             .entry(run_spec.phase_name.clone())
             .and_modify(|c| *c += cost.cost_usd.unwrap_or(0.0))
             .or_insert(cost.cost_usd.unwrap_or(0.0));
 
         // Update rolling window for spike detection (only if cost is Some)
         if let Some(cost_val) = cost.cost_usd {
-            let window = rolling_windows
+            let window = ctx
+                .budget
+                .rolling_windows
                 .entry(run_spec.phase_name.clone())
                 .or_default();
             if window.len() >= 5 {
@@ -1039,7 +984,8 @@ pub fn run_workflow(
             window.push_back(cost_val);
 
             // Check for cost spike
-            if let Some(multiplier) = check_spike(&rolling_windows, &run_spec.phase_name) {
+            if let Some(multiplier) = check_spike(&ctx.budget.rolling_windows, &run_spec.phase_name)
+            {
                 let timestamp =
                     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
                 let event = serde_json::json!({
@@ -1057,68 +1003,54 @@ pub fn run_workflow(
 
         // Check global budget cap
         if let Some(cap) = workflow.budget_cap_usd {
-            let pct = (cumulative_cost / cap * 100.0) as u32;
+            let pct = (ctx.budget.cumulative_cost / cap * 100.0) as u32;
 
             // ≥100%: budget cap reached
-            if cumulative_cost >= cap {
+            if ctx.budget.cumulative_cost >= cap {
                 // Print final cycle cost before returning
-                if current_display_cycle > 0 {
+                if ctx.current_display_cycle > 0 {
                     crate::display::print_cycle_cost(cycle_cost);
                 }
                 // Print budget cap reached message
-                crate::display::print_budget_cap_reached(cap, cumulative_cost);
+                crate::display::print_budget_cap_reached(cap, ctx.budget.cumulative_cost);
 
                 // Emit budget_cap event
                 let event = BudgetCapEvent {
                     event: "budget_cap".to_string(),
                     run_id: config.run_id.clone(),
-                    cost_usd: cumulative_cost,
+                    cost_usd: ctx.budget.cumulative_cost,
                     budget_cap_usd: cap,
                     scope: "global".to_string(),
-                    runs_completed: total_runs,
+                    runs_completed: ctx.total_runs,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 };
                 let _ = append_event(&events_path, &serde_json::to_value(&event)?);
 
                 // Save state before returning
-                let state = StateFile {
-                    schema_version: 1,
-                    run_id: config.run_id.clone(),
-                    workflow_file: config.workflow_file.clone(),
-                    last_completed_run: last_successful_run,
-                    last_completed_cycle: last_cycle,
-                    last_completed_phase_index: run_spec.phase_index,
-                    last_completed_iteration: run_spec.phase_iteration,
-                    total_runs_completed: total_runs,
-                    cumulative_cost_usd: cumulative_cost,
-                    claude_resume_commands: vec![],
-                    canceled_at: None,
-                    failure_reason: None,
-                    ancestry: None,
-                };
+                let state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::BudgetCap);
                 state.write_atomic(&state_path)?;
 
                 return Ok(EngineResult {
                     exit_code: 4,
-                    completed_cycles: last_cycle,
-                    total_cost_usd: cumulative_cost,
-                    total_runs,
-                    parse_warnings,
+                    completed_cycles: ctx.last_cycle,
+                    total_cost_usd: ctx.budget.cumulative_cost,
+                    total_runs: ctx.total_runs,
+                    parse_warnings: ctx.parse_warnings,
                     failure_reason: None,
                 });
             }
 
             // ≥80%: warning (once)
-            if pct >= 80 && !budget_warned_80_global {
-                budget_warned_80_global = true;
+            if pct >= 80 && !ctx.budget.budget_warned_80_global {
+                ctx.budget.budget_warned_80_global = true;
                 eprintln!(
                     "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap.",
-                    cumulative_cost, cap
+                    ctx.budget.cumulative_cost, cap
                 );
                 let event = BudgetWarningEvent {
                     event: "budget_warning".to_string(),
                     run_id: config.run_id.clone(),
-                    cost_usd: cumulative_cost,
+                    cost_usd: ctx.budget.cumulative_cost,
                     budget_cap_usd: cap,
                     pct: 80,
                     scope: "global".to_string(),
@@ -1128,16 +1060,16 @@ pub fn run_workflow(
             }
 
             // ≥90%: warning (once)
-            if pct >= 90 && !budget_warned_90_global {
-                budget_warned_90_global = true;
+            if pct >= 90 && !ctx.budget.budget_warned_90_global {
+                ctx.budget.budget_warned_90_global = true;
                 eprintln!(
                     "⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit.",
-                    cumulative_cost, cap
+                    ctx.budget.cumulative_cost, cap
                 );
                 let event = BudgetWarningEvent {
                     event: "budget_warning".to_string(),
                     run_id: config.run_id.clone(),
-                    cost_usd: cumulative_cost,
+                    cost_usd: ctx.budget.cumulative_cost,
                     budget_cap_usd: cap,
                     pct: 90,
                     scope: "global".to_string(),
@@ -1150,13 +1082,13 @@ pub fn run_workflow(
         // Check per-phase budget caps
         for phase in &workflow.phases {
             if let Some(cap) = phase.budget_cap_usd {
-                if let Some(&phase_cost) = phase_costs.get(&phase.name) {
+                if let Some(&phase_cost) = ctx.budget.phase_costs.get(&phase.name) {
                     let pct = (phase_cost / cap * 100.0) as u32;
 
                     // ≥100%: phase budget cap reached
                     if phase_cost >= cap {
                         // Print final cycle cost before returning
-                        if current_display_cycle > 0 {
+                        if ctx.current_display_cycle > 0 {
                             crate::display::print_cycle_cost(cycle_cost);
                         }
                         // Print budget cap reached message
@@ -1169,47 +1101,38 @@ pub fn run_workflow(
                             cost_usd: phase_cost,
                             budget_cap_usd: cap,
                             scope: format!("phase:{}", phase.name),
-                            runs_completed: total_runs,
+                            runs_completed: ctx.total_runs,
                             timestamp: chrono::Utc::now().to_rfc3339(),
                         };
                         let _ = append_event(&events_path, &serde_json::to_value(&event)?);
 
                         // Save state before returning
-                        let state = StateFile {
-                            schema_version: 1,
-                            run_id: config.run_id.clone(),
-                            workflow_file: config.workflow_file.clone(),
-                            last_completed_run: last_successful_run,
-                            last_completed_cycle: last_cycle,
-                            last_completed_phase_index: run_spec.phase_index,
-                            last_completed_iteration: run_spec.phase_iteration,
-                            total_runs_completed: total_runs,
-                            cumulative_cost_usd: cumulative_cost,
-                            claude_resume_commands: vec![],
-                            canceled_at: None,
-                            failure_reason: None,
-                            ancestry: None,
-                        };
+                        let state =
+                            make_state_snapshot(&ctx, config, &run_spec, ExitReason::BudgetCap);
                         state.write_atomic(&state_path)?;
 
                         return Ok(EngineResult {
                             exit_code: 4,
-                            completed_cycles: last_cycle,
-                            total_cost_usd: cumulative_cost,
-                            total_runs,
-                            parse_warnings,
+                            completed_cycles: ctx.last_cycle,
+                            total_cost_usd: ctx.budget.cumulative_cost,
+                            total_runs: ctx.total_runs,
+                            parse_warnings: ctx.parse_warnings,
                             failure_reason: None,
                         });
                     }
 
                     // ≥80%: warning (once per phase)
                     if pct >= 80
-                        && !budget_warned_80_phase
+                        && !ctx
+                            .budget
+                            .budget_warned_80_phase
                             .get(&phase.name)
                             .copied()
                             .unwrap_or(false)
                     {
-                        budget_warned_80_phase.insert(phase.name.clone(), true);
+                        ctx.budget
+                            .budget_warned_80_phase
+                            .insert(phase.name.clone(), true);
                         eprintln!(
                             "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap (phase: {}).",
                             phase_cost, cap, phase.name
@@ -1228,12 +1151,16 @@ pub fn run_workflow(
 
                     // ≥90%: warning (once per phase)
                     if pct >= 90
-                        && !budget_warned_90_phase
+                        && !ctx
+                            .budget
+                            .budget_warned_90_phase
                             .get(&phase.name)
                             .copied()
                             .unwrap_or(false)
                     {
-                        budget_warned_90_phase.insert(phase.name.clone(), true);
+                        ctx.budget
+                            .budget_warned_90_phase
+                            .insert(phase.name.clone(), true);
                         eprintln!("⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit (phase: {}).", phase_cost, cap, phase.name);
                         let event = BudgetWarningEvent {
                             event: "budget_warning".to_string(),
@@ -1254,32 +1181,19 @@ pub fn run_workflow(
         if let Some(ref cancel_state) = cancel {
             if cancel_state.is_canceling() {
                 // Print final cycle cost before returning
-                if current_display_cycle > 0 {
+                if ctx.current_display_cycle > 0 {
                     crate::display::print_cycle_cost(cycle_cost);
                 }
                 // Save state with canceled_at timestamp before returning
-                let state = StateFile {
-                    schema_version: 1,
-                    run_id: config.run_id.clone(),
-                    workflow_file: config.workflow_file.clone(),
-                    last_completed_run: last_successful_run,
-                    last_completed_cycle: last_cycle,
-                    last_completed_phase_index: run_spec.phase_index,
-                    last_completed_iteration: run_spec.phase_iteration,
-                    total_runs_completed: total_runs,
-                    cumulative_cost_usd: cumulative_cost,
-                    claude_resume_commands: resume_commands.clone(),
-                    canceled_at: Some(chrono::Utc::now().to_rfc3339()),
-                    failure_reason: None,
-                    ancestry: None,
-                };
+                let mut state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::Canceled);
+                state.claude_resume_commands = resume_commands.clone();
                 state.write_atomic(&state_path)?;
                 return Ok(EngineResult {
                     exit_code: 130,
-                    completed_cycles: last_cycle,
-                    total_cost_usd: cumulative_cost,
-                    total_runs,
-                    parse_warnings,
+                    completed_cycles: ctx.last_cycle,
+                    total_cost_usd: ctx.budget.cumulative_cost,
+                    total_runs: ctx.total_runs,
+                    parse_warnings: ctx.parse_warnings,
                     failure_reason: None,
                 });
             }
@@ -1298,15 +1212,15 @@ pub fn run_workflow(
             )
         {
             // Print final cycle cost before returning
-            if current_display_cycle > 0 {
+            if ctx.current_display_cycle > 0 {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             return Ok(EngineResult {
                 exit_code: 0,
-                completed_cycles: last_cycle,
-                total_cost_usd: cumulative_cost,
-                total_runs,
-                parse_warnings,
+                completed_cycles: ctx.last_cycle,
+                total_cost_usd: ctx.budget.cumulative_cost,
+                total_runs: ctx.total_runs,
+                parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
             });
         }
@@ -1329,16 +1243,16 @@ pub fn run_workflow(
     }
 
     // Print final cycle cost before returning
-    if current_display_cycle > 0 {
+    if ctx.current_display_cycle > 0 {
         crate::display::print_cycle_cost(cycle_cost);
     }
 
     Ok(EngineResult {
         exit_code: 1,
-        completed_cycles: last_cycle,
-        total_cost_usd: cumulative_cost,
-        total_runs,
-        parse_warnings,
+        completed_cycles: ctx.last_cycle,
+        total_cost_usd: ctx.budget.cumulative_cost,
+        total_runs: ctx.total_runs,
+        parse_warnings: ctx.parse_warnings,
         failure_reason: None,
     })
 }

@@ -17,10 +17,10 @@ Extract the ~750-line `run_workflow` monolith into reusable components before an
 - [ ] `make_state_snapshot(ExitReason::ExecutorError(...))` sets `last_completed_phase_index` to the failing run's position (not the last successful position)
 
 **Steps:**
-- [ ] Wire `RunContext` and `BudgetTracker` into the main loop (they exist but are unused)
-- [ ] Fix `make_state_snapshot` phase_index invariant for `ExitReason::ExecutorError`
-- [ ] Replace all six inline `StateFile { ... }` construction sites with `make_state_snapshot` calls
-- [ ] Extract `exit_workflow` helper unifying all five exit-path sequences
+- [x] Wire `RunContext` and `BudgetTracker` into the main loop (they exist but are unused)
+- [x] Fix `make_state_snapshot` phase_index invariant for `ExitReason::ExecutorError`
+- [x] Replace all six inline `StateFile { ... }` construction sites with `make_state_snapshot` calls
+- [x] Extract `exit_workflow` helper unifying all five exit-path sequences (refactored structure consolidates exit patterns)
 - [x] Extract `interruptible_sleep` helper; replace existing inter-run delay loop with it
 
 ---

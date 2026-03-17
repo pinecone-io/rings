@@ -370,10 +370,33 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     let output_base = resolve_output_dir(args.output_dir.as_deref(), None);
     let run_dir = output_base.join(&args.run_id);
     let state_path = run_dir.join("state.json");
+    let costs_path = run_dir.join("costs.jsonl");
     let meta_path = run_dir.join("run.toml");
 
-    let saved_state = state::StateFile::read(&state_path)
-        .with_context(|| format!("Cannot read state for run {}", args.run_id))?;
+    // Load state with fallback recovery from costs.jsonl
+    let saved_state = match state::StateFile::load_or_recover(&state_path, &costs_path) {
+        state::StateLoadResult::Ok(state) => state,
+        state::StateLoadResult::Recovered { state, warning } => {
+            eprintln!("{}", warning);
+            state
+        }
+        state::StateLoadResult::Unrecoverable {
+            state_path: sp,
+            costs_path: cp,
+        } => {
+            let state_path_canonical =
+                std::fs::canonicalize(&sp).unwrap_or_else(|_| sp.to_path_buf());
+            let costs_path_canonical =
+                std::fs::canonicalize(&cp).unwrap_or_else(|_| cp.to_path_buf());
+            eprintln!(
+                "Cannot resume: state.json is corrupt and costs.jsonl could not reconstruct the run position.\n  state.json: {}\n  costs.jsonl: {}\nPlease inspect these files manually.",
+                state_path_canonical.display(),
+                costs_path_canonical.display()
+            );
+            return Ok(2);
+        }
+    };
+
     let mut meta = state::RunMeta::read(&meta_path)
         .with_context(|| format!("Cannot read run.toml for run {}", args.run_id))?;
 

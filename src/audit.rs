@@ -40,6 +40,25 @@ pub fn stream_cost_entries(path: &Path) -> Result<Box<dyn Iterator<Item = Result
     Ok(Box::new(iter))
 }
 
+/// Recover the maximum run number from costs.jsonl.
+/// Scans all entries, skipping malformed lines, and returns the highest run number.
+/// Returns Ok(Some(n)) if at least one valid entry exists, Ok(None) if file is absent or empty.
+pub fn recover_last_run_from_costs(path: &Path) -> Result<Option<u32>> {
+    match stream_cost_entries(path) {
+        Ok(entries) => {
+            let max_run = entries
+                .filter_map(|entry_result| entry_result.ok())
+                .map(|entry| entry.run)
+                .max();
+            Ok(max_run)
+        }
+        Err(_) => {
+            // File doesn't exist or can't be opened; treat as empty
+            Ok(None)
+        }
+    }
+}
+
 /// Append one line to costs.jsonl (creates file if absent).
 pub fn append_cost_entry(costs_path: &Path, entry: &CostEntry) -> Result<()> {
     let mut file = std::fs::OpenOptions::new()

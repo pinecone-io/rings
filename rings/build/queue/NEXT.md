@@ -230,11 +230,11 @@ The engine loop bug fix is done in Task 1. This task adds meaningful test covera
 - [ ] Integration: `rings resume` from corrupt state reconstructs position and continues
 
 **Steps:**
-- [ ] Define `StateLoadResult` enum in `src/state.rs`
-- [ ] Implement `StateFile::load_or_recover` with fallback to `recover_last_run_from_costs`
-- [ ] Implement `recover_last_run_from_costs` in `audit.rs` using `stream_cost_entries`
-- [ ] Update `resume_inner` in `main.rs` to match on `StateLoadResult`
-- [ ] Write `tests/state_recovery.rs`
+- [x] Define `StateLoadResult` enum in `src/state.rs`
+- [x] Implement `StateFile::load_or_recover` with fallback to `recover_last_run_from_costs`
+- [x] Implement `recover_last_run_from_costs` in `audit.rs` using `stream_cost_entries`
+- [x] Update `resume_inner` in `main.rs` to match on `StateLoadResult`
+- [x] Write `tests/state_recovery.rs`
 
 ---
 

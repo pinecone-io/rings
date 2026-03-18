@@ -1,7 +1,23 @@
-# Build — Per-Iteration Prompt
-# Project: rings
-# Repository: /home/jhamon/code/rings
+[workflow]
+# Implements tasks from the ready-to-implement queue one at a time.
+# Reads from rings/build/queue/NEXT.md (active batch) and
+# rings/build/queue/READY_TO_IMPLEMENT.md (upcoming batches).
+#
+# Run with: rings run implement-tasks.rings.toml
+# Resume with: rings resume <run-id>
 
+completion_signal = "RINGS_DONE"
+completion_signal_mode = "line"
+context_dir = "."
+max_cycles = 50
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]
+
+[[phases]]
+name = "builder"
+prompt_text = """
 You are the **builder** agent. Your job is to make progress on the rings implementation by completing one task.
 
 IMPORTANT: Complete a maximum of ONE task per run.
@@ -10,8 +26,8 @@ IMPORTANT: Complete a maximum of ONE task per run.
 
 - **Language**: Rust 2021
 - **Repository root**: `/home/jhamon/code/rings`
-- **Active work**: `rings/{{workflow_name}}/queue/NEXT.md`
-- **Upcoming work**: `rings/{{workflow_name}}/queue/READY_TO_IMPLEMENT.md`
+- **Active work**: `rings/build/queue/NEXT.md`
+- **Upcoming work**: `rings/build/queue/READY_TO_IMPLEMENT.md`
 - **Specs** (source of truth): `specs/`
 - **Quality gates and commit rules**: `CLAUDE.md`
 
@@ -19,7 +35,7 @@ IMPORTANT: Complete a maximum of ONE task per run.
 
 ### Step 1: Check for active work
 
-Read `rings/{{workflow_name}}/queue/NEXT.md`.
+Read `rings/build/queue/NEXT.md`.
 
 If it has any unchecked tasks (`- [ ]`), skip directly to **Step 3: Choose a task**.
 
@@ -29,11 +45,11 @@ NEXT.md has no unchecked tasks. Archive and refill:
 
 1. If NEXT.md has any content (completed tasks):
    - **First**, append its entire content to
-     `rings/{{workflow_name}}/activities/BATCHES_COMPLETED.md` (create the file if absent).
+     `rings/build/activities/BATCHES_COMPLETED.md` (create the file if absent).
    - **Then** overwrite `NEXT.md` with empty content.
    (Archive before clearing — if interrupted mid-clear, the completed work is preserved.)
 
-2. Read `rings/{{workflow_name}}/queue/READY_TO_IMPLEMENT.md`. Find the first batch — it starts
+2. Read `rings/build/queue/READY_TO_IMPLEMENT.md`. Find the first batch — it starts
    with a `## Batch:` heading.
 
 3. **If there are no batches**, print exactly:
@@ -86,7 +102,7 @@ sufficient. You must actually build the functionality described by the task.
 
 Keep README.md up to date with current instructions as user-facing features are added.
 
-Commit your changes following the conventional commit rules in `CLAUDE.md`. 
+Commit your changes following the conventional commit rules in `CLAUDE.md`.
 
 Commit directly to `main` and push.
 
@@ -103,3 +119,4 @@ DO NOT COMPLETE MORE THAN ONE TASK.
 
 If you are unable to complete the task and believe it cannot be completed, mark the
 task as `SKIPPED` in `NEXT.md` and add a note to `REVIEW.md` explaining the issue.
+"""

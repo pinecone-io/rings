@@ -64,6 +64,7 @@ fn main() {
         Command::Inspect(args) => cmd_inspect(args, cli.output_format),
         Command::Lineage(args) => cmd_lineage(args, cli.output_format),
         Command::Completions(args) => cmd_completions(args),
+        Command::Init(args) => cmd_init(args, cli.output_format),
     };
     std::process::exit(exit_code);
 }
@@ -1004,6 +1005,23 @@ fn cmd_completions(_args: cli::CompletionsArgs) -> i32 {
     // For now, return a placeholder error
     eprintln!("Error: 'rings completions' is not yet implemented.");
     2
+}
+
+fn cmd_init(args: cli::InitArgs, output_format: cli::OutputFormat) -> i32 {
+    match init_inner(args, output_format) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            2
+        }
+    }
+}
+
+fn init_inner(args: cli::InitArgs, _output_format: cli::OutputFormat) -> Result<i32> {
+    let _ = args;
+    // Full implementation follows in subsequent tasks (path resolution, template write).
+    eprintln!("Error: 'rings init' is not yet fully implemented.");
+    Ok(2)
 }
 
 fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str>) -> PathBuf {

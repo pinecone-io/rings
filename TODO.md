@@ -15,18 +15,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cli.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Add `Init(InitArgs)` variant to `Command` enum in `src/cli.rs`
-- [ ] Define `InitArgs` struct:
+- [x] Add `Init(InitArgs)` variant to `Command` enum in `src/cli.rs`
+- [x] Define `InitArgs` struct:
   - `name: Option<String>` — positional, defaults to `"workflow"`
   - `--force` (`bool`) — overwrite existing file
   - (global `--output-format` already exists on `Cli`)
-- [ ] Add `Command::Init(args) => cmd_init(args, cli.output_format)` match arm in `main.rs`
-- [ ] Stub `cmd_init` that just prints the resolved path and returns `Ok(())`
+- [x] Add `Command::Init(args) => cmd_init(args, cli.output_format)` match arm in `main.rs`
+- [x] Stub `cmd_init` that just prints the resolved path and returns `Ok(())`
 
 **Tests:**
-- [ ] `rings init` parses with no args (name defaults to None)
-- [ ] `rings init my-task` parses name as `Some("my-task")`
-- [ ] `rings init --force` parses force flag
+- [x] `rings init` parses with no args (name defaults to None)
+- [x] `rings init my-task` parses name as `Some("my-task")`
+- [x] `rings init --force` parses force flag
 
 ---
 

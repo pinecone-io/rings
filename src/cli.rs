@@ -81,6 +81,8 @@ pub enum Command {
     Lineage(LineageArgs),
     /// Generate shell completions
     Completions(CompletionsArgs),
+    /// Scaffold a new workflow TOML file
+    Init(InitArgs),
 }
 
 #[derive(Args, Debug)]
@@ -262,4 +264,14 @@ pub struct LineageArgs {
 pub struct CompletionsArgs {
     /// Shell type (bash, zsh, fish, powershell)
     pub shell: String,
+}
+
+#[derive(Args, Debug)]
+pub struct InitArgs {
+    /// Base name for the workflow file (produces <NAME>.rings.toml). Defaults to "workflow".
+    pub name: Option<String>,
+
+    /// Overwrite the target file if it already exists
+    #[arg(long)]
+    pub force: bool,
 }

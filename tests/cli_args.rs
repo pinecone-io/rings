@@ -1,5 +1,5 @@
 use clap::Parser;
-use rings::cli::{Cli, Command};
+use rings::cli::{Cli, Command, InitArgs};
 
 #[test]
 fn parses_run_command() {
@@ -51,4 +51,38 @@ fn parses_resume_command() {
 fn run_requires_workflow_file() {
     let result = Cli::try_parse_from(["rings", "run"]);
     assert!(result.is_err());
+}
+
+#[test]
+fn parses_init_with_no_args() {
+    let cli = Cli::try_parse_from(["rings", "init"]).unwrap();
+    match cli.command {
+        Command::Init(InitArgs { name, force }) => {
+            assert!(name.is_none());
+            assert!(!force);
+        }
+        _ => panic!("expected Init"),
+    }
+}
+
+#[test]
+fn parses_init_with_name() {
+    let cli = Cli::try_parse_from(["rings", "init", "my-task"]).unwrap();
+    match cli.command {
+        Command::Init(InitArgs { name, .. }) => {
+            assert_eq!(name.as_deref(), Some("my-task"));
+        }
+        _ => panic!("expected Init"),
+    }
+}
+
+#[test]
+fn parses_init_with_force_flag() {
+    let cli = Cli::try_parse_from(["rings", "init", "--force"]).unwrap();
+    match cli.command {
+        Command::Init(InitArgs { force, .. }) => {
+            assert!(force);
+        }
+        _ => panic!("expected Init"),
+    }
 }

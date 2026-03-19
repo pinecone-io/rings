@@ -6,72 +6,135 @@ rings's default terminal output is designed to give the user situational awarene
 
 With `--verbose`, Claude Code's raw output is streamed to the terminal (for debugging or monitoring).
 
+## Visual Design
+
+**Design direction:** Turborepo/Vercel aesthetic — minimal, clean, subtle colors, generous whitespace.
+
+### Color Palette
+
+Semantic colors used throughout all human-mode output:
+
+| Role | Color | Usage |
+|------|-------|-------|
+| Chrome / labels | dim gray | Dividers, separators (`│`), field labels, paths, run IDs |
+| Primary content | bold white | Phase names, cycle numbers, key values |
+| Success | green | `✓` checkmark, "Completed" text |
+| Error | red | `✗` marker, error messages, budget gauge > 85% |
+| Warning | yellow | `⚠` marker, advisory warnings, budget gauge 60–85% |
+| Accent | cyan | Cost figures (`$1.47`), resume commands, budget cap values |
+| Muted | dim | Secondary info (paths, elapsed time, audit log locations) |
+
+All color output is gated behind `color_enabled()` which respects:
+- `--no-color` CLI flag
+- `NO_COLOR` environment variable (per https://no-color.org/)
+- Non-TTY detection (piped output, redirected stderr)
+
+When color is disabled, all styling helpers become identity functions — output contains no ANSI escape codes.
+
+### Typography
+
+- **Bold** — emphasis: phase names, cycle numbers, "Completed", version string
+- **Dim** — secondary: paths, run IDs, dividers, elapsed time, field labels
+- **Regular** — body text, values
+
+### Dependency
+
+`owo-colors` crate for `.green()`, `.dim()`, `.bold()` etc. Zero-alloc, no runtime overhead when color is disabled. Hand-rolled spinner (no indicatif).
+
 ## Status Line
 
 During execution, rings displays a single-line status in the terminal:
 
 ```
-⟳  Cycle 3/10  |  builder  (run 2/3)  |  $0.47 total
+⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34
 ```
 
-- The spinner (`⟳`) animates to show the process is alive.
-- Cycle count shows current/max (or `current/?` if max_cycles is not set).
+- **Spinner** — braille animation frames: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`. One frame per poll tick (100ms).
+- Cycle count shows current/max (or `current/?` if max_cycles is not set). Cycle number is **bold**.
 - Phase name and run-within-phase counts are shown.
-- Running cost total is shown in real time.
+- Running cost total is shown in **cyan**.
+- Elapsed time is shown in **dim**.
+- Separators (`│`) are rendered **dim**.
 
 The status line is redrawn in place (not a new line per update).
 
 ## Phase Transition Lines
 
-When a new cycle begins, rings emits a newline with the previous cycle's cost:
+When a new cycle begins, rings emits a styled horizontal divider with the cycle number and previous cycle cost:
 
 ```
-● Cycle 2  →  builder  (run 1/3)  |  cycle 1 cost: $0.14
-⟳  Cycle 2/10  |  builder  (run 1/3)  |  $1.23 total
+── Cycle 2 ────────────────────────────── $0.14 prev ──
 ```
 
-When transitioning between phases within a cycle:
+- Divider line rendered **dim**
+- Cycle number rendered **bold**
+- Previous cycle cost rendered **cyan**
+- First cycle has no cost suffix
 
-```
-● Cycle 2  →  reviewer  (run 1/1)
-⟳  Cycle 2/10  |  reviewer  (run 1/1)  |  $1.23 total
-```
+When transitioning between phases within a cycle, the status line updates to show the new phase name — no additional divider is emitted.
 
 The per-cycle cost on cycle boundaries gives an early signal if a cycle is anomalously expensive compared to previous cycles.
 
 ## Startup Header
 
 ```
-rings v0.1.0
-Workflow:  my-task.rings.toml
-Context:   ./src
-Output:    ~/.local/share/rings/runs/run_20240315_143022_a1b2c3/
-Phases:    builder ×10, reviewer ×1  (per cycle)
-Max:       50 cycles = 550 runs max
+rings v0.1.0                          ← bold
 
-Starting...
+  Workflow   my-task.rings.toml       ← label dim, value white
+  Context    ./src
+  Phases     builder ×10, reviewer ×1
+  Max        50 cycles · 550 runs
+  Budget     $5.00                    ← cyan
+  Output     ~/.local/share/rings/... ← dim
 ```
+
+- Version string is **bold**
+- Field labels (`Workflow`, `Context`, etc.) are **dim**
+- Field values are regular (white)
+- Budget value is **cyan**
+- Output path is **dim** (muted — less important than other fields)
+- Two-space indent for all fields below version line
 
 ## Completion Output
 
 On success:
 
 ```
-✓  Completed on cycle 2, run 12 (phase: builder)
-   Signal "TASK_COMPLETE" detected in output.
+✓  Completed — cycle 2, run 12 (builder)     ← green ✓, bold "Completed"
 
-   Cycles completed:  2
-   Total runs:        12
-   Duration:          8m 14s
-   Total cost:        $1.10
+   Duration    8m 14s                          ← label dim, value white
+   Total cost  $1.10  (12 runs)                ← cost cyan
 
-   Cost breakdown:
-     builder   (10 runs)  $0.89
-     reviewer   (2 runs)  $0.21
+   builder    ████████████████████  $0.89  (10 runs)   ← proportional bar
+   reviewer   █████                 $0.21  ( 2 runs)
 
-   Audit logs: ~/.local/share/rings/runs/run_20240315_143022_a1b2c3/
-   Summary:    ~/.local/share/rings/runs/run_20240315_143022_a1b2c3/summary.md
+   Budget     ████████████░░░░░░░░  $1.10 / $5.00  (22%)  ← green
+
+   Audit logs  ~/.local/share/rings/runs/run_.../   ← dim
 ```
+
+### Phase Cost Bar Chart
+
+The completion summary includes a proportional bar chart showing cost distribution across phases:
+
+- `█` blocks proportional to each phase's share of total cost
+- Maximum bar width: 20 characters
+- Phase name left-aligned, cost in **cyan**, run count in parentheses
+- Phases sorted by declaration order (not cost)
+
+### Budget Gauge
+
+When `budget_cap_usd` is configured, the summary includes a visual budget consumption gauge:
+
+```
+   Budget     ████████████░░░░░░░░  $1.10 / $5.00  (22%)
+```
+
+- Filled portion (`█`) represents consumed budget; empty portion (`░`) represents remaining
+- Total gauge width: 20 characters
+- Color thresholds: **green** < 60%, **yellow** 60–85%, **red** > 85%
+- Cost values in **cyan**, percentage in same color as gauge
+- When no budget cap is configured, the gauge line is omitted
 
 ## Cancellation Output (Ctrl+C)
 
@@ -84,25 +147,26 @@ When the user presses Ctrl+C:
 5. rings prints:
 
 ```
+✗  Interrupted                                  ← red ✗
 
-Interrupted.
+   Run ID      run_20240315_143022_a1b2c3       ← label dim, value white
+   Progress    cycle 3, builder 2/3 (23 runs)
+   Cost        $2.14                             ← cyan
 
-Run ID:    run_20240315_143022_a1b2c3
-Progress:  cycle 3, phase builder, run 2/3 (23 runs completed)
+   builder    ██████████████████    $1.71  (18 runs)
+   reviewer   █████                 $0.43  ( 5 runs)
 
-Cost so far: $2.14
-  builder  (18 runs)  $1.71
-  reviewer  (5 runs)  $0.43
+   To resume:
+     rings resume run_20240315_143022_a1b2c3     ← bold cyan
 
-To resume this run:
-  rings resume run_20240315_143022_a1b2c3
+   Partial sessions:
+     claude resume abc-123-def-456               ← dim
+     claude resume xyz-789-uvw-012
 
-Partial Claude Code sessions (captured resume commands):
-  claude resume abc-123-def-456
-  claude resume xyz-789-uvw-012
-
-Audit logs: ~/.local/share/rings/runs/run_20240315_143022_a1b2c3/
+   Audit logs  ~/.local/share/rings/runs/run_.../ ← dim
 ```
+
+Same styling treatment as completion output — red `✗` for the marker, resume command highlighted in **bold cyan**, phase breakdown with proportional bar chart if data is available, **dim** for explanatory text and paths.
 
 The `claude resume` commands are captured from the subprocess output so the user can manually resume any Claude Code sessions that were in progress.
 
@@ -132,12 +196,15 @@ When Claude exits non-zero, rings emits (in addition to normal run_end):
 
 ```
 # human mode — to stderr:
-✗  Executor hit a usage limit on run 7 (cycle 2, builder).
-   Waiting... OR  Progress saved. rings resume run_20240315_143022_a1b2c3
+✗  Executor hit a usage limit on run 7 (cycle 2, builder).     ← red ✗
+   Waiting... OR  Progress saved.
+   rings resume run_20240315_143022_a1b2c3                      ← bold cyan
 
 # jsonl mode — to stdout (all structured events go to stdout in JSONL mode):
 {"event":"executor_error","run":7,"error_class":"quota","exit_code":1,"message":"Usage limit reached","timestamp":"..."}
 ```
+
+Error events use red `✗` markers, resume commands in **bold cyan**, and **dim** explanatory text.
 
 In JSONL mode, all structured events including errors go to **stdout**. Only unstructured fatal errors that prevent JSONL output (e.g., invalid workflow file detected before any event could be emitted) go to stderr.
 

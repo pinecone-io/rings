@@ -21,18 +21,18 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-009 | Phase Name Uniqueness | rings rejects my workflow at startup if two phases share a name, so I catch naming mistakes before any Claude calls | COMPLETE | [workflow-file-format.md](workflow/workflow-file-format.md) |
 | F-010 | Cycle Model | rings runs all my phases in declaration order, then repeats from the top as a full cycle | COMPLETE | [cycle-model.md](workflow/cycle-model.md) |
 | F-011 | Completion Signal | I can declare a string that, when detected in phase output, tells rings the workflow is done | COMPLETE | [cycle-model.md](workflow/cycle-model.md) |
-| F-012 | Completion Signal Modes | I can match the completion signal by exact substring, line anchor, or full regex | PRIORITIZED | [completion-detection.md](execution/completion-detection.md) |
-| F-013 | Completion Signal Phase Restriction | I can limit which phases are allowed to trigger workflow completion so early phases can't accidentally end the run | PRIORITIZED | [completion-detection.md](execution/completion-detection.md) |
+| F-012 | Completion Signal Modes | I can match the completion signal by exact substring, line anchor, or full regex | PLANNED | [completion-detection.md](execution/completion-detection.md) |
+| F-013 | Completion Signal Phase Restriction | I can limit which phases are allowed to trigger workflow completion so early phases can't accidentally end the run | PLANNED | [completion-detection.md](execution/completion-detection.md) |
 
 ## Phase Contracts
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-014 | Consumes Declaration | I can declare which files a phase reads so rings can warn me if those files don't exist yet | PRIORITIZED | [phase-contracts.md](workflow/phase-contracts.md) |
-| F-015 | Produces Declaration | I can declare which files a phase should write so rings warns me when nothing was actually created or changed | PRIORITIZED | [phase-contracts.md](workflow/phase-contracts.md) |
-| F-016 | Produces Required Flag | I can mark a phase's output as mandatory so rings halts with an error if it produces nothing | PRIORITIZED | [phase-contracts.md](workflow/phase-contracts.md) |
-| F-017 | Advisory Contract Warnings | rings tells me when a phase didn't meet its declared contract but keeps running so I can observe the issue | PRIORITIZED | [phase-contracts.md](workflow/phase-contracts.md) |
-| F-018 | Data Flow Documentation | I can see the declared and actual data flow for each phase when inspecting a run | PRIORITIZED | [phase-contracts.md](workflow/phase-contracts.md) |
+| F-014 | Consumes Declaration | I can declare which files a phase reads so rings can warn me if those files don't exist yet | PLANNED | [phase-contracts.md](workflow/phase-contracts.md) |
+| F-015 | Produces Declaration | I can declare which files a phase should write so rings warns me when nothing was actually created or changed | PLANNED | [phase-contracts.md](workflow/phase-contracts.md) |
+| F-016 | Produces Required Flag | I can mark a phase's output as mandatory so rings halts with an error if it produces nothing | PLANNED | [phase-contracts.md](workflow/phase-contracts.md) |
+| F-017 | Advisory Contract Warnings | rings tells me when a phase didn't meet its declared contract but keeps running so I can observe the issue | PLANNED | [phase-contracts.md](workflow/phase-contracts.md) |
+| F-018 | Data Flow Documentation | I can see the declared and actual data flow for each phase when inspecting a run | PLANNED | [phase-contracts.md](workflow/phase-contracts.md) |
 
 ## Execution Engine
 
@@ -153,7 +153,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-091 | `--force-lock` | I can override the context_dir lock check when I know the previous process is truly gone (requires F-055) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-092 | `--no-completion-check` | I can suppress the startup warning about missing completion signals in prompts (requires F-011) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-093 | `--no-contract-check` | I can suppress phase contract violation warnings for a run (requires F-014, F-015) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-094 | `--no-color` | I can disable colored terminal output | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-094 | `--no-color` | I can disable colored terminal output | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-095 | `--output-format` | I can switch between human-readable and JSONL output for the same run | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-096 | `--no-sensitive-files-check` | I can suppress the warning about credential files in context_dir when I know they're intentionally there | PRIORITIZED | [engine.md](execution/engine.md) |
 
@@ -209,11 +209,11 @@ Summaries are written from the user's perspective. Features with dependencies no
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-125 | Human Output Mode | I see colored, spinner-animated terminal output that shows what rings is doing at a glance | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
+| F-125 | Human Output Mode | I see colored, spinner-animated terminal output that shows what rings is doing at a glance | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 | F-126 | JSONL Output Mode | I can switch to newline-delimited JSON events for scripting, CI, or piping into other tools | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
 | F-127 | stderr/stdout Separation | Human-readable output goes to stderr; JSONL events go to stdout so I can pipe them cleanly | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
 | F-128 | Status Line Display | I see a single updating line showing current cycle, phase name, and running cost | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
-| F-129 | Animated Spinner | A spinner next to the status line confirms rings is alive even during long Claude invocations | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
+| F-129 | Animated Spinner | A spinner next to the status line confirms rings is alive even during long Claude invocations | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 | F-130 | Phase Transition Lines | rings prints a clear line whenever it moves to a new phase or cycle, including per-cycle cost | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 | F-131 | Startup Header | rings prints my workflow's phases, max cycles, and key settings when it starts so I can confirm before any calls happen | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 | F-132 | Completion Summary | rings prints a final breakdown of total cost, token counts, and cycle statistics when the workflow finishes | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
@@ -285,6 +285,18 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-178 | Shell Completions | I can get tab-completion for all commands and flags in bash, zsh, or fish (requires F-075) | PRIORITIZED | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 | F-179 | Completion Behavior | Tab-completion offers `.toml` files for workflow arguments, run IDs for run arguments, and flag names everywhere (requires F-178) | PRIORITIZED | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 | F-180 | Man Page | I can read `man rings` for offline documentation generated from the same source as `--help` | PRIORITIZED | [completion-and-manpage.md](cli/completion-and-manpage.md) |
+
+## Runtime Output — Visual Enhancement
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-183 | ANSI Color System | rings uses a semantic color palette (green success, red errors, cyan costs, dim chrome) gated behind NO_COLOR and TTY detection | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-184 | Phase Cost Bar Chart | Completion and cancellation summaries show a proportional bar chart of cost distribution across phases | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-185 | Budget Gauge | When a budget cap is configured, summaries show a visual gauge of budget consumption with color-coded thresholds | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-186 | Styled Startup Header | The startup header shows workflow details in a clean, labeled layout with semantic coloring | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-187 | Styled Cycle Transitions | Cycle boundaries show a horizontal rule with the cycle number and previous cycle cost embedded | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-188 | Styled List Table | `rings list` output uses color-coded status, bold headers, and accent cost figures | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-189 | Styled Dry Run Output | `rings run --dry-run` uses the same color system as live runs for visual consistency | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 
 ## Executor Args Ergonomics
 

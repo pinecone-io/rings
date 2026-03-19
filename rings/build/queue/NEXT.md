@@ -131,12 +131,12 @@ The engine check at `engine.rs:~1382` already exists. Task 1 adds the startup va
 
 **Tests (`tests/completion_phase_restriction.rs`):**
 - [x] `completion_signal_phases = ["nonexistent"]` → `WorkflowError::UnknownCompletionSignalPhase` at `Workflow::from_str` time
-- [ ] Two-phase workflow (builder, reviewer); `completion_signal_phases = ["reviewer"]`; builder emits signal; run continues; reviewer emits signal → exits 0
-- [ ] Same setup; builder emits signal; `completion_eligible` is false for builder → signal recorded in logs but does not trigger completion
-- [ ] Empty `completion_signal_phases` → any phase can trigger completion (existing behavior unchanged)
+- [x] Two-phase workflow (builder, reviewer); `completion_signal_phases = ["reviewer"]`; builder emits signal; run continues; reviewer emits signal → exits 0
+- [x] Same setup; builder emits signal; `completion_eligible` is false for builder → signal recorded in logs but does not trigger completion
+- [x] Empty `completion_signal_phases` → any phase can trigger completion (existing behavior unchanged)
 
 **Steps:**
-- [ ] Write `tests/completion_phase_restriction.rs` with mock executor scenarios
+- [x] Write `tests/completion_phase_restriction.rs` with mock executor scenarios
 
 ---
 

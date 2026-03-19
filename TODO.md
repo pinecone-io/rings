@@ -109,3 +109,136 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [x] `cmd_update` detects missing `bash` and returns error (mock PATH)
 
 ---
+
+## Batch: JSONL Output Mode — F-095, F-126, F-127, F-139, F-140
+
+**Spec:** `specs/observability/runtime-output.md` (JSONL sections)
+
+**Summary:** Enable `--output-format jsonl` for structured event output to stdout, suitable for scripting, CI, and dashboards. All human-mode display is suppressed in JSONL mode. Every event carries `event`, `run_id`, and `timestamp`.
+
+### Task 1: Event types and emit helper
+
+**Files:** `src/events.rs` (new), `src/lib.rs`
+
+**Steps:**
+- [x] Create `src/events.rs` with serializable event structs (all derive `Serialize`):
+  - `StartEvent` — `event: "start"`, `run_id`, `workflow`, `rings_version`, `schema_version: 1`, `timestamp`
+  - `RunStartEvent` — `event: "run_start"`, `run_id`, `run`, `cycle`, `phase`, `iteration`, `total_iterations`, `template_context: serde_json::Value`, `timestamp`
+  - `RunEndEvent` — `event: "run_end"`, `run_id`, `run`, `cycle`, `phase`, `iteration`, `cost_usd: Option<f64>`, `input_tokens: Option<u64>`, `output_tokens: Option<u64>`, `exit_code: i32`, `produces_violations: Vec<String>`, `cost_confidence`, `total_iterations`, `timestamp`
+  - `CompletionSignalEvent` — `event: "completion_signal"`, `run_id`, `run`, `cycle`, `phase`, `signal`, `timestamp`
+  - `ExecutorErrorEvent` — `event: "executor_error"`, `run_id`, `run`, `cycle`, `phase`, `error_class` (quota/auth/unknown), `exit_code`, `message`, `timestamp`
+  - `CanceledEvent` — `event: "canceled"`, `run_id`, `runs_completed`, `cost_usd`, `timestamp`
+  - `BudgetCapJsonlEvent` — `event: "budget_cap"`, `run_id`, `cost_usd`, `budget_cap_usd`, `runs_completed`, `timestamp`
+  - `MaxCyclesEvent` — `event: "max_cycles"`, `run_id`, `cycles`, `runs_completed`, `cost_usd`, `timestamp`
+  - `DelayStartEvent` — `event: "delay_start"`, `run_id`, `run`, `cycle`, `phase`, `delay_secs`, `reason` (inter_run/inter_cycle/quota_backoff), `timestamp`
+  - `DelayEndEvent` — `event: "delay_end"`, `run_id`, `run`, `timestamp`
+  - `SummaryEvent` — `event: "summary"`, `run_id`, `status`, `cycles`, `runs`, `cost_usd`, `duration_secs`, `phases: Vec<PhaseSummary>`, `timestamp`
+  - `FatalErrorEvent` — `event: "fatal_error"`, `run_id: Option<String>` (null if pre-run), `message`, `timestamp`
+- [x] Add `emit_jsonl(event: &impl Serialize)` helper that serializes to JSON and prints to stdout with a newline
+- [x] Add `now_iso8601() -> String` helper for consistent timestamp formatting
+- [x] Register `pub mod events;` in `src/lib.rs`
+
+**Tests:**
+- [x] Each event type serializes to JSON with correct `event` field name
+- [x] `run_id` and `timestamp` are always present in serialized output
+- [x] `FatalErrorEvent` serializes `run_id` as `null` when None
+- [x] `emit_jsonl` produces valid single-line JSON (no embedded newlines)
+
+---
+
+### Task 2: Wire output_format into engine
+
+**Files:** `src/engine.rs`, `src/main.rs`
+
+**Steps:**
+- [ ] Add `output_format: OutputFormat` field to `EngineConfig`
+- [ ] Pass `cli.output_format` from `run_inner` and `resume_inner` in `main.rs` into `EngineConfig`
+- [ ] In `run_workflow`, wrap all `display::print_*` calls with `if config.output_format == Human` guards
+- [ ] When `output_format == Jsonl`, suppress: `print_run_header`, `print_run_start`, `print_run_elapsed`, `print_run_result`, `print_cycle_boundary`, `print_cycle_cost`, and all other stderr display calls
+- [ ] In `main.rs`, similarly guard `print_completion`, `print_cancellation`, `print_executor_error`, etc. behind human-mode checks
+
+**Tests:**
+- [ ] Engine with `output_format: Jsonl` produces no stderr output from display functions
+- [ ] Engine with `output_format: Human` still produces stderr output as before (regression check)
+
+---
+
+### Task 3: Emit lifecycle events (start, summary, fatal_error)
+
+**Files:** `src/engine.rs`, `src/main.rs`
+
+**Steps:**
+- [ ] At the top of `run_workflow`, if JSONL mode: emit `StartEvent` with run_id, workflow file path, rings version (`env!("CARGO_PKG_VERSION")`), schema_version 1
+- [ ] At the end of `run_workflow` (all exit paths), if JSONL mode: emit `SummaryEvent` with status (completed/canceled/max_cycles/budget_cap/executor_error), cycles completed, total runs, total cost, duration_secs, phase breakdown
+- [ ] In `main.rs`, for fatal errors before `run_workflow` is reached (bad TOML, missing file, executor not found): if JSONL mode, emit `FatalErrorEvent` to stdout before exiting with code 2
+
+**Tests:**
+- [ ] JSONL run emits `start` as first event and `summary` as last event
+- [ ] `summary` event `status` field matches exit reason (completed/canceled/max_cycles/budget_cap)
+- [ ] `summary.phases` array has correct per-phase cost and run counts
+- [ ] Fatal error before engine start emits `fatal_error` event with `run_id: null`
+- [ ] `start` event includes correct `rings_version` and `schema_version: 1`
+
+---
+
+### Task 4: Emit per-run events (run_start, run_end, completion_signal, executor_error)
+
+**Files:** `src/engine.rs`
+
+**Steps:**
+- [ ] Before each `executor.spawn()` call: if JSONL mode, emit `RunStartEvent` with run number, cycle, phase, iteration, total_iterations, and `template_context` (the same variables passed to prompt rendering, as a JSON object)
+- [ ] After each successful run completes and cost is parsed: if JSONL mode, emit `RunEndEvent` with cost, tokens, exit_code, produces_violations, cost_confidence
+- [ ] When completion signal is detected: if JSONL mode, emit `CompletionSignalEvent` with the signal string
+- [ ] When executor exits non-zero: if JSONL mode, emit `ExecutorErrorEvent` with error_class (from FailureReason enum), exit_code, and error message
+
+**Tests:**
+- [ ] Each run produces exactly one `run_start` and one `run_end` event
+- [ ] `run_start.template_context` includes phase_name, cycle, max_cycles, iteration, run, cost_so_far_usd
+- [ ] `run_end.cost_usd` is null (not 0) when cost parsing fails
+- [ ] `completion_signal` event is emitted between the triggering `run_end` and `summary`
+- [ ] `executor_error` event has correct `error_class` for quota/auth/unknown failures
+- [ ] Events appear in chronological order: run_start → run_end → (optional completion_signal)
+
+---
+
+### Task 5: Emit delay and budget events
+
+**Files:** `src/engine.rs`
+
+**Steps:**
+- [ ] Before each inter-run delay sleep: if JSONL mode, emit `DelayStartEvent` with `reason: "inter_run"`, delay_secs
+- [ ] After delay completes: emit `DelayEndEvent`
+- [ ] Before each inter-cycle delay (if cycle_delay configured): emit `DelayStartEvent` with `reason: "inter_cycle"`
+- [ ] During quota backoff waits: emit `DelayStartEvent` with `reason: "quota_backoff"`, then `DelayEndEvent` after
+- [ ] When budget cap is reached: if JSONL mode, emit `BudgetCapJsonlEvent` (instead of or in addition to display::print_budget_cap_reached)
+- [ ] When max_cycles is reached without completion: if JSONL mode, emit `MaxCyclesEvent`
+- [ ] When canceled (Ctrl+C): if JSONL mode, emit `CanceledEvent`
+
+**Tests:**
+- [ ] Inter-run delay produces `delay_start` and `delay_end` events with `reason: "inter_run"`
+- [ ] Budget cap produces `budget_cap` event with correct cost and cap values
+- [ ] Max cycles produces `max_cycles` event with cycle count and cost
+- [ ] Cancellation produces `canceled` event with runs_completed and cost
+
+---
+
+### Task 6: stdout/stderr separation and integration test
+
+**Files:** `src/main.rs`, `src/engine.rs`
+
+**Steps:**
+- [ ] Verify: in JSONL mode, all structured events go to stdout (println!), human display is suppressed
+- [ ] Verify: in JSONL mode, only unstructured fatal errors (before first event can be emitted) go to stderr
+- [ ] Verify: in Human mode, stdout is empty (all display goes to stderr via eprintln!)
+- [ ] Add `--step` + `--output-format jsonl` conflict check: exit 2 with error message (per spec)
+- [ ] Write integration test: run a complete 2-cycle workflow in JSONL mode, capture stdout, parse each line as JSON, verify event sequence: start → run_start → run_end → ... → summary
+- [ ] Write integration test: verify stdout is empty in human mode
+
+**Tests:**
+- [ ] Full JSONL workflow produces parseable JSON on every stdout line
+- [ ] Event sequence is: start, (run_start, run_end)+, completion_signal?, summary
+- [ ] `jq` can filter events by run_id (all events share the same run_id)
+- [ ] `--step --output-format jsonl` exits 2 with error message
+- [ ] Human mode produces zero bytes on stdout
+
+---

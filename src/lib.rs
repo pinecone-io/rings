@@ -10,6 +10,7 @@ pub mod dry_run;
 pub mod duration;
 pub mod engine;
 pub mod error_classify;
+pub mod events;
 pub mod executor;
 pub mod inspect;
 pub mod list;

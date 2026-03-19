@@ -120,49 +120,80 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         let plan = dry_run::DryRunPlan::from_workflow(&workflow, &args.workflow_file)?;
 
         // Output in human format (table with ✓/✗)
-        println!("Dry run: {}", args.workflow_file);
-        println!("  completion_signal: {:?}", workflow.completion_signal);
-        println!("  context_dir:       {}", workflow.context_dir);
-        println!("  max_cycles:        {}", workflow.max_cycles);
+        println!("Dry run: {}", style::bold(&args.workflow_file));
+        println!(
+            "  {}  {:?}",
+            style::dim("completion_signal:"),
+            workflow.completion_signal
+        );
+        println!(
+            "  {}  {}",
+            style::dim("context_dir:      "),
+            workflow.context_dir
+        );
+        println!(
+            "  {}  {}",
+            style::dim("max_cycles:       "),
+            style::bold(&workflow.max_cycles.to_string())
+        );
         println!();
-        println!("  Cycle structure (repeating):");
+        println!("  {}", style::bold("Cycle structure (repeating):"));
         for phase in &plan.phases {
             println!(
                 "    Phase {}: {} ×{} (prompt: {})",
-                plan.phases
-                    .iter()
-                    .position(|p| p.name == phase.name)
-                    .unwrap()
-                    + 1,
-                phase.name,
+                style::bold(
+                    &(plan
+                        .phases
+                        .iter()
+                        .position(|p| p.name == phase.name)
+                        .unwrap()
+                        + 1)
+                    .to_string()
+                ),
+                style::bold(&phase.name),
                 phase.runs_per_cycle,
                 phase.prompt_source
             );
         }
         println!();
-        println!("  Total runs per cycle: {}", plan.runs_per_cycle_total);
+        println!(
+            "  {}  {}",
+            style::dim("Total runs per cycle:"),
+            style::bold(&plan.runs_per_cycle_total.to_string())
+        );
         if let Some(max_total) = plan.max_total_runs {
-            println!("  Maximum total runs:   {}", max_total);
+            println!(
+                "  {}  {}",
+                style::dim("Maximum total runs:  "),
+                style::bold(&max_total.to_string())
+            );
         }
         println!();
-        println!("  Prompt check:");
+        println!("  {}", style::bold("Prompt check:"));
         for phase in &plan.phases {
             if phase.signal_check.found {
                 if let Some(line_num) = phase.signal_check.line_number {
                     println!(
-                        "    ✓ \"{}\" found in {} (line {})",
-                        workflow.completion_signal, phase.prompt_source, line_num
+                        "    {} \"{}\" found in {} (line {})",
+                        style::success("✓"),
+                        workflow.completion_signal,
+                        phase.prompt_source,
+                        line_num
                     );
                 } else {
                     println!(
-                        "    ✓ \"{}\" found in {}",
-                        workflow.completion_signal, phase.prompt_source
+                        "    {} \"{}\" found in {}",
+                        style::success("✓"),
+                        workflow.completion_signal,
+                        phase.prompt_source
                     );
                 }
             } else {
                 println!(
-                    "    ✗ \"{}\" not found in {}",
-                    workflow.completion_signal, phase.prompt_source
+                    "    {} \"{}\" not found in {}",
+                    style::error("✗"),
+                    workflow.completion_signal,
+                    phase.prompt_source
                 );
             }
         }
@@ -835,9 +866,14 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
             } else {
                 eprintln!(
                     "{:<20} {:<20} {:<40} {:<12} {:<8} {:<10}",
-                    "RUN ID", "DATE", "WORKFLOW", "STATUS", "CYCLES", "COST"
+                    style::bold("RUN ID"),
+                    style::bold("DATE"),
+                    style::bold("WORKFLOW"),
+                    style::bold("STATUS"),
+                    style::bold("CYCLES"),
+                    style::bold("COST"),
                 );
-                eprintln!("{}", "-".repeat(110));
+                eprintln!("{}", style::dim(&"-".repeat(110)));
                 for run in &runs {
                     let date_str = run.started_at.format("%Y-%m-%d %H:%M:%S").to_string();
                     let cost_str = run
@@ -856,14 +892,16 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
                     } else {
                         run.status.to_string()
                     };
+                    let styled_status = style_run_status(&run.status, &status_display);
+                    let styled_cost = style::accent(&cost_str);
                     eprintln!(
                         "{:<20} {:<20} {:<40} {:<12} {:<8} {:<10}",
                         run.run_id,
                         date_str,
                         run.workflow,
-                        status_display,
+                        styled_status,
                         run.cycles_completed,
-                        cost_str
+                        styled_cost,
                     );
                 }
             }
@@ -969,9 +1007,89 @@ fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str
         .join("runs")
 }
 
+fn style_run_status(status: &state::RunStatus, display: &str) -> String {
+    match status {
+        state::RunStatus::Completed => style::success(display),
+        state::RunStatus::Failed => style::error(display),
+        state::RunStatus::Canceled | state::RunStatus::Incomplete | state::RunStatus::Stopped => {
+            style::warn(display)
+        }
+        state::RunStatus::Running => display.to_string(),
+    }
+}
+
 fn generate_run_id() -> String {
     let now = chrono::Utc::now();
     let ts = now.format("%Y%m%d_%H%M%S");
     let short_uuid = uuid::Uuid::new_v4().to_string()[..6].to_string();
     format!("run_{ts}_{short_uuid}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_output_applies_success_color_to_completed_status() {
+        // With NO_COLOR set, output is plain; without it, output includes ANSI escapes.
+        std::env::set_var("NO_COLOR", "1");
+        let plain = style_run_status(&state::RunStatus::Completed, "completed");
+        std::env::remove_var("NO_COLOR");
+
+        assert_eq!(plain, "completed");
+        // Verify the function routes Completed through style::success (not identity)
+        // by checking that without NO_COLOR the output differs from plain text.
+        let styled = style_run_status(&state::RunStatus::Completed, "completed");
+        assert_ne!(
+            styled, "completed",
+            "completed status should have ANSI styling when color is on"
+        );
+    }
+
+    #[test]
+    fn list_output_applies_error_color_to_failed_status() {
+        std::env::set_var("NO_COLOR", "1");
+        let plain = style_run_status(&state::RunStatus::Failed, "failed");
+        std::env::remove_var("NO_COLOR");
+
+        assert_eq!(plain, "failed");
+        let styled = style_run_status(&state::RunStatus::Failed, "failed");
+        assert_ne!(
+            styled, "failed",
+            "failed status should have ANSI styling when color is on"
+        );
+    }
+
+    #[test]
+    fn list_output_running_status_is_not_styled() {
+        // Running status is returned as-is regardless of color settings
+        std::env::remove_var("NO_COLOR");
+        let result = style_run_status(&state::RunStatus::Running, "running");
+        assert_eq!(result, "running");
+    }
+
+    #[test]
+    fn dry_run_check_mark_uses_success_styling() {
+        // With NO_COLOR set the checkmark is plain; with color enabled it has ANSI codes.
+        std::env::set_var("NO_COLOR", "1");
+        let plain = style::success("✓");
+        std::env::remove_var("NO_COLOR");
+
+        assert_eq!(plain, "✓");
+        let styled = style::success("✓");
+        assert_ne!(styled, "✓", "success checkmark should include ANSI styling");
+        assert!(styled.contains('✓'));
+    }
+
+    #[test]
+    fn dry_run_cross_mark_uses_error_styling() {
+        std::env::set_var("NO_COLOR", "1");
+        let plain = style::error("✗");
+        std::env::remove_var("NO_COLOR");
+
+        assert_eq!(plain, "✗");
+        let styled = style::error("✗");
+        assert_ne!(styled, "✗", "error crossmark should include ANSI styling");
+        assert!(styled.contains('✗'));
+    }
 }

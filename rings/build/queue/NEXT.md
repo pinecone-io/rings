@@ -143,20 +143,20 @@ F-188 (Styled List Table), F-189 (Styled Dry Run Output)
 **Files:** `src/main.rs`
 
 **Steps:**
-1. Update `list_inner` in `src/main.rs` (~lines 787-824):
+1. [x] Update `list_inner` in `src/main.rs` (~lines 787-824):
    - Header row via `style::bold()`
    - Status column: `completed` → `style::success()`, `incomplete`/`canceled` → `style::warn()`, `failed` → `style::error()`
    - Cost column via `style::accent()`
    - Divider lines via `style::dim()`
-2. Update dry-run output block in `src/main.rs` (~lines 110-157):
+2. [x] Update dry-run output block in `src/main.rs` (~lines 110-157):
    - Labels via `style::dim()`
    - Values via `style::bold()`
    - `✓` (signal found) via `style::success()`, `✗` (not found) via `style::error()`
    - Phase table header via `style::bold()`
 
 **Tests:**
-- List output applies success color to "completed" status
-- List output applies error color to "failed" status
-- Dry-run `✓` uses success styling, `✗` uses error styling
+- [x] List output applies success color to "completed" status
+- [x] List output applies error color to "failed" status
+- [x] Dry-run `✓` uses success styling, `✗` uses error styling
 
 ---

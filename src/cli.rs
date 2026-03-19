@@ -135,6 +135,10 @@ pub struct RunArgs {
     /// Maximum number of quota backoff retries
     #[arg(long, requires = "quota_backoff")]
     pub quota_backoff_max_retries: Option<u32>,
+
+    /// Skip consumes/produces contract checks
+    #[arg(long)]
+    pub no_contract_check: bool,
 }
 
 #[derive(Args, Debug)]
@@ -169,6 +173,10 @@ pub struct ResumeArgs {
     /// Override an existing lock on context_dir
     #[arg(long)]
     pub force_lock: bool,
+
+    /// Skip consumes/produces contract checks
+    #[arg(long)]
+    pub no_contract_check: bool,
 }
 
 #[derive(Args, Debug)]

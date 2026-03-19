@@ -5,6 +5,18 @@ use std::collections::HashSet;
 use std::path::Path;
 use thiserror::Error;
 
+/// How the completion signal is matched against executor output.
+#[derive(Debug, Clone, Default)]
+pub enum CompletionSignalMode {
+    /// Signal is a substring of the output (default).
+    #[default]
+    Substring,
+    /// Signal must appear alone on a trimmed line.
+    Line,
+    /// Signal is a compiled regex matched against the full output.
+    Regex(Regex),
+}
+
 /// Named error profile.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -105,6 +117,15 @@ pub struct PhaseConfig {
     pub budget_cap_usd: Option<f64>,
     /// Per-phase subprocess timeout. Overrides the global timeout_per_run_secs for this phase.
     pub timeout_per_run_secs: Option<DurationField>,
+    /// Glob patterns that this phase expects to be present in context_dir.
+    #[serde(default)]
+    pub consumes: Vec<String>,
+    /// Glob patterns that this phase is expected to produce (add or modify).
+    #[serde(default)]
+    pub produces: Vec<String>,
+    /// If true, failure to satisfy any produces pattern causes a hard exit.
+    #[serde(default)]
+    pub produces_required: bool,
 }
 
 fn default_runs_per_cycle() -> u32 {
@@ -118,8 +139,8 @@ pub struct Workflow {
     pub continue_signal: Option<String>,
     /// Phase names from which completion may fire. Empty = any phase.
     pub completion_signal_phases: Vec<String>,
-    /// "line" or "substring"
-    pub completion_signal_mode: String,
+    /// Compiled completion signal match mode.
+    pub completion_signal_mode: CompletionSignalMode,
     pub context_dir: String,
     pub max_cycles: u32,
     pub output_dir: Option<String>,
@@ -170,6 +191,14 @@ pub enum WorkflowError {
     ParseError(#[from] toml::de::Error),
     #[error("invalid regex pattern in error profile: {0}")]
     InvalidRegexPattern(String),
+    #[error("invalid completion_signal_mode: '{0}'; expected 'substring', 'line', or 'regex'")]
+    InvalidCompletionSignalMode(String),
+    #[error("invalid regex in completion_signal: {0}")]
+    InvalidSignalRegex(String),
+    #[error("completion_signal_phases references unknown phase: '{0}'")]
+    UnknownCompletionSignalPhase(String),
+    #[error("phase '{0}' has produces_required = true but manifest_enabled = false")]
+    ProducesRequiredWithoutManifest(String),
 }
 
 /// Compile an error profile into regex patterns.
@@ -305,6 +334,27 @@ impl Workflow {
                 .and_then(|e| e.error_profile.as_ref()),
         )?;
 
+        // Parse and compile completion_signal_mode.
+        let completion_signal_mode = match file
+            .workflow
+            .completion_signal_mode
+            .as_deref()
+            .unwrap_or("substring")
+        {
+            "substring" => CompletionSignalMode::Substring,
+            "line" => CompletionSignalMode::Line,
+            "regex" => {
+                let re = Regex::new(&file.workflow.completion_signal)
+                    .map_err(|e| WorkflowError::InvalidSignalRegex(e.to_string()))?;
+                CompletionSignalMode::Regex(re)
+            }
+            other => {
+                return Err(WorkflowError::InvalidCompletionSignalMode(
+                    other.to_string(),
+                ))
+            }
+        };
+
         let mut seen = HashSet::new();
         for phase in &file.phases {
             if !seen.insert(phase.name.clone()) {
@@ -333,15 +383,28 @@ impl Workflow {
                     message: e.to_string(),
                 })?;
             }
+            // Validate produces_required requires manifest_enabled.
+            if phase.produces_required && !file.workflow.manifest_enabled {
+                return Err(WorkflowError::ProducesRequiredWithoutManifest(
+                    phase.name.clone(),
+                ));
+            }
         }
+
+        // Validate completion_signal_phases: each name must be a known phase.
+        for phase_name in &file.workflow.completion_signal_phases {
+            if !seen.contains(phase_name) {
+                return Err(WorkflowError::UnknownCompletionSignalPhase(
+                    phase_name.clone(),
+                ));
+            }
+        }
+
         Ok(Workflow {
             completion_signal: file.workflow.completion_signal,
             continue_signal: file.workflow.continue_signal,
             completion_signal_phases: file.workflow.completion_signal_phases,
-            completion_signal_mode: file
-                .workflow
-                .completion_signal_mode
-                .unwrap_or_else(|| "substring".to_string()),
+            completion_signal_mode,
             context_dir: file.workflow.context_dir,
             max_cycles,
             output_dir: file.workflow.output_dir,
@@ -360,5 +423,133 @@ impl Workflow {
             manifest_mtime_optimization: file.workflow.manifest_mtime_optimization,
             snapshot_cycles: file.workflow.snapshot_cycles,
         })
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+    use tempfile::tempdir;
+
+    /// Build a minimal valid TOML string for testing, using a temp dir as context_dir.
+    fn make_toml(context_dir: &str, extra: &str) -> String {
+        format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+{}
+
+[[phases]]
+name = "builder"
+prompt_text = "Do the work. When done, print DONE."
+"#,
+            context_dir, extra
+        )
+    }
+
+    #[test]
+    fn regex_mode_valid_regex_parses() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"completion_signal_mode = "regex""#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(matches!(
+            wf.completion_signal_mode,
+            CompletionSignalMode::Regex(_)
+        ));
+    }
+
+    #[test]
+    fn regex_mode_invalid_regex_errors() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "["
+context_dir = "{}"
+max_cycles = 3
+completion_signal_mode = "regex"
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidSignalRegex(_)));
+    }
+
+    #[test]
+    fn bogus_mode_errors() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"completion_signal_mode = "bogus""#,
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidCompletionSignalMode(_)));
+    }
+
+    #[test]
+    fn unknown_completion_signal_phase_errors() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"completion_signal_phases = ["nonexistent"]"#,
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(
+            matches!(err, WorkflowError::UnknownCompletionSignalPhase(ref name) if name == "nonexistent")
+        );
+    }
+
+    #[test]
+    fn known_completion_signal_phase_parses() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"completion_signal_phases = ["builder"]"#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.completion_signal_phases, vec!["builder"]);
+    }
+
+    #[test]
+    fn produces_required_without_manifest_errors() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+produces_required = true
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(
+            matches!(err, WorkflowError::ProducesRequiredWithoutManifest(ref name) if name == "builder")
+        );
+    }
+
+    #[test]
+    fn phase_contract_fields_default_when_absent() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "");
+        let wf = Workflow::from_str(&toml).unwrap();
+        let phase = &wf.phases[0];
+        assert!(phase.consumes.is_empty());
+        assert!(phase.produces.is_empty());
+        assert!(!phase.produces_required);
     }
 }

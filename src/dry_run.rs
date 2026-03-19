@@ -1,5 +1,4 @@
-use crate::workflow::Workflow;
-use regex::Regex;
+use crate::workflow::{CompletionSignalMode, Workflow};
 use serde::{Deserialize, Serialize};
 
 /// Result of checking for completion signal in a prompt
@@ -43,13 +42,6 @@ pub struct DryRunPlanEvent {
 impl DryRunPlan {
     /// Build a dry run plan from the workflow
     pub fn from_workflow(workflow: &Workflow, _workflow_file: &str) -> anyhow::Result<DryRunPlan> {
-        // Validate regex patterns
-        if workflow.completion_signal_mode == "regex" {
-            Regex::new(&workflow.completion_signal).map_err(|e| {
-                anyhow::anyhow!("Invalid regex pattern in completion_signal: {}", e)
-            })?;
-        }
-
         let mut phases = Vec::new();
         let mut runs_per_cycle_total = 0;
 
@@ -74,7 +66,6 @@ impl DryRunPlan {
                 &workflow.completion_signal,
                 &workflow.completion_signal_mode,
                 &prompt_content,
-                phase.prompt.is_some(),
             );
 
             // Scan for unknown variables (F-029)
@@ -105,15 +96,16 @@ impl DryRunPlan {
     }
 }
 
-/// Check if completion signal exists in prompt
+/// Check if completion signal exists in prompt.
+/// For regex mode, searches for the literal pattern string as a substring (not running
+/// the regex against the prompt text — this is intentional per spec).
 fn check_completion_signal(
     signal: &str,
-    mode: &str,
+    mode: &CompletionSignalMode,
     prompt_content: &str,
-    _is_file: bool,
 ) -> SignalCheck {
     match mode {
-        "line" => {
+        CompletionSignalMode::Line => {
             // Signal must appear on its own line
             for (line_idx, line) in prompt_content.lines().enumerate() {
                 if line.trim() == signal {
@@ -128,21 +120,9 @@ fn check_completion_signal(
                 line_number: None,
             }
         }
-        "regex" => {
-            // For regex mode, search for the literal pattern string as a substring
-            // (not running the regex against the prompt)
-            let line_number = prompt_content
-                .lines()
-                .position(|line| line.contains(signal))
-                .map(|idx| (idx + 1) as u32);
-
-            SignalCheck {
-                found: line_number.is_some(),
-                line_number,
-            }
-        }
-        _ => {
-            // Default: substring mode
+        CompletionSignalMode::Substring | CompletionSignalMode::Regex(_) => {
+            // Substring: literal substring search.
+            // Regex: search for literal pattern string as substring (not running regex against prompt).
             let line_number = prompt_content
                 .lines()
                 .position(|line| line.contains(signal))

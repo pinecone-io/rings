@@ -31,6 +31,8 @@ pub struct CostEntry {
     pub files_changed: u32,
     #[serde(default)]
     pub event: Option<String>,
+    #[serde(default)]
+    pub produces_violations: Vec<String>,
 }
 
 /// Stream cost entries from a costs.jsonl file without loading the entire file into memory.
@@ -197,6 +199,7 @@ mod tests {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         };
         append_cost_entry(&path, &entry).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
@@ -204,5 +207,38 @@ mod tests {
         assert_eq!(parsed["run"], 1);
         assert_eq!(parsed["cost_confidence"], "full");
         assert_eq!(parsed["iteration"], 2);
+    }
+
+    #[test]
+    fn cost_entry_old_jsonl_without_produces_violations_defaults_to_empty() {
+        // Old JSONL line without produces_violations field — must deserialize to empty vec
+        let json = r#"{"run":1,"cycle":1,"phase":"builder","iteration":1,"cost_usd":0.05,"input_tokens":100,"output_tokens":20,"cost_confidence":"full","files_added":0,"files_modified":0,"files_deleted":0,"files_changed":0}"#;
+        let entry: CostEntry = serde_json::from_str(json).unwrap();
+        assert!(entry.produces_violations.is_empty());
+    }
+
+    #[test]
+    fn cost_entry_serialize_always_includes_produces_violations() {
+        let entry = CostEntry {
+            run: 1,
+            cycle: 1,
+            phase: "builder".to_string(),
+            iteration: 1,
+            cost_usd: Some(0.05),
+            input_tokens: Some(100),
+            output_tokens: Some(20),
+            cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
+            produces_violations: vec![],
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // Field must always be present, even when empty
+        assert!(parsed.get("produces_violations").is_some());
+        assert_eq!(parsed["produces_violations"], serde_json::json!([]));
     }
 }

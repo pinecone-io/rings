@@ -273,6 +273,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
             .to_string(),
         ancestry_continuation_of: continuation_of,
         ancestry_depth,
+        no_contract_check: args.no_contract_check,
     };
 
     let run_start = std::time::Instant::now();
@@ -597,6 +598,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         workflow_file: meta.workflow_file.clone(),
         ancestry_continuation_of: None, // continuation_of is not set on resume
         ancestry_depth: 1,              // resumed runs always start at depth 1
+        no_contract_check: args.no_contract_check,
     };
 
     let resume_point = Some(ResumePoint {

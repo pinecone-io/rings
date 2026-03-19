@@ -60,6 +60,7 @@ fn corrupt_state_with_valid_costs_recovers() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         },
         CostEntry {
             run: 2,
@@ -75,6 +76,7 @@ fn corrupt_state_with_valid_costs_recovers() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         },
         CostEntry {
             run: 3,
@@ -90,6 +92,7 @@ fn corrupt_state_with_valid_costs_recovers() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         },
     ];
 
@@ -165,6 +168,7 @@ fn malformed_jsonl_lines_skipped() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         })
         .unwrap(),
     );
@@ -185,6 +189,7 @@ fn malformed_jsonl_lines_skipped() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         })
         .unwrap(),
     );
@@ -226,6 +231,7 @@ fn none_cost_entries_included_in_recovery() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         })
         .unwrap(),
     );
@@ -245,6 +251,7 @@ fn none_cost_entries_included_in_recovery() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         })
         .unwrap(),
     );
@@ -285,6 +292,7 @@ fn crash_scenario_state_lags_costs() {
             files_deleted: 0,
             files_changed: 0,
             event: None,
+            produces_violations: vec![],
         };
         content.push_str(&serde_json::to_string(&entry).unwrap());
         content.push_str("\n");

@@ -228,6 +228,7 @@ fn costentry_serialize_includes_all_fields() {
         files_deleted: 0,
         files_changed: 3,
         event: Some("run_end".to_string()),
+        produces_violations: vec![],
     };
 
     let json = serde_json::to_string(&entry).unwrap();

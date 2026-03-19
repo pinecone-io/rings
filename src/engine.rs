@@ -10,6 +10,7 @@ use crate::executor::{extract_response_text, Executor, Invocation};
 use crate::manifest::{compute_manifest, diff_manifests, read_manifest_gz, write_manifest_gz};
 use crate::state::{FailureReason, StateFile};
 use crate::template::{render_prompt, TemplateVars};
+use crate::workflow::CompletionSignalMode;
 use crate::workflow::PhaseConfig;
 use crate::workflow::Workflow;
 use anyhow::Result;
@@ -81,6 +82,7 @@ impl BudgetTracker {
                     files_deleted: 0,
                     files_changed: 0,
                     event: None,
+                    produces_violations: vec![],
                 }
             });
 
@@ -328,6 +330,7 @@ pub struct EngineConfig {
     pub workflow_file: String,
     pub ancestry_continuation_of: Option<String>,
     pub ancestry_depth: u32,
+    pub no_contract_check: bool,
 }
 
 pub struct EngineResult {
@@ -339,14 +342,12 @@ pub struct EngineResult {
     pub failure_reason: Option<FailureReason>,
 }
 
-/// Detect whether `signal` appears in `output` using the given mode.
-/// mode "line" requires the signal to appear alone on a trimmed line.
-/// Any other value (including "substring") uses substring matching.
-fn signal_matches(output: &str, signal: &str, mode: &str) -> bool {
-    if mode == "line" {
-        output_line_contains_signal(output, signal)
-    } else {
-        output_contains_signal(output, signal)
+/// Detect whether `signal` appears in `output` using the compiled mode.
+fn signal_matches(output: &str, signal: &str, mode: &CompletionSignalMode) -> bool {
+    match mode {
+        CompletionSignalMode::Substring => output_contains_signal(output, signal),
+        CompletionSignalMode::Line => output_line_contains_signal(output, signal),
+        CompletionSignalMode::Regex(re) => re.is_match(output),
     }
 }
 
@@ -672,8 +673,12 @@ pub fn run_workflow(
         let mut timeout_occurred = false;
         let mut cancel_occurred = false;
         let run_start = std::time::Instant::now();
+        let mut last_display_elapsed: u64 = 0;
 
         'retry_loop: loop {
+            // Show in-progress indicator before spawning.
+            crate::display::print_run_start(&run_spec);
+
             // Spawn the subprocess and implement wait loop with timeout/cancellation.
             let mut handle = executor.spawn(&invocation, config.verbose)?;
             let timeout_deadline =
@@ -828,7 +833,12 @@ pub fn run_workflow(
                         break;
                     }
                     Ok(None) => {
-                        // Process still running, poll again in 100ms
+                        // Process still running; update elapsed display once per second.
+                        let elapsed = run_start.elapsed().as_secs();
+                        if elapsed != last_display_elapsed {
+                            crate::display::print_run_elapsed(&run_spec, elapsed);
+                            last_display_elapsed = elapsed;
+                        }
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
                     Err(e) => {
@@ -961,6 +971,7 @@ pub fn run_workflow(
                     files_deleted: 0,
                     files_changed: 0,
                     event: None,
+                    produces_violations: vec![],
                 },
             )?;
             return Ok(EngineResult {
@@ -995,6 +1006,7 @@ pub fn run_workflow(
                     files_deleted: 0,
                     files_changed: 0,
                     event: None,
+                    produces_violations: vec![],
                 },
             )?;
             return Ok(EngineResult {
@@ -1064,6 +1076,7 @@ pub fn run_workflow(
                     files_deleted: 0,
                     files_changed: 0,
                     event: None,
+                    produces_violations: vec![],
                 },
             )?;
             return Ok(EngineResult {
@@ -1138,6 +1151,7 @@ pub fn run_workflow(
                 files_deleted,
                 files_changed,
                 event: None,
+                produces_violations: vec![],
             },
         )?;
 
@@ -1404,9 +1418,9 @@ pub fn run_workflow(
             });
         }
 
-        // Check continue_signal: skip remaining phases in this cycle.
+        // Check continue_signal: always uses substring mode regardless of completion_signal_mode.
         if let Some(ref cs) = workflow.continue_signal {
-            if signal_matches(&response_text, cs, &workflow.completion_signal_mode) {
+            if output_contains_signal(&response_text, cs) {
                 schedule.skip_to_next_cycle(run_spec.cycle);
             }
         }

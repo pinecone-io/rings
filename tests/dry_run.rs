@@ -222,10 +222,10 @@ runs_per_cycle = 1
         context_dir.display()
     );
 
-    let workflow = Workflow::from_str(&toml).unwrap();
-    let result = DryRunPlan::from_workflow(&workflow, "test.toml");
+    // Invalid regex is now rejected at workflow parse time, not dry-run time.
+    let result = Workflow::from_str(&toml);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Invalid regex"));
+    assert!(result.unwrap_err().to_string().contains("invalid regex"));
 }
 
 #[test]

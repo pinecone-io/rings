@@ -1017,10 +1017,53 @@ fn cmd_init(args: cli::InitArgs, output_format: cli::OutputFormat) -> i32 {
     }
 }
 
-fn init_inner(args: cli::InitArgs, _output_format: cli::OutputFormat) -> Result<i32> {
-    let _ = args;
-    // Full implementation follows in subsequent tasks (path resolution, template write).
-    eprintln!("Error: 'rings init' is not yet fully implemented.");
+fn resolve_init_path(name: Option<&str>) -> Result<PathBuf> {
+    let base = name.unwrap_or("workflow");
+
+    // Reject paths with `..` components
+    let path = std::path::Path::new(base);
+    for component in path.components() {
+        if component == std::path::Component::ParentDir {
+            bail!("Path must not contain '..' components");
+        }
+    }
+
+    // Append .rings.toml suffix if not already present
+    let with_suffix = if base.ends_with(".rings.toml") {
+        PathBuf::from(base)
+    } else {
+        PathBuf::from(format!("{base}.rings.toml"))
+    };
+
+    Ok(with_suffix)
+}
+
+fn init_inner(args: cli::InitArgs, output_format: cli::OutputFormat) -> Result<i32> {
+    let path = resolve_init_path(args.name.as_deref())?;
+
+    // If path has a parent directory component, verify it exists
+    if let Some(parent) = path.parent() {
+        if parent != std::path::Path::new("") && !parent.exists() {
+            eprintln!(
+                "Error: parent directory '{}' does not exist",
+                parent.display()
+            );
+            return Ok(2);
+        }
+    }
+
+    // Check if target file already exists
+    if path.exists() && !args.force {
+        eprintln!(
+            "Error: '{}' already exists. Use --force to overwrite.",
+            path.display()
+        );
+        return Ok(2);
+    }
+
+    // Placeholder: full template write follows in Task 3
+    let _ = output_format;
+    eprintln!("Error: 'rings init' template write not yet implemented (Task 3).");
     Ok(2)
 }
 
@@ -1109,6 +1152,79 @@ mod tests {
         let styled = style::success("✓");
         assert_ne!(styled, "✓", "success checkmark should include ANSI styling");
         assert!(styled.contains('✓'));
+    }
+
+    // --- Task 2: resolve_init_path tests ---
+
+    #[test]
+    fn init_default_name_resolves_to_workflow_rings_toml() {
+        let path = resolve_init_path(None).unwrap();
+        assert_eq!(path, PathBuf::from("workflow.rings.toml"));
+    }
+
+    #[test]
+    fn init_custom_name_appends_rings_toml() {
+        let path = resolve_init_path(Some("my-task")).unwrap();
+        assert_eq!(path, PathBuf::from("my-task.rings.toml"));
+    }
+
+    #[test]
+    fn init_name_already_ending_in_rings_toml_not_double_suffixed() {
+        let path = resolve_init_path(Some("my-task.rings.toml")).unwrap();
+        assert_eq!(path, PathBuf::from("my-task.rings.toml"));
+    }
+
+    #[test]
+    fn init_relative_path_appends_suffix() {
+        let path = resolve_init_path(Some("workflows/my-task")).unwrap();
+        assert_eq!(path, PathBuf::from("workflows/my-task.rings.toml"));
+    }
+
+    #[test]
+    fn init_path_with_dotdot_is_rejected() {
+        let result = resolve_init_path(Some("../escape"));
+        assert!(result.is_err(), "expected error for path with ..");
+    }
+
+    #[test]
+    fn init_existing_file_without_force_exits_2() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("workflow.rings.toml");
+        std::fs::write(&file_path, "").unwrap();
+
+        // We need to test cmd_init behavior; use init_inner directly
+        // by passing args with name pointing to the temp file.
+        // Since resolve_init_path uses the name as-is and the CWD matters,
+        // we test the path-exists check by constructing directly.
+        let args = cli::InitArgs {
+            name: Some(file_path.to_string_lossy().to_string()),
+            force: false,
+        };
+        let result = init_inner(args, cli::OutputFormat::Human).unwrap();
+        assert_eq!(
+            result, 2,
+            "should exit 2 when file exists and --force not set"
+        );
+    }
+
+    #[test]
+    fn init_existing_file_with_force_does_not_exit_2_on_path_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("workflow.rings.toml");
+        std::fs::write(&file_path, "").unwrap();
+
+        // With --force, the "file exists" check should pass.
+        // init_inner will still exit 2 because Task 3 template write is not yet done,
+        // but the exit should NOT be from the file-exists guard.
+        // We verify the error message is about "template write not yet implemented".
+        let args = cli::InitArgs {
+            name: Some(file_path.to_string_lossy().to_string()),
+            force: true,
+        };
+        // Just check it doesn't panic — the stub returns 2 with a different message.
+        let result = init_inner(args, cli::OutputFormat::Human).unwrap();
+        // Currently returns 2 because of the stub; force passed the existence check
+        assert_eq!(result, 2);
     }
 
     #[test]

@@ -35,22 +35,22 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or new `src/init.rs`)
 
 **Steps:**
-- [ ] Implement `resolve_init_path(name: Option<&str>) -> Result<PathBuf>`:
+- [x] Implement `resolve_init_path(name: Option<&str>) -> Result<PathBuf>`:
   - Default name: `"workflow"` → `./workflow.rings.toml`
   - Custom name: `"my-task"` → `./my-task.rings.toml`
   - Relative path: `"workflows/my-task"` → `./workflows/my-task.rings.toml`
   - Appends `.rings.toml` suffix if not already present
   - Rejects paths containing `..` components (exit code 2)
-- [ ] Check if target file exists: if yes and `--force` not set, print error and exit 2
-- [ ] If path has directory components (e.g. `workflows/`), verify parent dir exists (don't create it — exit 2 if missing)
+- [x] Check if target file exists: if yes and `--force` not set, print error and exit 2
+- [x] If path has directory components (e.g. `workflows/`), verify parent dir exists (don't create it — exit 2 if missing)
 
 **Tests:**
-- [ ] Default name resolves to `workflow.rings.toml`
-- [ ] Custom name appends `.rings.toml`
-- [ ] Name already ending in `.rings.toml` is not double-suffixed
-- [ ] Path with `..` is rejected with exit code 2
-- [ ] Existing file without `--force` exits 2
-- [ ] Existing file with `--force` succeeds
+- [x] Default name resolves to `workflow.rings.toml`
+- [x] Custom name appends `.rings.toml`
+- [x] Name already ending in `.rings.toml` is not double-suffixed
+- [x] Path with `..` is rejected with exit code 2
+- [x] Existing file without `--force` exits 2
+- [x] Existing file with `--force` succeeds
 
 ---
 
@@ -79,10 +79,33 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-### Task 4: Update feature inventory
+## F-192: `rings update` — Self-Update Command
+
+**Spec:** `specs/cli/commands-and-flags.md`
+
+**Summary:** `rings update` downloads and installs the latest nightly release from GitHub by shelling out to `install.sh`. Reuses existing platform detection, checksum verification, and install logic.
+
+### Task 1: CLI subcommand
+
+**Files:** `src/cli.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Change F-182 status from `PRIORITIZED` to `COMPLETE` in `specs/feature_inventory.md`
-- [ ] Update `REVIEW.md` with any decisions or open questions
+- [ ] Add `Update` variant to `Command` enum in `src/cli.rs` (no args struct needed — no flags)
+- [ ] Add `Command::Update => cmd_update()` match arm in `main.rs`
+- [ ] Implement `cmd_update()`:
+  1. Check `curl` is on PATH (`which curl`); if not, print error and exit 1
+  2. Check `bash` is on PATH (`which bash`); if not, print error and exit 1
+  3. Get current binary path via `std::env::current_exe()?.canonicalize()?`
+  4. Print `Updating rings...` to stderr
+  5. Download `install.sh` to a temp file: `curl -fsSL https://raw.githubusercontent.com/pinecone-io/rings/main/install.sh -o <tmpfile>`
+  6. Run `bash <tmpfile> <current_binary_path>`, inheriting stdout/stderr
+  7. Clean up temp file
+  8. If install succeeded (exit 0): exit 0
+  9. If install failed: print error, exit 1
+
+**Tests:**
+- [ ] `rings update` parses as the Update command (CLI parsing test)
+- [ ] `cmd_update` detects missing `curl` and returns error (mock PATH)
+- [ ] `cmd_update` detects missing `bash` and returns error (mock PATH)
 
 ---

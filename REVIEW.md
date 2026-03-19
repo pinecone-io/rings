@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-19 / F-182 Task 2: rings init path resolution] Implemented `resolve_init_path(name: Option<&str>) -> Result<PathBuf>` in `main.rs`. Rejects paths with `..` using `std::path::Component::ParentDir` iteration. Appends `.rings.toml` suffix only when not already present. The `init_inner` stub now handles parent directory existence check and file-exists/force check; returns exit code 2 for all guard failures. Template write deferred to Task 3.
+
 [2026-03-19 / F-182 Task 1: rings init CLI parsing] Added `InitArgs { name: Option<String>, force: bool }` and `Command::Init(InitArgs)` to cli.rs. Added `cmd_init` and `init_inner` stubs in main.rs matching the existing pattern for unimplemented commands (cmd_lineage, cmd_completions). Path resolution and template writing follow in Tasks 2–3.
 
 [2026-03-19 / Task 4: Model Name Detection + Startup Display] Added `detect_model_name()` to `Workflow` — scans `executor.args` for `--model <value>` or `--model=<value>` patterns. Returns `None` when no executor or no `--model` flag. The spec mentions `extra_args` per phase, but `PhaseConfig` has no such field; detection is limited to `executor.args` only. Added `model: Option<&'a str>` to `RunHeaderParams` and inserted the Model line (after Phases, before Max) in `format_run_header`. Model is always shown: detected value in plain text, or `(default)` in dim when `None`. Updated both `run_inner` and `resume_inner` call sites in `main.rs`. All 100+ tests pass.

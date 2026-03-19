@@ -57,6 +57,10 @@ pub struct Cli {
     #[arg(long, global = true, alias = "format", default_value = "human")]
     pub output_format: OutputFormat,
 
+    /// Disable color output (also respected via NO_COLOR env var)
+    #[arg(long, global = true)]
+    pub no_color: bool,
+
     #[command(subcommand)]
     pub command: Command,
 }

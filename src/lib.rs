@@ -17,5 +17,6 @@ pub mod list;
 pub mod lock;
 pub mod manifest;
 pub mod state;
+pub mod style;
 pub mod template;
 pub mod workflow;

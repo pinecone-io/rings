@@ -27,6 +27,7 @@ sha2 = "0.10"
 globset = "0.4"
 walkdir = "2"
 hex = "0.4"
+owo-colors = "4"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process"] }

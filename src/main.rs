@@ -19,6 +19,7 @@ use rings::list;
 #[cfg(unix)]
 use rings::lock::ContextLock;
 use rings::state;
+use rings::style;
 use rings::workflow;
 
 fn main() {
@@ -43,6 +44,18 @@ fn main() {
     }
 
     let cli = Cli::parse();
+
+    // Initialize color: disable if --no-color, NO_COLOR env var, or stderr is not a TTY.
+    {
+        use std::io::IsTerminal;
+        if cli.no_color
+            || std::env::var_os("NO_COLOR").is_some()
+            || !std::io::stderr().is_terminal()
+        {
+            style::set_no_color();
+        }
+    }
+
     let exit_code = match cli.command {
         Command::Run(args) => cmd_run(args, Arc::clone(&cancel)),
         Command::Resume(args) => cmd_resume(args, Arc::clone(&cancel)),

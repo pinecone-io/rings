@@ -65,6 +65,7 @@ fn main() {
         Command::Lineage(args) => cmd_lineage(args, cli.output_format),
         Command::Completions(args) => cmd_completions(args),
         Command::Init(args) => cmd_init(args, cli.output_format),
+        Command::Update => cmd_update(),
     };
     std::process::exit(exit_code);
 }
@@ -1120,6 +1121,77 @@ fn init_inner(args: cli::InitArgs, output_format: cli::OutputFormat) -> Result<i
     Ok(0)
 }
 
+const RINGS_REPO: &str = "pinecone-io/rings";
+
+fn cmd_update() -> i32 {
+    match update_inner() {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            1
+        }
+    }
+}
+
+fn update_inner() -> Result<i32> {
+    // Check curl is on PATH
+    if which::which("curl").is_err() {
+        eprintln!(
+            "Error: 'curl' not found on PATH. \
+             Please install curl or download rings manually from https://github.com/{RINGS_REPO}/releases"
+        );
+        return Ok(1);
+    }
+
+    // Check bash is on PATH
+    if which::which("bash").is_err() {
+        eprintln!(
+            "Error: 'bash' not found on PATH. \
+             Please install bash or download rings manually from https://github.com/{RINGS_REPO}/releases"
+        );
+        return Ok(1);
+    }
+
+    // Get current binary path
+    let current_exe = std::env::current_exe()?.canonicalize()?;
+
+    eprintln!("Updating rings...");
+
+    // Download install.sh to a temp file
+    let tmp_file = tempfile::NamedTempFile::new()?;
+    let install_url = format!("https://raw.githubusercontent.com/{RINGS_REPO}/main/install.sh");
+    let download_status = std::process::Command::new("curl")
+        .args(["-fsSL", &install_url, "-o"])
+        .arg(tmp_file.path())
+        .status()
+        .with_context(|| "Failed to run curl")?;
+
+    if !download_status.success() {
+        eprintln!(
+            "Error: Failed to download install.sh. \
+             Please check your internet connection or update manually."
+        );
+        return Ok(1);
+    }
+
+    // Run bash <tmpfile> <current_binary_path>, inheriting stdout/stderr
+    let install_status = std::process::Command::new("bash")
+        .arg(tmp_file.path())
+        .arg(&current_exe)
+        .status()
+        .with_context(|| "Failed to run install script")?;
+
+    // tmp_file is dropped here (auto-deleted)
+    drop(tmp_file);
+
+    if install_status.success() {
+        Ok(0)
+    } else {
+        eprintln!("Error: Update failed. Please try again or update manually.");
+        Ok(1)
+    }
+}
+
 fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str>) -> PathBuf {
     if let Some(p) = cli_override {
         return PathBuf::from(p);
@@ -1378,6 +1450,53 @@ mod tests {
             any_found,
             "dry-run check should find the completion signal in at least one phase prompt"
         );
+    }
+
+    // Mutex to serialize PATH-manipulation tests so they don't race with each other.
+    static PATH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn update_detects_missing_curl_exits_1() {
+        let _guard = PATH_LOCK.lock().unwrap();
+        let empty_dir = tempfile::tempdir().unwrap();
+        let orig_path = std::env::var_os("PATH");
+        std::env::set_var("PATH", empty_dir.path());
+
+        let result = update_inner();
+
+        match orig_path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+
+        assert_eq!(result.unwrap(), 1, "should exit 1 when curl is not on PATH");
+    }
+
+    #[test]
+    fn update_detects_missing_bash_exits_1() {
+        let _guard = PATH_LOCK.lock().unwrap();
+
+        // Create a temp dir containing a fake 'curl' executable but no 'bash'.
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let fake_curl = tmp_dir.path().join("curl");
+        std::fs::write(&fake_curl, "#!/bin/sh\nexit 0").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&fake_curl, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let orig_path = std::env::var_os("PATH");
+        std::env::set_var("PATH", tmp_dir.path());
+
+        let result = update_inner();
+
+        match orig_path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+
+        assert_eq!(result.unwrap(), 1, "should exit 1 when bash is not on PATH");
     }
 
     #[test]

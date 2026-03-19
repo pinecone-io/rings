@@ -90,9 +90,9 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cli.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Add `Update` variant to `Command` enum in `src/cli.rs` (no args struct needed — no flags)
-- [ ] Add `Command::Update => cmd_update()` match arm in `main.rs`
-- [ ] Implement `cmd_update()`:
+- [x] Add `Update` variant to `Command` enum in `src/cli.rs` (no args struct needed — no flags)
+- [x] Add `Command::Update => cmd_update()` match arm in `main.rs`
+- [x] Implement `cmd_update()`:
   1. Check `curl` is on PATH (`which curl`); if not, print error and exit 1
   2. Check `bash` is on PATH (`which bash`); if not, print error and exit 1
   3. Get current binary path via `std::env::current_exe()?.canonicalize()?`
@@ -104,8 +104,8 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
   9. If install failed: print error, exit 1
 
 **Tests:**
-- [ ] `rings update` parses as the Update command (CLI parsing test)
-- [ ] `cmd_update` detects missing `curl` and returns error (mock PATH)
-- [ ] `cmd_update` detects missing `bash` and returns error (mock PATH)
+- [x] `rings update` parses as the Update command (CLI parsing test)
+- [x] `cmd_update` detects missing `curl` and returns error (mock PATH)
+- [x] `cmd_update` detects missing `bash` and returns error (mock PATH)
 
 ---

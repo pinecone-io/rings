@@ -83,6 +83,8 @@ pub enum Command {
     Completions(CompletionsArgs),
     /// Scaffold a new workflow TOML file
     Init(InitArgs),
+    /// Update rings to the latest nightly release
+    Update,
 }
 
 #[derive(Args, Debug)]

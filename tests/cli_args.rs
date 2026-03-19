@@ -86,3 +86,12 @@ fn parses_init_with_force_flag() {
         _ => panic!("expected Init"),
     }
 }
+
+#[test]
+fn parses_update_command() {
+    let cli = Cli::try_parse_from(["rings", "update"]).unwrap();
+    match cli.command {
+        Command::Update => {}
+        _ => panic!("expected Update"),
+    }
+}

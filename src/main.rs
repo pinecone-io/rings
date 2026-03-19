@@ -385,6 +385,8 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
                     &run_dir.to_string_lossy(),
                     &result.phase_costs,
                     workflow.budget_cap_usd,
+                    result.total_input_tokens,
+                    result.total_output_tokens,
                 );
             }
         }
@@ -457,6 +459,8 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
                     &result.phase_costs,
                     &state.claude_resume_commands,
                     &run_dir.to_string_lossy(),
+                    result.total_input_tokens,
+                    result.total_output_tokens,
                 );
             }
         }
@@ -736,6 +740,8 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                     &run_dir.to_string_lossy(),
                     &result.phase_costs,
                     workflow.budget_cap_usd,
+                    result.total_input_tokens,
+                    result.total_output_tokens,
                 );
             }
         }
@@ -808,6 +814,8 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                     &result.phase_costs,
                     &state.claude_resume_commands,
                     &run_dir.to_string_lossy(),
+                    result.total_input_tokens,
+                    result.total_output_tokens,
                 );
             }
         }

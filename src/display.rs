@@ -22,6 +22,19 @@ pub fn format_token_count(n: u64) -> String {
     }
 }
 
+/// Format a number with comma separators (e.g., 18204 → "18,204").
+pub fn format_number_with_commas(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
 /// Format the animated status line shown while a run is in progress.
 ///
 /// Format: `⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34  │  18.2k in · 4.1k out`
@@ -368,6 +381,8 @@ fn format_completion(
     output_dir: &str,
     phase_costs: &[(String, f64, u32)],
     budget_cap_usd: Option<f64>,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
 ) -> String {
     let check = style::success("✓");
     let completed = style::bold("Completed");
@@ -403,6 +418,19 @@ fn format_completion(
         cost_val,
         total_runs
     ));
+
+    if total_input_tokens > 0 || total_output_tokens > 0 {
+        let token_text = format!(
+            "{} input · {} output",
+            format_number_with_commas(total_input_tokens),
+            format_number_with_commas(total_output_tokens)
+        );
+        lines.push(format!(
+            "   {}  {}",
+            style::dim(&format!("{:<lw$}", "Tokens")),
+            style::dim(&token_text)
+        ));
+    }
 
     // Phase bar chart
     if !phase_costs.is_empty() {
@@ -445,6 +473,8 @@ pub fn print_completion(
     output_dir: &str,
     phase_costs: &[(String, f64, u32)],
     budget_cap_usd: Option<f64>,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
 ) {
     eprintln!(
         "{}",
@@ -458,6 +488,8 @@ pub fn print_completion(
             output_dir,
             phase_costs,
             budget_cap_usd,
+            total_input_tokens,
+            total_output_tokens,
         )
     );
 }
@@ -473,6 +505,8 @@ pub fn print_cancellation(
     phase_costs: &[(String, f64, u32)],
     resume_commands: &[String],
     output_dir: &str,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
 ) {
     let marker = style::error("✗");
     let label_interrupted = style::bold("Interrupted");
@@ -498,6 +532,19 @@ pub fn print_cancellation(
         style::dim(&format!("{:<lw$}", "Cost")),
         style::accent(&format!("${:.2}", total_cost_usd))
     );
+
+    if total_input_tokens > 0 || total_output_tokens > 0 {
+        let token_text = format!(
+            "{} input · {} output",
+            format_number_with_commas(total_input_tokens),
+            format_number_with_commas(total_output_tokens)
+        );
+        eprintln!(
+            "   {}  {}",
+            style::dim(&format!("{:<lw$}", "Tokens")),
+            style::dim(&token_text)
+        );
+    }
 
     if !phase_costs.is_empty() {
         eprintln!();
@@ -1040,6 +1087,8 @@ mod tests {
             "/tmp/run",
             &phase_costs,
             Some(5.0),
+            0,
+            0,
         );
         assert!(s.contains("Completed"), "missing Completed: {s}");
         assert!(s.contains("cycle 2"), "missing cycle: {s}");
@@ -1070,6 +1119,8 @@ mod tests {
             "/tmp/run",
             &phase_costs,
             None,
+            0,
+            0,
         );
         assert!(
             !s.contains("Budget"),
@@ -1130,8 +1181,68 @@ mod tests {
             "/tmp/run",
             &phase_costs,
             None,
+            0,
+            0,
         );
         assert!(s.contains('✓'), "missing checkmark: {s}");
         crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_output_includes_token_line_when_tokens_nonzero() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let phase_costs: Vec<(String, f64, u32)> = vec![];
+        let s = format_completion(
+            1,
+            5,
+            "builder",
+            0.50,
+            5,
+            120,
+            "/tmp/run",
+            &phase_costs,
+            None,
+            18204,
+            4102,
+        );
+        assert!(s.contains("Tokens"), "missing Tokens label: {s}");
+        assert!(s.contains("18,204 input"), "missing input tokens: {s}");
+        assert!(s.contains("4,102 output"), "missing output tokens: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_output_omits_token_line_when_both_zero() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let phase_costs: Vec<(String, f64, u32)> = vec![];
+        let s = format_completion(
+            1,
+            5,
+            "builder",
+            0.50,
+            5,
+            120,
+            "/tmp/run",
+            &phase_costs,
+            None,
+            0,
+            0,
+        );
+        assert!(
+            !s.contains("Tokens"),
+            "Tokens line should be absent when both zero: {s}"
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn format_number_with_commas_various() {
+        assert_eq!(format_number_with_commas(0), "0");
+        assert_eq!(format_number_with_commas(999), "999");
+        assert_eq!(format_number_with_commas(1000), "1,000");
+        assert_eq!(format_number_with_commas(18204), "18,204");
+        assert_eq!(format_number_with_commas(1_100_000), "1,100,000");
     }
 }

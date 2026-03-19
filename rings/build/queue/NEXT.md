@@ -44,14 +44,14 @@
 **Files:** `src/display.rs`, `src/main.rs`
 
 **Steps:**
-1. - [ ] Update `print_completion` to accept and display total token counts: `Tokens      18,204 input · 4,102 output` — values in **dim**, with comma-separated formatting
-2. - [ ] Update `print_cancellation` to show the same token line
-3. - [ ] Update call sites in `src/main.rs` to pass `EngineResult.total_input_tokens` / `total_output_tokens`
+1. - [x] Update `print_completion` to accept and display total token counts: `Tokens      18,204 input · 4,102 output` — values in **dim**, with comma-separated formatting
+2. - [x] Update `print_cancellation` to show the same token line
+3. - [x] Update call sites in `src/main.rs` to pass `EngineResult.total_input_tokens` / `total_output_tokens`
 
 **Tests:**
-- [ ] Completion output includes token line when tokens > 0
-- [ ] Token line omitted when both are 0
-- [ ] Comma formatting correct (e.g., `18,204`)
+- [x] Completion output includes token line when tokens > 0
+- [x] Token line omitted when both are 0
+- [x] Comma formatting correct (e.g., `18,204`)
 
 ---
 

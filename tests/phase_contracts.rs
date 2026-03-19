@@ -462,3 +462,58 @@ fn engine_no_contract_check_suppresses_produces() {
         "Expected [] with --no-contract-check"
     );
 }
+
+// OD-3: --no-completion-check and --no-contract-check are fully independent flags.
+// --no-completion-check suppresses completion signal checking only; it does NOT suppress
+// contract checks. The engine's EngineConfig has no no_completion_check field at all —
+// contract check suppression is controlled solely by no_contract_check.
+// This test verifies that with no_contract_check=false, contract violations are recorded
+// even when no completion-check suppression is in effect (simulating --no-completion-check
+// without --no-contract-check).
+#[test]
+fn engine_no_completion_check_does_not_suppress_contract_warnings() {
+    let context_dir = tempdir().unwrap();
+    let output_dir = tempdir().unwrap();
+
+    std::fs::write(context_dir.path().join("existing.txt"), "existing").unwrap();
+
+    let mut workflow = make_workflow_with_contracts(
+        context_dir.path().to_str().unwrap(),
+        vec!["src/**/*.rs".to_string()],
+        false,
+        true,
+    );
+    workflow.max_cycles = 1;
+
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "DONE".to_string(),
+        exit_code: 0,
+    }]);
+
+    // no_contract_check=false simulates: --no-completion-check passed but NOT --no-contract-check.
+    // Per OD-3, these flags are fully independent. Contract checks must still fire.
+    let config = EngineConfig {
+        output_dir: output_dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-no-completion-check-independence".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        no_contract_check: false, // --no-completion-check does NOT set this
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0);
+
+    // Contract check is active (no_contract_check=false), so violations must be recorded.
+    let costs_path = output_dir.path().join("costs.jsonl");
+    let content = std::fs::read_to_string(&costs_path).unwrap();
+    let entry: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+    let violations = entry["produces_violations"].as_array().unwrap();
+    assert_eq!(
+        violations.len(),
+        1,
+        "--no-completion-check must not suppress contract warnings (OD-3: flags are independent)"
+    );
+    assert_eq!(violations[0].as_str().unwrap(), "src/**/*.rs");
+}

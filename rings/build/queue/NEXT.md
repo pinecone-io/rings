@@ -230,7 +230,7 @@ Use `globset::GlobSetBuilder` (already a dependency) for glob matching in all th
 - [x] Engine integration: `produces_required = false` + no matching files → advisory warning, continues (exit 0 or 1)
 - [x] Engine integration: `manifest_enabled = false` → produces check skipped, `produces_violations` always `[]`
 - [x] Engine integration: `--no-contract-check` → no consumes or produces warnings emitted
-- [ ] Engine integration: `--no-completion-check` → also suppresses contract warnings
+- [x] Engine integration: `--no-completion-check` → also suppresses contract warnings
 
 **Steps:**
 - [x] Create `src/contracts.rs` with `non_glob_prefix`, `check_consumes_at_startup`, `check_consumes_pre_run`, `check_produces_after_run`

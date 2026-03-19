@@ -236,6 +236,153 @@ pub fn print_cycle_cost(cycle_cost_usd: f64) {
     eprintln!();
 }
 
+/// Render a proportional bar chart for phase costs.
+///
+/// Each entry is `(phase_name, cost_usd, run_count)`. Phases are in declaration order.
+/// Returns one line per phase; returns an empty vec if `items` is empty.
+pub fn render_bar_chart(items: &[(String, f64, u32)], max_width: usize) -> Vec<String> {
+    if items.is_empty() {
+        return vec![];
+    }
+    let total_cost: f64 = items.iter().map(|(_, c, _)| c).sum();
+    let max_name_len = items.iter().map(|(n, _, _)| n.len()).max().unwrap_or(0);
+    items
+        .iter()
+        .map(|(name, cost, runs)| {
+            let bar_width = if total_cost > 0.0 {
+                ((cost / total_cost) * max_width as f64).round() as usize
+            } else {
+                0
+            };
+            let bar_width = bar_width.min(max_width);
+            let bar = "█".repeat(bar_width);
+            let padding = " ".repeat(max_width - bar_width);
+            let cost_str = style::accent(&format!("${:.2}", cost));
+            format!(
+                "   {:<name_width$}  {}{}  {}  ({} runs)",
+                name,
+                bar,
+                padding,
+                cost_str,
+                runs,
+                name_width = max_name_len,
+            )
+        })
+        .collect()
+}
+
+/// Render a budget consumption gauge.
+///
+/// Format: `████████████░░░░░░░░  $1.10 / $5.00  (22%)`
+/// Color: green < 60%, yellow 60–85%, red > 85%.
+pub fn render_budget_gauge(spent: f64, cap: f64, width: usize) -> String {
+    let pct = if cap > 0.0 {
+        (spent / cap).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let filled = (pct * width as f64).round() as usize;
+    let filled = filled.min(width);
+    let empty = width - filled;
+    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
+    let pct_int = (pct * 100.0).round() as u32;
+
+    let pct_display = pct_int as f64 / 100.0;
+    let colored_bar = if pct_display < 0.60 {
+        style::success(&bar)
+    } else if pct_display <= 0.85 {
+        style::warn(&bar)
+    } else {
+        style::error(&bar)
+    };
+    let cost_str = style::accent(&format!("${:.2} / ${:.2}", spent, cap));
+    let pct_str = if pct_display < 0.60 {
+        style::success(&format!("{}%", pct_int))
+    } else if pct_display <= 0.85 {
+        style::warn(&format!("{}%", pct_int))
+    } else {
+        style::error(&format!("{}%", pct_int))
+    };
+    format!("{}  {}  ({})", colored_bar, cost_str, pct_str)
+}
+
+/// Format the completion summary as a string (for testing).
+#[allow(clippy::too_many_arguments)]
+fn format_completion(
+    cycle: u32,
+    run_number: u32,
+    phase_name: &str,
+    total_cost_usd: f64,
+    total_runs: u32,
+    elapsed_secs: u64,
+    output_dir: &str,
+    phase_costs: &[(String, f64, u32)],
+    budget_cap_usd: Option<f64>,
+) -> String {
+    let check = style::success("✓");
+    let completed = style::bold("Completed");
+    let lw = 10usize; // "Total cost" is 10 chars — widest label
+
+    let mut lines = vec![format!(
+        "{}  {} — cycle {}, run {} ({})",
+        check,
+        completed,
+        style::bold(&cycle.to_string()),
+        run_number,
+        phase_name
+    )];
+    lines.push(String::new());
+
+    let mins = elapsed_secs / 60;
+    let secs = elapsed_secs % 60;
+    let duration_val = if mins > 0 {
+        format!("{}m {}s", mins, secs)
+    } else {
+        format!("{}s", secs)
+    };
+    lines.push(format!(
+        "   {}  {}",
+        style::dim(&format!("{:<lw$}", "Duration")),
+        duration_val
+    ));
+
+    let cost_val = style::accent(&format!("${:.2}", total_cost_usd));
+    lines.push(format!(
+        "   {}  {}  ({} runs)",
+        style::dim(&format!("{:<lw$}", "Total cost")),
+        cost_val,
+        total_runs
+    ));
+
+    // Phase bar chart
+    if !phase_costs.is_empty() {
+        lines.push(String::new());
+        for line in render_bar_chart(phase_costs, 20) {
+            lines.push(line);
+        }
+    }
+
+    // Budget gauge
+    if let Some(cap) = budget_cap_usd {
+        lines.push(String::new());
+        let gauge = render_budget_gauge(total_cost_usd, cap, 20);
+        lines.push(format!(
+            "   {}  {}",
+            style::dim(&format!("{:<lw$}", "Budget")),
+            gauge
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "   {}  {}",
+        style::dim(&format!("{:<lw$}", "Audit logs")),
+        style::muted(&format!("{}/", output_dir))
+    ));
+
+    lines.join("\n")
+}
+
 /// Print the completion summary.
 #[allow(clippy::too_many_arguments)]
 pub fn print_completion(
@@ -246,41 +393,108 @@ pub fn print_completion(
     total_runs: u32,
     elapsed_secs: u64,
     output_dir: &str,
+    phase_costs: &[(String, f64, u32)],
+    budget_cap_usd: Option<f64>,
 ) {
-    eprintln!("✓  Completed on cycle {cycle}, run {run_number} (phase: {phase_name})");
     eprintln!(
-        "   Total cost: ${total_cost_usd:.3}  ·  {total_runs} runs  ·  elapsed: {}m{}s",
-        elapsed_secs / 60,
-        elapsed_secs % 60,
+        "{}",
+        format_completion(
+            cycle,
+            run_number,
+            phase_name,
+            total_cost_usd,
+            total_runs,
+            elapsed_secs,
+            output_dir,
+            phase_costs,
+            budget_cap_usd,
+        )
     );
-    eprintln!("   Audit log: {output_dir}/");
 }
 
 /// Print the cancellation summary.
+#[allow(clippy::too_many_arguments)]
 pub fn print_cancellation(
     run_id: &str,
     cycle: u32,
     phase_name: &str,
     total_cost_usd: f64,
+    total_runs: u32,
+    phase_costs: &[(String, f64, u32)],
     resume_commands: &[String],
+    output_dir: &str,
 ) {
+    let marker = style::error("✗");
+    let label_interrupted = style::bold("Interrupted");
+    let lw = 10usize;
+
     eprintln!();
-    eprintln!("✗  Canceled (cycle {cycle}, phase: {phase_name})");
-    eprintln!("   Cost so far: ${total_cost_usd:.3}");
-    eprintln!("   To resume: rings resume {run_id}");
-    if !resume_commands.is_empty() {
-        eprintln!("   Claude sessions to resume manually:");
-        for cmd in resume_commands {
-            eprintln!("     {cmd}");
+    eprintln!("{}  {}", marker, label_interrupted);
+    eprintln!();
+    eprintln!(
+        "   {}  {}",
+        style::dim(&format!("{:<lw$}", "Run ID")),
+        style::muted(run_id)
+    );
+    eprintln!(
+        "   {}  cycle {}, {} ({} runs)",
+        style::dim(&format!("{:<lw$}", "Progress")),
+        cycle,
+        phase_name,
+        total_runs,
+    );
+    eprintln!(
+        "   {}  {}",
+        style::dim(&format!("{:<lw$}", "Cost")),
+        style::accent(&format!("${:.2}", total_cost_usd))
+    );
+
+    if !phase_costs.is_empty() {
+        eprintln!();
+        for line in render_bar_chart(phase_costs, 20) {
+            eprintln!("{line}");
         }
     }
+
+    eprintln!();
+    eprintln!("   To resume:");
+    eprintln!(
+        "     {}",
+        style::bold(&style::accent(&format!("rings resume {run_id}")))
+    );
+
+    if !resume_commands.is_empty() {
+        eprintln!();
+        eprintln!("   Partial sessions:");
+        for cmd in resume_commands {
+            eprintln!("     {}", style::muted(cmd));
+        }
+    }
+
+    eprintln!();
+    eprintln!(
+        "   {}  {}",
+        style::dim(&format!("{:<lw$}", "Audit logs")),
+        style::muted(&format!("{}/", output_dir))
+    );
 }
 
 /// Print the max-cycles-reached summary.
 pub fn print_max_cycles(max_cycles: u32, total_cost_usd: f64, total_runs: u32, run_id: &str) {
-    eprintln!("⚠  max_cycles ({max_cycles}) reached without completion signal.");
-    eprintln!("   Total cost: ${total_cost_usd:.3}  ·  {total_runs} runs");
-    eprintln!("   To resume: rings resume {run_id}");
+    eprintln!(
+        "{}  max_cycles ({}) reached without completion signal.",
+        style::warn("⚠"),
+        max_cycles
+    );
+    eprintln!(
+        "   Total cost: {}  ·  {} runs",
+        style::accent(&format!("${:.2}", total_cost_usd)),
+        total_runs
+    );
+    eprintln!(
+        "   To resume: {}",
+        style::bold(&style::accent(&format!("rings resume {run_id}")))
+    );
 }
 
 /// Print quota error summary.
@@ -292,15 +506,30 @@ pub fn print_quota_error(
     cumulative_cost: f64,
     log_path: &str,
 ) {
-    eprintln!("✗  Executor hit a usage limit on run {run_number} (cycle {cycle}, {phase_name}).");
+    eprintln!(
+        "{}  Executor hit a usage limit on run {} (cycle {}, {}).",
+        style::error("✗"),
+        run_number,
+        cycle,
+        phase_name
+    );
     eprintln!();
-    eprintln!("   This is likely a quota or rate limit. No further runs will be attempted.");
+    eprintln!(
+        "   {}",
+        style::dim("This is likely a quota or rate limit. No further runs will be attempted.")
+    );
     eprintln!();
     eprintln!("   Progress saved. To resume after your quota resets:");
-    eprintln!("     rings resume {run_id}");
+    eprintln!(
+        "     {}",
+        style::bold(&style::accent(&format!("rings resume {run_id}")))
+    );
     eprintln!();
-    eprintln!("   Cost so far: ${cumulative_cost:.3}");
-    eprintln!("   Audit log:   {log_path}");
+    eprintln!(
+        "   Cost so far: {}",
+        style::accent(&format!("${:.2}", cumulative_cost))
+    );
+    eprintln!("   Audit log:   {}", style::muted(log_path));
 }
 
 /// Print authentication error summary.
@@ -311,32 +540,59 @@ pub fn print_auth_error(
     run_id: &str,
     log_path: &str,
 ) {
-    eprintln!("✗  Executor encountered an authentication error on run {run_number} (cycle {cycle}, {phase_name}).");
+    eprintln!(
+        "{}  Executor encountered an authentication error on run {} (cycle {}, {}).",
+        style::error("✗"),
+        run_number,
+        cycle,
+        phase_name
+    );
     eprintln!();
-    eprintln!("   This is likely an invalid or expired API key / session.");
-    eprintln!("   This error is not recoverable by waiting — fix credentials before resuming.");
+    eprintln!(
+        "   {}",
+        style::dim("This is likely an invalid or expired API key / session.")
+    );
+    eprintln!(
+        "   {}",
+        style::dim("This error is not recoverable by waiting — fix credentials before resuming.")
+    );
     eprintln!();
     eprintln!("   To fix: verify authentication for your executor, then:");
-    eprintln!("     rings resume {run_id}");
+    eprintln!(
+        "     {}",
+        style::bold(&style::accent(&format!("rings resume {run_id}")))
+    );
     eprintln!();
-    eprintln!("   Audit log: {log_path}");
+    eprintln!("   Audit log: {}", style::muted(log_path));
 }
 
 /// Print executor error summary (unknown error class).
 pub fn print_executor_error(run_number: u32, exit_code: i32, run_id: &str, log_path: &str) {
-    eprintln!("✗  Executor exited with code {exit_code} on run {run_number}.");
-    eprintln!("   Cause unknown.");
+    eprintln!(
+        "{}  Executor exited with code {} on run {}.",
+        style::error("✗"),
+        exit_code,
+        run_number
+    );
+    eprintln!("   {}", style::dim("Cause unknown."));
     eprintln!();
     eprintln!("   Progress saved. If the error is transient, you may resume:");
-    eprintln!("     rings resume {run_id}");
+    eprintln!(
+        "     {}",
+        style::bold(&style::accent(&format!("rings resume {run_id}")))
+    );
     eprintln!();
-    eprintln!("   Full output: {log_path}");
+    eprintln!("   Full output: {}", style::muted(log_path));
 }
 
 /// Print budget cap reached message.
 pub fn print_budget_cap_reached(cap_usd: f64, spent_usd: f64) {
-    eprintln!("Error: Budget cap of ${cap_usd:.2} reached (spent ${spent_usd:.2}).");
-    eprintln!("rings is stopping. Resume is available.");
+    eprintln!(
+        "{}  Budget cap reached: {}",
+        style::error("✗"),
+        render_budget_gauge(spent_usd, cap_usd, 20)
+    );
+    eprintln!("   rings is stopping. Resume is available.");
 }
 
 /// Print low-confidence cost parse warnings (up to 10, then summary).
@@ -350,13 +606,18 @@ pub fn print_parse_warnings(warnings: &[crate::cost::ParseWarning]) {
     for w in warnings.iter().take(display_count) {
         if w.confidence == crate::cost::ParseConfidence::None {
             eprintln!(
-                "⚠  Low-confidence cost parse: Run {} (cycle {}, phase {}): cost could not be parsed",
+                "{}  Low-confidence cost parse: Run {} (cycle {}, phase {}): cost could not be parsed",
+                style::warn("⚠"),
                 w.run_number, w.cycle, w.phase
             );
         } else if let Some(ref snippet) = w.raw_match {
             eprintln!(
-                "⚠  Low-confidence cost parse: Run {} (cycle {}, phase {}): {}",
-                w.run_number, w.cycle, w.phase, snippet
+                "{}  Low-confidence cost parse: Run {} (cycle {}, phase {}): {}",
+                style::warn("⚠"),
+                w.run_number,
+                w.cycle,
+                w.phase,
+                snippet
             );
         }
     }
@@ -364,7 +625,8 @@ pub fn print_parse_warnings(warnings: &[crate::cost::ParseWarning]) {
     if warnings.len() > 10 {
         let remaining = warnings.len() - 10;
         eprintln!(
-            "⚠  ... and {} more low-confidence cost parse warnings.",
+            "{}  ... and {} more low-confidence cost parse warnings.",
+            style::warn("⚠"),
             remaining
         );
     }
@@ -593,6 +855,174 @@ mod tests {
             s2.ends_with("──"),
             "subsequent cycle should end with ──: {s2}"
         );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn bar_chart_full_single_phase_is_full_bar() {
+        crate::style::set_no_color();
+        let items = vec![("builder".to_string(), 1.0, 10u32)];
+        let lines = render_bar_chart(&items, 20);
+        assert_eq!(lines.len(), 1);
+        // Full bar: 20 '█' chars, no spaces in bar portion
+        assert!(
+            lines[0].contains(&"█".repeat(20)),
+            "expected full bar: {}",
+            lines[0]
+        );
+        assert!(!lines[0].contains("░"), "no remainder chars expected");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn bar_chart_fifty_fifty_equal_bars() {
+        crate::style::set_no_color();
+        let items = vec![
+            ("builder".to_string(), 0.5, 5u32),
+            ("reviewer".to_string(), 0.5, 5u32),
+        ];
+        let lines = render_bar_chart(&items, 20);
+        assert_eq!(lines.len(), 2);
+        // Each should have 10 blocks
+        assert!(
+            lines[0].contains(&"█".repeat(10)),
+            "expected 10 blocks: {}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains(&"█".repeat(10)),
+            "expected 10 blocks: {}",
+            lines[1]
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn bar_chart_includes_phase_name_cost_runs() {
+        crate::style::set_no_color();
+        let items = vec![("builder".to_string(), 0.89, 10u32)];
+        let lines = render_bar_chart(&items, 20);
+        assert!(
+            lines[0].contains("builder"),
+            "missing phase name: {}",
+            lines[0]
+        );
+        assert!(lines[0].contains("$0.89"), "missing cost: {}", lines[0]);
+        assert!(
+            lines[0].contains("10 runs"),
+            "missing run count: {}",
+            lines[0]
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn budget_gauge_zero_spent_all_empty() {
+        crate::style::set_no_color();
+        let gauge = render_budget_gauge(0.0, 5.0, 20);
+        assert!(
+            gauge.contains(&"░".repeat(20)),
+            "expected all empty: {gauge}"
+        );
+        assert!(!gauge.contains('█'), "no filled blocks expected: {gauge}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn budget_gauge_full_all_filled() {
+        crate::style::set_no_color();
+        let gauge = render_budget_gauge(5.0, 5.0, 20);
+        assert!(
+            gauge.contains(&"█".repeat(20)),
+            "expected all filled: {gauge}"
+        );
+        assert!(!gauge.contains('░'), "no empty blocks expected: {gauge}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn budget_gauge_shows_cost_and_percentage() {
+        crate::style::set_no_color();
+        // 22% spent
+        let gauge = render_budget_gauge(1.1, 5.0, 20);
+        assert!(
+            gauge.contains("$1.10 / $5.00"),
+            "missing cost values: {gauge}"
+        );
+        assert!(gauge.contains("22%"), "missing percentage: {gauge}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_output_contains_expected_fields() {
+        crate::style::set_no_color();
+        let phase_costs = vec![
+            ("builder".to_string(), 0.89, 10u32),
+            ("reviewer".to_string(), 0.21, 2u32),
+        ];
+        let s = format_completion(
+            2,
+            12,
+            "builder",
+            1.10,
+            12,
+            494,
+            "/tmp/run",
+            &phase_costs,
+            Some(5.0),
+        );
+        assert!(s.contains("Completed"), "missing Completed: {s}");
+        assert!(s.contains("cycle 2"), "missing cycle: {s}");
+        assert!(s.contains("run 12"), "missing run: {s}");
+        assert!(s.contains("builder"), "missing phase: {s}");
+        assert!(s.contains("Duration"), "missing Duration: {s}");
+        assert!(s.contains("Total cost"), "missing Total cost: {s}");
+        assert!(s.contains("$1.10"), "missing total cost value: {s}");
+        assert!(s.contains("12 runs"), "missing run count: {s}");
+        assert!(s.contains("Budget"), "missing Budget gauge: {s}");
+        assert!(s.contains("Audit logs"), "missing Audit logs: {s}");
+        assert!(s.contains("/tmp/run"), "missing output dir: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_output_no_budget_when_no_cap() {
+        crate::style::set_no_color();
+        let phase_costs: Vec<(String, f64, u32)> = vec![];
+        let s = format_completion(
+            1,
+            5,
+            "builder",
+            0.50,
+            5,
+            120,
+            "/tmp/run",
+            &phase_costs,
+            None,
+        );
+        assert!(
+            !s.contains("Budget"),
+            "Budget should be absent when no cap: {s}"
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_output_contains_checkmark() {
+        crate::style::set_no_color();
+        let phase_costs: Vec<(String, f64, u32)> = vec![];
+        let s = format_completion(
+            1,
+            5,
+            "builder",
+            0.50,
+            5,
+            120,
+            "/tmp/run",
+            &phase_costs,
+            None,
+        );
+        assert!(s.contains('✓'), "missing checkmark: {s}");
         crate::style::set_color_enabled();
     }
 }

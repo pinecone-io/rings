@@ -35,6 +35,7 @@ pub enum SleepResult {
 pub struct BudgetTracker {
     pub cumulative_cost: f64,
     pub phase_costs: HashMap<String, f64>,
+    pub phase_run_counts: HashMap<String, u32>,
     pub budget_warned_80_global: bool,
     pub budget_warned_90_global: bool,
     pub budget_warned_80_phase: HashMap<String, bool>,
@@ -53,6 +54,7 @@ impl BudgetTracker {
         Self {
             cumulative_cost: 0.0,
             phase_costs: HashMap::new(),
+            phase_run_counts: HashMap::new(),
             budget_warned_80_global: false,
             budget_warned_90_global: false,
             budget_warned_80_phase: HashMap::new(),
@@ -90,6 +92,14 @@ impl BudgetTracker {
                     produces_violations: vec![],
                 }
             });
+
+            // Always track run counts (even if cost is None)
+            if !entry.phase.is_empty() {
+                *tracker
+                    .phase_run_counts
+                    .entry(entry.phase.clone())
+                    .or_insert(0) += 1;
+            }
 
             // Skip entries with None cost
             if let Some(cost) = entry.cost_usd {
@@ -345,6 +355,20 @@ pub struct EngineResult {
     pub total_runs: u32,
     pub parse_warnings: Vec<crate::cost::ParseWarning>,
     pub failure_reason: Option<FailureReason>,
+    /// Per-phase cost and run count, in workflow declaration order.
+    pub phase_costs: Vec<(String, f64, u32)>,
+}
+
+/// Build phase_costs in workflow declaration order from BudgetTracker data.
+fn build_phase_costs(phases: &[PhaseConfig], tracker: &BudgetTracker) -> Vec<(String, f64, u32)> {
+    phases
+        .iter()
+        .map(|p| {
+            let cost = tracker.phase_costs.get(&p.name).copied().unwrap_or(0.0);
+            let runs = tracker.phase_run_counts.get(&p.name).copied().unwrap_or(0);
+            (p.name.clone(), cost, runs)
+        })
+        .collect()
 }
 
 /// Detect whether `signal` appears in `output` using the compiled mode.
@@ -1087,6 +1111,7 @@ pub fn run_workflow(
                 total_runs: ctx.total_runs,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
+                phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
             });
         }
 
@@ -1122,6 +1147,7 @@ pub fn run_workflow(
                 total_runs: ctx.total_runs,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
+                phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
             });
         }
 
@@ -1192,6 +1218,7 @@ pub fn run_workflow(
                 total_runs: ctx.total_runs,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: Some(failure_reason),
+                phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
             });
         }
 
@@ -1316,17 +1343,22 @@ pub fn run_workflow(
                 total_runs: ctx.total_runs,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
+                phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
             });
         }
 
         ctx.last_successful_run = run_spec.global_run_number;
 
-        // Update phase costs and check budget caps
+        // Update phase costs and run counts, then check budget caps
         ctx.budget
             .phase_costs
             .entry(run_spec.phase_name.clone())
             .and_modify(|c| *c += cost.cost_usd.unwrap_or(0.0))
             .or_insert(cost.cost_usd.unwrap_or(0.0));
+        *ctx.budget
+            .phase_run_counts
+            .entry(run_spec.phase_name.clone())
+            .or_insert(0) += 1;
 
         // Update rolling window for spike detection (only if cost is Some)
         if let Some(cost_val) = cost.cost_usd {
@@ -1394,6 +1426,7 @@ pub fn run_workflow(
                     total_runs: ctx.total_runs,
                     parse_warnings: ctx.parse_warnings,
                     failure_reason: None,
+                    phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
                 });
             }
 
@@ -1475,6 +1508,7 @@ pub fn run_workflow(
                             total_runs: ctx.total_runs,
                             parse_warnings: ctx.parse_warnings,
                             failure_reason: None,
+                            phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
                         });
                     }
 
@@ -1552,6 +1586,7 @@ pub fn run_workflow(
                     total_runs: ctx.total_runs,
                     parse_warnings: ctx.parse_warnings,
                     failure_reason: None,
+                    phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
                 });
             }
         }
@@ -1579,6 +1614,7 @@ pub fn run_workflow(
                 total_runs: ctx.total_runs,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
+                phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
             });
         }
 
@@ -1611,5 +1647,6 @@ pub fn run_workflow(
         total_runs: ctx.total_runs,
         parse_warnings: ctx.parse_warnings,
         failure_reason: None,
+        phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
     })
 }

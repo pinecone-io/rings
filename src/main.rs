@@ -352,6 +352,8 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
                     result.total_runs,
                     total_elapsed_secs,
                     &run_dir.to_string_lossy(),
+                    &result.phase_costs,
+                    workflow.budget_cap_usd,
                 );
             }
         }
@@ -407,10 +409,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
             }
         }
         4 => {
-            // Budget cap reached: read state.json to get budget cap value from workflow
-            if let Some(cap) = workflow.budget_cap_usd {
-                display::print_budget_cap_reached(cap, result.total_cost_usd);
-            }
+            // Budget cap reached: already printed inline by engine; no extra output needed here
         }
         130 => {
             // Cancellation: load the state that was saved during cancellation to get last run position
@@ -422,8 +421,11 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
                     &run_id,
                     state.last_completed_cycle,
                     phase_name,
-                    state.cumulative_cost_usd,
+                    result.total_cost_usd,
+                    result.total_runs,
+                    &result.phase_costs,
                     &state.claude_resume_commands,
+                    &run_dir.to_string_lossy(),
                 );
             }
         }
@@ -701,6 +703,8 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                     result.total_runs,
                     total_elapsed_secs,
                     &run_dir.to_string_lossy(),
+                    &result.phase_costs,
+                    workflow.budget_cap_usd,
                 );
             }
         }
@@ -756,10 +760,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
             }
         }
         4 => {
-            // Budget cap reached: read state.json to get budget cap value from workflow
-            if let Some(cap) = workflow.budget_cap_usd {
-                display::print_budget_cap_reached(cap, result.total_cost_usd);
-            }
+            // Budget cap reached: already printed inline by engine; no extra output needed here
         }
         130 => {
             // Cancellation: load the state that was saved during cancellation to get last run position
@@ -771,8 +772,11 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
                     &new_run_id,
                     state.last_completed_cycle,
                     phase_name,
-                    state.cumulative_cost_usd,
+                    result.total_cost_usd,
+                    result.total_runs,
+                    &result.phase_costs,
                     &state.claude_resume_commands,
+                    &run_dir.to_string_lossy(),
                 );
             }
         }

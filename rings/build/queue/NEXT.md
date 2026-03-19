@@ -111,30 +111,30 @@ F-188 (Styled List Table), F-189 (Styled Dry Run Output)
 **Files:** `src/display.rs`, `src/style.rs` (or display.rs), `src/engine.rs`, `src/main.rs`
 
 **Steps:**
-1. Add bar chart rendering helper: `render_bar_chart(items: &[(String, f64, u32)], max_width: usize) -> Vec<String>`
+1. [x] Add bar chart rendering helper: `render_bar_chart(items: &[(String, f64, u32)], max_width: usize) -> Vec<String>`
    - `█` blocks proportional to cost share, max `max_width` chars wide (default 20)
    - Phase name left-aligned, cost in accent, run count in parens
-2. Add budget gauge rendering helper: `render_budget_gauge(spent: f64, cap: f64, width: usize) -> String`
+2. [x] Add budget gauge rendering helper: `render_budget_gauge(spent: f64, cap: f64, width: usize) -> String`
    - `█` for consumed, `░` for remaining
    - Color: green < 60%, yellow 60–85%, red > 85%
-3. Rewrite `print_completion` to accept `phase_costs: &[(String, f64, u32)]` (name, cost, runs)
+3. [x] Rewrite `print_completion` to accept `phase_costs: &[(String, f64, u32)]` (name, cost, runs)
    - Green `✓` via `style::success()`
    - Cost values via `style::accent()`
    - Labels via `style::dim()`
    - Include bar chart and budget gauge
-4. Expose `phase_costs` and `phase_run_counts` from `EngineResult` in `src/engine.rs`
-5. Update `print_cancellation`: red `✗` via `style::error()`, resume command via `style::accent()` + `style::bold()`, include bar chart
-6. Update `print_quota_error`, `print_auth_error`, `print_executor_error`: red `✗`, resume command bold cyan
-7. Update `print_budget_cap_reached` with budget gauge
-8. Update `print_parse_warnings` with yellow coloring via `style::warn()`
-9. Update all call sites in `src/main.rs`
+4. [x] Expose `phase_costs` and `phase_run_counts` from `EngineResult` in `src/engine.rs`
+5. [x] Update `print_cancellation`: red `✗` via `style::error()`, resume command via `style::accent()` + `style::bold()`, include bar chart
+6. [x] Update `print_quota_error`, `print_auth_error`, `print_executor_error`: red `✗`, resume command bold cyan
+7. [x] Update `print_budget_cap_reached` with budget gauge
+8. [x] Update `print_parse_warnings` with yellow coloring via `style::warn()`
+9. [x] Update all call sites in `src/main.rs`
 
 **Tests:**
-- Bar chart proportions: 100% cost in one phase → full bar; 50/50 → equal bars
-- Budget gauge: < 60% → green, 70% → yellow, 90% → red
-- Budget gauge: 0% → all `░`, 100% → all `█`
-- Phase breakdown format includes phase name, cost, run count
-- Completion output includes `✓`; cancellation includes `✗`
+- [x] Bar chart proportions: 100% cost in one phase → full bar; 50/50 → equal bars
+- [x] Budget gauge: < 60% → green, 70% → yellow, 90% → red
+- [x] Budget gauge: 0% → all `░`, 100% → all `█`
+- [x] Phase breakdown format includes phase name, cost, run count
+- [x] Completion output includes `✓`; cancellation includes `✗`
 
 ---
 

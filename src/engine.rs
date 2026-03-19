@@ -854,6 +854,27 @@ pub fn run_workflow(
             }
         }
 
+        // Emit run_start event in JSONL mode (once per run, before the retry/spawn loop).
+        if config.output_format == crate::cli::OutputFormat::Jsonl {
+            let template_context = serde_json::json!({
+                "phase_name": vars.phase_name,
+                "cycle": vars.cycle,
+                "max_cycles": vars.max_cycles,
+                "iteration": vars.iteration,
+                "run": vars.run,
+                "cost_so_far_usd": vars.cost_so_far_usd,
+            });
+            crate::events::emit_jsonl(&crate::events::RunStartEvent::new(
+                &config.run_id,
+                run_spec.global_run_number as u64,
+                run_spec.cycle as u64,
+                &run_spec.phase_name,
+                run_spec.phase_iteration as u64,
+                run_spec.phase_total_iterations as u64,
+                template_context,
+            ));
+        }
+
         'retry_loop: loop {
             // Show in-progress indicator before spawning.
             if config.output_format == crate::cli::OutputFormat::Human {
@@ -1167,6 +1188,22 @@ pub fn run_workflow(
             {
                 crate::display::print_cycle_cost(cycle_cost);
             }
+            if config.output_format == crate::cli::OutputFormat::Jsonl {
+                crate::events::emit_jsonl(&crate::events::RunEndEvent::new(
+                    &config.run_id,
+                    run_spec.global_run_number as u64,
+                    run_spec.cycle as u64,
+                    &run_spec.phase_name,
+                    run_spec.phase_iteration as u64,
+                    cost.cost_usd,
+                    cost.input_tokens,
+                    cost.output_tokens,
+                    output.exit_code,
+                    vec![],
+                    format!("{:?}", cost.confidence).to_lowercase(),
+                    run_spec.phase_total_iterations as u64,
+                ));
+            }
             append_cost_entry(
                 &costs_path,
                 &CostEntry {
@@ -1213,6 +1250,22 @@ pub fn run_workflow(
                 && ctx.current_display_cycle > 0
             {
                 crate::display::print_cycle_cost(cycle_cost);
+            }
+            if config.output_format == crate::cli::OutputFormat::Jsonl {
+                crate::events::emit_jsonl(&crate::events::RunEndEvent::new(
+                    &config.run_id,
+                    run_spec.global_run_number as u64,
+                    run_spec.cycle as u64,
+                    &run_spec.phase_name,
+                    run_spec.phase_iteration as u64,
+                    cost.cost_usd,
+                    cost.input_tokens,
+                    cost.output_tokens,
+                    output.exit_code,
+                    vec![],
+                    format!("{:?}", cost.confidence).to_lowercase(),
+                    run_spec.phase_total_iterations as u64,
+                ));
             }
             append_cost_entry(
                 &costs_path,
@@ -1275,6 +1328,37 @@ pub fn run_workflow(
                 reason
             };
 
+            if config.output_format == crate::cli::OutputFormat::Jsonl {
+                let error_class = match failure_reason {
+                    FailureReason::Quota => "quota",
+                    FailureReason::Auth => "auth",
+                    FailureReason::Timeout => "timeout",
+                    FailureReason::Unknown => "unknown",
+                };
+                crate::events::emit_jsonl(&crate::events::RunEndEvent::new(
+                    &config.run_id,
+                    run_spec.global_run_number as u64,
+                    run_spec.cycle as u64,
+                    &run_spec.phase_name,
+                    run_spec.phase_iteration as u64,
+                    cost.cost_usd,
+                    cost.input_tokens,
+                    cost.output_tokens,
+                    output.exit_code,
+                    vec![],
+                    format!("{:?}", cost.confidence).to_lowercase(),
+                    run_spec.phase_total_iterations as u64,
+                ));
+                crate::events::emit_jsonl(&crate::events::ExecutorErrorEvent::new(
+                    &config.run_id,
+                    run_spec.global_run_number as u64,
+                    run_spec.cycle as u64,
+                    &run_spec.phase_name,
+                    error_class,
+                    output.exit_code,
+                    output.combined.clone(),
+                ));
+            }
             // Print final cycle cost before returning
             if config.output_format == crate::cli::OutputFormat::Human
                 && ctx.current_display_cycle > 0
@@ -1405,6 +1489,23 @@ pub fn run_workflow(
         } else {
             vec![]
         };
+
+        if config.output_format == crate::cli::OutputFormat::Jsonl {
+            crate::events::emit_jsonl(&crate::events::RunEndEvent::new(
+                &config.run_id,
+                run_spec.global_run_number as u64,
+                run_spec.cycle as u64,
+                &run_spec.phase_name,
+                run_spec.phase_iteration as u64,
+                cost.cost_usd,
+                cost.input_tokens,
+                cost.output_tokens,
+                output.exit_code,
+                produces_violations.clone(),
+                format!("{:?}", cost.confidence).to_lowercase(),
+                run_spec.phase_total_iterations as u64,
+            ));
+        }
 
         // Append cost entry after state is safely checkpointed.
         append_cost_entry(
@@ -1759,6 +1860,15 @@ pub fn run_workflow(
                 && ctx.current_display_cycle > 0
             {
                 crate::display::print_cycle_cost(cycle_cost);
+            }
+            if config.output_format == crate::cli::OutputFormat::Jsonl {
+                crate::events::emit_jsonl(&crate::events::CompletionSignalEvent::new(
+                    &config.run_id,
+                    run_spec.global_run_number as u64,
+                    run_spec.cycle as u64,
+                    &run_spec.phase_name,
+                    &workflow.completion_signal,
+                ));
             }
             emit_summary_if_jsonl(config, &ctx, &workflow.phases, "completed", workflow_start);
             return Ok(EngineResult {

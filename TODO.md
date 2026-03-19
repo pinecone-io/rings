@@ -186,18 +186,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`
 
 **Steps:**
-- [ ] Before each `executor.spawn()` call: if JSONL mode, emit `RunStartEvent` with run number, cycle, phase, iteration, total_iterations, and `template_context` (the same variables passed to prompt rendering, as a JSON object)
-- [ ] After each successful run completes and cost is parsed: if JSONL mode, emit `RunEndEvent` with cost, tokens, exit_code, produces_violations, cost_confidence
-- [ ] When completion signal is detected: if JSONL mode, emit `CompletionSignalEvent` with the signal string
-- [ ] When executor exits non-zero: if JSONL mode, emit `ExecutorErrorEvent` with error_class (from FailureReason enum), exit_code, and error message
+- [x] Before each `executor.spawn()` call: if JSONL mode, emit `RunStartEvent` with run number, cycle, phase, iteration, total_iterations, and `template_context` (the same variables passed to prompt rendering, as a JSON object)
+- [x] After each successful run completes and cost is parsed: if JSONL mode, emit `RunEndEvent` with cost, tokens, exit_code, produces_violations, cost_confidence
+- [x] When completion signal is detected: if JSONL mode, emit `CompletionSignalEvent` with the signal string
+- [x] When executor exits non-zero: if JSONL mode, emit `ExecutorErrorEvent` with error_class (from FailureReason enum), exit_code, and error message
 
 **Tests:**
-- [ ] Each run produces exactly one `run_start` and one `run_end` event
-- [ ] `run_start.template_context` includes phase_name, cycle, max_cycles, iteration, run, cost_so_far_usd
-- [ ] `run_end.cost_usd` is null (not 0) when cost parsing fails
-- [ ] `completion_signal` event is emitted between the triggering `run_end` and `summary`
-- [ ] `executor_error` event has correct `error_class` for quota/auth/unknown failures
-- [ ] Events appear in chronological order: run_start → run_end → (optional completion_signal)
+- [x] Each run produces exactly one `run_start` and one `run_end` event
+- [x] `run_start.template_context` includes phase_name, cycle, max_cycles, iteration, run, cost_so_far_usd
+- [x] `run_end.cost_usd` is null (not 0) when cost parsing fails
+- [x] `completion_signal` event is emitted between the triggering `run_end` and `summary`
+- [x] `executor_error` event has correct `error_class` for quota/auth/unknown failures
+- [x] Events appear in chronological order: run_start → run_end → (optional completion_signal)
 
 ---
 

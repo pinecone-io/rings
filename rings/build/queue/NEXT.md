@@ -26,16 +26,16 @@
 **Files:** `src/display.rs`
 
 **Steps:**
-1. - [ ] Update `format_status_line` / `print_run_elapsed` signatures to accept `cumulative_input_tokens: u64` and `cumulative_output_tokens: u64`
-2. - [ ] Add `format_token_count(n: u64) -> String` helper: below 1000 → plain integer (e.g., `842`), 1000+ → one decimal `k` (e.g., `1.2k`, `18.2k`), 1M+ → one decimal `M` (e.g., `1.1M`)
-3. - [ ] Append token segment to status line: `│  18.2k in · 4.1k out` — rendered **dim**, separator **dim**
-4. - [ ] Omit the token segment entirely when both cumulative counts are 0 (no data parsed yet)
-5. - [ ] Update call sites in `src/engine.rs` poll loop to pass the new fields
+1. - [x] Update `format_status_line` / `print_run_elapsed` signatures to accept `cumulative_input_tokens: u64` and `cumulative_output_tokens: u64`
+2. - [x] Add `format_token_count(n: u64) -> String` helper: below 1000 → plain integer (e.g., `842`), 1000+ → one decimal `k` (e.g., `1.2k`, `18.2k`), 1M+ → one decimal `M` (e.g., `1.1M`)
+3. - [x] Append token segment to status line: `│  18.2k in · 4.1k out` — rendered **dim**, separator **dim**
+4. - [x] Omit the token segment entirely when both cumulative counts are 0 (no data parsed yet)
+5. - [x] Update call sites in `src/engine.rs` poll loop to pass the new fields
 
 **Tests:**
-- [ ] `format_token_count`: 0 → `"0"`, 999 → `"999"`, 1000 → `"1.0k"`, 18200 → `"18.2k"`, 1100000 → `"1.1M"`
-- [ ] Status line includes token segment when tokens > 0
-- [ ] Status line omits token segment when both are 0
+- [x] `format_token_count`: 0 → `"0"`, 999 → `"999"`, 1000 → `"1.0k"`, 18200 → `"18.2k"`, 1100000 → `"1.1M"`
+- [x] Status line includes token segment when tokens > 0
+- [x] Status line omits token segment when both are 0
 
 ---
 

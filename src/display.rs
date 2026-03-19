@@ -8,15 +8,31 @@ fn is_stderr_tty() -> bool {
     std::io::stderr().is_terminal()
 }
 
+/// Format a token count for display: plain integer below 1000, `k` suffix for thousands,
+/// `M` suffix for millions.
+///
+/// Examples: 0 → `"0"`, 999 → `"999"`, 1000 → `"1.0k"`, 18200 → `"18.2k"`, 1100000 → `"1.1M"`
+pub fn format_token_count(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}k", n as f64 / 1_000.0)
+    } else {
+        format!("{}", n)
+    }
+}
+
 /// Format the animated status line shown while a run is in progress.
 ///
-/// Format: `⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34`
+/// Format: `⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34  │  18.2k in · 4.1k out`
 fn format_status_line(
     run_spec: &RunSpec,
     max_cycles: u32,
     cumulative_cost: f64,
     tick: usize,
     elapsed_secs: u64,
+    cumulative_input_tokens: u64,
+    cumulative_output_tokens: u64,
 ) -> String {
     let frame = style::spinner_frame(tick);
     let sep = style::dim("│");
@@ -32,17 +48,41 @@ fn format_status_line(
     let elapsed_part = format!("{:02}:{:02}", elapsed_secs / 60, elapsed_secs % 60);
     let elapsed_str = style::muted(&elapsed_part);
 
+    let token_segment = if cumulative_input_tokens > 0 || cumulative_output_tokens > 0 {
+        let in_str = format_token_count(cumulative_input_tokens);
+        let out_str = format_token_count(cumulative_output_tokens);
+        let token_text = format!("{} in · {} out", in_str, out_str);
+        format!("  {}  {}", sep, style::dim(&token_text))
+    } else {
+        String::new()
+    };
+
     format!(
-        "{}  {}  {}  {}  {}  {}  {}  {}",
-        frame, cycle_str, sep, phase_str, iter_str, sep, cost_str, elapsed_str
+        "{}  {}  {}  {}  {}  {}  {}  {}{}",
+        frame, cycle_str, sep, phase_str, iter_str, sep, cost_str, elapsed_str, token_segment
     )
 }
 
 /// Print an in-progress indicator before the executor is spawned.
 /// On a TTY, prints without a trailing newline so later calls can overwrite it.
 /// On non-TTY, prints a static status line with a newline (no animation).
-pub fn print_run_start(run_spec: &RunSpec, max_cycles: u32, cumulative_cost: f64, tick: usize) {
-    let line = format_status_line(run_spec, max_cycles, cumulative_cost, tick, 0);
+pub fn print_run_start(
+    run_spec: &RunSpec,
+    max_cycles: u32,
+    cumulative_cost: f64,
+    tick: usize,
+    cumulative_input_tokens: u64,
+    cumulative_output_tokens: u64,
+) {
+    let line = format_status_line(
+        run_spec,
+        max_cycles,
+        cumulative_cost,
+        tick,
+        0,
+        cumulative_input_tokens,
+        cumulative_output_tokens,
+    );
     if is_stderr_tty() {
         eprint!("{line}");
         let _ = std::io::stderr().flush();
@@ -59,9 +99,19 @@ pub fn print_run_elapsed(
     max_cycles: u32,
     cumulative_cost: f64,
     tick: usize,
+    cumulative_input_tokens: u64,
+    cumulative_output_tokens: u64,
 ) {
     if is_stderr_tty() {
-        let line = format_status_line(run_spec, max_cycles, cumulative_cost, tick, elapsed_secs);
+        let line = format_status_line(
+            run_spec,
+            max_cycles,
+            cumulative_cost,
+            tick,
+            elapsed_secs,
+            cumulative_input_tokens,
+            cumulative_output_tokens,
+        );
         eprint!("\r\x1b[K{line}");
         let _ = std::io::stderr().flush();
     }
@@ -661,7 +711,7 @@ mod tests {
         std::env::remove_var("NO_COLOR");
 
         let run_spec = make_run_spec();
-        let line = format_status_line(&run_spec, 10, 1.47, 2, 154);
+        let line = format_status_line(&run_spec, 10, 1.47, 2, 154, 0, 0);
 
         // Check cycle segment
         assert!(line.contains("Cycle 3/10"), "missing cycle: {line}");
@@ -685,8 +735,8 @@ mod tests {
         crate::style::set_no_color();
         std::env::remove_var("NO_COLOR");
 
-        let line0 = format_status_line(&run_spec, 10, 0.0, 0, 0);
-        let line1 = format_status_line(&run_spec, 10, 0.0, 1, 0);
+        let line0 = format_status_line(&run_spec, 10, 0.0, 0, 0, 0, 0);
+        let line1 = format_status_line(&run_spec, 10, 0.0, 1, 0, 0, 0);
 
         // Different ticks should produce different spinner frames at the start
         let frame0 = crate::style::SPINNER_FRAMES[0];
@@ -817,7 +867,7 @@ mod tests {
         let run_spec = make_run_spec();
         // This should not panic regardless of TTY status
         // On non-TTY (test environment), print_run_elapsed does nothing
-        print_run_elapsed(&run_spec, 30, 10, 0.5, 3);
+        print_run_elapsed(&run_spec, 30, 10, 0.5, 3, 0, 0);
         // If we reach here without panicking, the non-TTY path works
     }
 
@@ -1024,6 +1074,43 @@ mod tests {
         assert!(
             !s.contains("Budget"),
             "Budget should be absent when no cap: {s}"
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn format_token_count_various() {
+        assert_eq!(format_token_count(0), "0");
+        assert_eq!(format_token_count(999), "999");
+        assert_eq!(format_token_count(1000), "1.0k");
+        assert_eq!(format_token_count(18200), "18.2k");
+        assert_eq!(format_token_count(1_100_000), "1.1M");
+    }
+
+    #[test]
+    fn status_line_includes_token_segment_when_tokens_nonzero() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let run_spec = make_run_spec();
+        let line = format_status_line(&run_spec, 10, 1.47, 2, 154, 18200, 4100);
+        assert!(line.contains("18.2k in"), "missing input tokens: {line}");
+        assert!(line.contains("4.1k out"), "missing output tokens: {line}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn status_line_omits_token_segment_when_both_zero() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let run_spec = make_run_spec();
+        let line = format_status_line(&run_spec, 10, 1.47, 2, 154, 0, 0);
+        assert!(
+            !line.contains(" in "),
+            "token segment should be absent: {line}"
+        );
+        assert!(
+            !line.contains(" out"),
+            "token segment should be absent: {line}"
         );
         crate::style::set_color_enabled();
     }

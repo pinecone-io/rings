@@ -819,6 +819,8 @@ pub fn run_workflow(
                 workflow.max_cycles,
                 ctx.budget.cumulative_cost,
                 tick,
+                ctx.budget.cumulative_input_tokens,
+                ctx.budget.cumulative_output_tokens,
             );
 
             // Spawn the subprocess and implement wait loop with timeout/cancellation.
@@ -984,6 +986,8 @@ pub fn run_workflow(
                             workflow.max_cycles,
                             ctx.budget.cumulative_cost,
                             tick,
+                            ctx.budget.cumulative_input_tokens,
+                            ctx.budget.cumulative_output_tokens,
                         );
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }

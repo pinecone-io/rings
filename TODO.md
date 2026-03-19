@@ -206,19 +206,19 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`
 
 **Steps:**
-- [ ] Before each inter-run delay sleep: if JSONL mode, emit `DelayStartEvent` with `reason: "inter_run"`, delay_secs
-- [ ] After delay completes: emit `DelayEndEvent`
-- [ ] Before each inter-cycle delay (if cycle_delay configured): emit `DelayStartEvent` with `reason: "inter_cycle"`
-- [ ] During quota backoff waits: emit `DelayStartEvent` with `reason: "quota_backoff"`, then `DelayEndEvent` after
-- [ ] When budget cap is reached: if JSONL mode, emit `BudgetCapJsonlEvent` (instead of or in addition to display::print_budget_cap_reached)
-- [ ] When max_cycles is reached without completion: if JSONL mode, emit `MaxCyclesEvent`
-- [ ] When canceled (Ctrl+C): if JSONL mode, emit `CanceledEvent`
+- [x] Before each inter-run delay sleep: if JSONL mode, emit `DelayStartEvent` with `reason: "inter_run"`, delay_secs
+- [x] After delay completes: emit `DelayEndEvent`
+- [x] Before each inter-cycle delay (if cycle_delay configured): emit `DelayStartEvent` with `reason: "inter_cycle"`
+- [x] During quota backoff waits: emit `DelayStartEvent` with `reason: "quota_backoff"`, then `DelayEndEvent` after
+- [x] When budget cap is reached: if JSONL mode, emit `BudgetCapJsonlEvent` (instead of or in addition to display::print_budget_cap_reached)
+- [x] When max_cycles is reached without completion: if JSONL mode, emit `MaxCyclesEvent`
+- [x] When canceled (Ctrl+C): if JSONL mode, emit `CanceledEvent`
 
 **Tests:**
-- [ ] Inter-run delay produces `delay_start` and `delay_end` events with `reason: "inter_run"`
-- [ ] Budget cap produces `budget_cap` event with correct cost and cap values
-- [ ] Max cycles produces `max_cycles` event with cycle count and cost
-- [ ] Cancellation produces `canceled` event with runs_completed and cost
+- [x] Inter-run delay produces `delay_start` and `delay_end` events with `reason: "inter_run"`
+- [x] Budget cap produces `budget_cap` event with correct cost and cap values
+- [x] Max cycles produces `max_cycles` event with cycle count and cost
+- [x] Cancellation produces `canceled` event with runs_completed and cost
 
 ---
 

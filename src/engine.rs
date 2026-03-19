@@ -748,6 +748,30 @@ pub fn run_workflow(
             } else {
                 None
             };
+            // Inter-cycle delay: only between cycles (not before the first)
+            if workflow.delay_between_cycles > 0 && ctx.current_display_cycle > 0 {
+                if config.output_format == crate::cli::OutputFormat::Jsonl {
+                    crate::events::emit_jsonl(&crate::events::DelayStartEvent::new(
+                        &config.run_id,
+                        run_spec.global_run_number as u64,
+                        run_spec.cycle as u64,
+                        &run_spec.phase_name,
+                        workflow.delay_between_cycles,
+                        "inter_cycle",
+                    ));
+                }
+                let cycle_delay = std::time::Duration::from_secs(workflow.delay_between_cycles);
+                let sleep_result = interruptible_sleep(cycle_delay, cancel.as_ref(), |_| {});
+                if sleep_result == SleepResult::Canceled {
+                    break;
+                }
+                if config.output_format == crate::cli::OutputFormat::Jsonl {
+                    crate::events::emit_jsonl(&crate::events::DelayEndEvent::new(
+                        &config.run_id,
+                        run_spec.global_run_number as u64,
+                    ));
+                }
+            }
             if config.output_format == crate::cli::OutputFormat::Human {
                 crate::display::print_cycle_boundary(run_spec.cycle, prev_cost);
             }
@@ -1104,6 +1128,18 @@ pub fn run_workflow(
                     // Record the retry
                     quota_backoff.record_retry();
 
+                    // Emit delay_start for quota backoff
+                    if config.output_format == crate::cli::OutputFormat::Jsonl {
+                        crate::events::emit_jsonl(&crate::events::DelayStartEvent::new(
+                            &config.run_id,
+                            run_spec.global_run_number as u64,
+                            run_spec.cycle as u64,
+                            &run_spec.phase_name,
+                            quota_backoff.delay_secs,
+                            "quota_backoff",
+                        ));
+                    }
+
                     // Wait before retrying (interruptible)
                     let sleep_result = interruptible_sleep(
                         quota_backoff.delay_duration(),
@@ -1115,6 +1151,14 @@ pub fn run_workflow(
                     if sleep_result == SleepResult::Canceled {
                         cancel_occurred = true;
                         break 'retry_loop;
+                    }
+
+                    // Emit delay_end after quota backoff completes
+                    if config.output_format == crate::cli::OutputFormat::Jsonl {
+                        crate::events::emit_jsonl(&crate::events::DelayEndEvent::new(
+                            &config.run_id,
+                            run_spec.global_run_number as u64,
+                        ));
                     }
 
                     // Continue the retry loop
@@ -1286,6 +1330,13 @@ pub fn run_workflow(
                     produces_violations: vec![],
                 },
             )?;
+            if config.output_format == crate::cli::OutputFormat::Jsonl {
+                crate::events::emit_jsonl(&crate::events::CanceledEvent::new(
+                    &config.run_id,
+                    ctx.total_runs as u64,
+                    ctx.budget.cumulative_cost,
+                ));
+            }
             emit_summary_if_jsonl(config, &ctx, &workflow.phases, "canceled", workflow_start);
             return Ok(EngineResult {
                 exit_code: 130,
@@ -1638,6 +1689,16 @@ pub fn run_workflow(
                 };
                 let _ = append_event(&events_path, &serde_json::to_value(&event)?);
 
+                // Emit budget_cap JSONL event to stdout
+                if config.output_format == crate::cli::OutputFormat::Jsonl {
+                    crate::events::emit_jsonl(&crate::events::BudgetCapJsonlEvent::new(
+                        &config.run_id,
+                        ctx.budget.cumulative_cost,
+                        cap,
+                        ctx.total_runs as u64,
+                    ));
+                }
+
                 // Save state before returning
                 let state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::BudgetCap);
                 state.write_atomic(&state_path)?;
@@ -1729,6 +1790,16 @@ pub fn run_workflow(
                             timestamp: chrono::Utc::now().to_rfc3339(),
                         };
                         let _ = append_event(&events_path, &serde_json::to_value(&event)?);
+
+                        // Emit budget_cap JSONL event to stdout
+                        if config.output_format == crate::cli::OutputFormat::Jsonl {
+                            crate::events::emit_jsonl(&crate::events::BudgetCapJsonlEvent::new(
+                                &config.run_id,
+                                phase_cost,
+                                cap,
+                                ctx.total_runs as u64,
+                            ));
+                        }
 
                         // Save state before returning
                         let state =
@@ -1828,6 +1899,13 @@ pub fn run_workflow(
                 let mut state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::Canceled);
                 state.claude_resume_commands = resume_commands.clone();
                 state.write_atomic(&state_path)?;
+                if config.output_format == crate::cli::OutputFormat::Jsonl {
+                    crate::events::emit_jsonl(&crate::events::CanceledEvent::new(
+                        &config.run_id,
+                        ctx.total_runs as u64,
+                        ctx.budget.cumulative_cost,
+                    ));
+                }
                 emit_summary_if_jsonl(config, &ctx, &workflow.phases, "canceled", workflow_start);
                 return Ok(EngineResult {
                     exit_code: 130,
@@ -1893,10 +1971,26 @@ pub fn run_workflow(
 
         // Inter-run delay: poll in 100ms slices so cancellation is detected promptly.
         if workflow.delay_between_runs > 0 {
+            if config.output_format == crate::cli::OutputFormat::Jsonl {
+                crate::events::emit_jsonl(&crate::events::DelayStartEvent::new(
+                    &config.run_id,
+                    run_spec.global_run_number as u64,
+                    run_spec.cycle as u64,
+                    &run_spec.phase_name,
+                    workflow.delay_between_runs,
+                    "inter_run",
+                ));
+            }
             let duration = std::time::Duration::from_secs(workflow.delay_between_runs);
             let sleep_result = interruptible_sleep(duration, cancel.as_ref(), |_elapsed| {});
             if sleep_result == SleepResult::Canceled {
                 break;
+            }
+            if config.output_format == crate::cli::OutputFormat::Jsonl {
+                crate::events::emit_jsonl(&crate::events::DelayEndEvent::new(
+                    &config.run_id,
+                    run_spec.global_run_number as u64,
+                ));
             }
         }
     }
@@ -1906,6 +2000,14 @@ pub fn run_workflow(
         crate::display::print_cycle_cost(cycle_cost);
     }
 
+    if config.output_format == crate::cli::OutputFormat::Jsonl {
+        crate::events::emit_jsonl(&crate::events::MaxCyclesEvent::new(
+            &config.run_id,
+            ctx.last_cycle as u64,
+            ctx.total_runs as u64,
+            ctx.budget.cumulative_cost,
+        ));
+    }
     emit_summary_if_jsonl(config, &ctx, &workflow.phases, "max_cycles", workflow_start);
     Ok(EngineResult {
         exit_code: 1,

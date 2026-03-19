@@ -153,10 +153,45 @@ pub fn print_run_header(params: &RunHeaderParams<'_>) {
     eprintln!();
 }
 
-/// Print the cycle separator line.
-pub fn print_cycle_header(cycle: u32, max_cycles: u32) {
-    let divider = "─".repeat(45);
-    eprintln!("  Cycle {cycle}/{max_cycles} {divider}");
+/// Format the styled cycle boundary line shown between cycles.
+///
+/// First cycle: `── Cycle 1 ──────────────────────────────────────────`
+/// Subsequent:  `── Cycle 2 ────────────────────────── $0.14 prev ──`
+fn format_cycle_boundary(cycle: u32, prev_cycle_cost: Option<f64>) -> String {
+    const BOUNDARY_WIDTH: usize = 54;
+
+    let cycle_str = cycle.to_string();
+    // Visible length of "── Cycle N ": 2+1+5+1+len(N)+1 = 10+len(N)
+    let prefix_visible_len = 10 + cycle_str.len();
+    let prefix = format!("{} Cycle {} ", style::dim("──"), style::bold(&cycle_str));
+
+    match prev_cycle_cost {
+        None => {
+            let fill_len = BOUNDARY_WIDTH.saturating_sub(prefix_visible_len);
+            format!("{}{}", prefix, style::dim(&"─".repeat(fill_len)))
+        }
+        Some(cost) => {
+            let cost_str = format!("${:.2}", cost);
+            // Visible length of " $X.XX prev ──": 1+len(cost_str)+8
+            let suffix_visible_len = 9 + cost_str.len();
+            let fill_len = BOUNDARY_WIDTH.saturating_sub(prefix_visible_len + suffix_visible_len);
+            let suffix = format!(" {} prev {}", style::accent(&cost_str), style::dim("──"));
+            format!("{}{}{}", prefix, style::dim(&"─".repeat(fill_len)), suffix)
+        }
+    }
+}
+
+/// Print the styled cycle boundary line.
+///
+/// Called at the start of each cycle. When `prev_cycle_cost` is Some, the previous
+/// cycle's cost is embedded in the divider. A blank line is printed after the boundary
+/// to visually separate it from the first run of the new cycle.
+pub fn print_cycle_boundary(cycle: u32, prev_cycle_cost: Option<f64>) {
+    if prev_cycle_cost.is_some() {
+        eprintln!();
+    }
+    eprintln!("{}", format_cycle_boundary(cycle, prev_cycle_cost));
+    eprintln!();
 }
 
 /// Print a single run result line.
@@ -512,5 +547,52 @@ mod tests {
         // On non-TTY (test environment), print_run_elapsed does nothing
         print_run_elapsed(&run_spec, 30, 10, 0.5, 3);
         // If we reach here without panicking, the non-TTY path works
+    }
+
+    #[test]
+    fn cycle_boundary_first_cycle_no_cost_suffix() {
+        crate::style::set_no_color();
+        let s = format_cycle_boundary(1, None);
+        assert!(s.contains("Cycle 1"), "missing cycle number: {s}");
+        assert!(s.contains("──"), "missing divider: {s}");
+        assert!(
+            !s.contains("prev"),
+            "first cycle should have no cost suffix: {s}"
+        );
+        assert!(!s.contains('$'), "first cycle should have no cost: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn cycle_boundary_subsequent_cycle_shows_prev_cost() {
+        crate::style::set_no_color();
+        let s = format_cycle_boundary(2, Some(0.14));
+        assert!(s.contains("Cycle 2"), "missing cycle number: {s}");
+        assert!(s.contains("$0.14"), "missing cost: {s}");
+        assert!(s.contains("prev"), "missing 'prev' label: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn cycle_boundary_format_matches_spec_pattern() {
+        crate::style::set_no_color();
+        // Without color, the format should be: "── Cycle N <dashes>"
+        // or "── Cycle N <dashes> $X.XX prev ──"
+        let s1 = format_cycle_boundary(1, None);
+        assert!(s1.starts_with("── Cycle 1 "), "unexpected prefix: {s1}");
+        // Should end with dashes (no cost suffix)
+        assert!(
+            s1.ends_with('─'),
+            "first cycle should end with dashes: {s1}"
+        );
+
+        let s2 = format_cycle_boundary(2, Some(0.14));
+        assert!(s2.starts_with("── Cycle 2 "), "unexpected prefix: {s2}");
+        // Should end with "── " trail dashes
+        assert!(
+            s2.ends_with("──"),
+            "subsequent cycle should end with ──: {s2}"
+        );
+        crate::style::set_color_enabled();
     }
 }

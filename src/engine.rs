@@ -657,12 +657,12 @@ pub fn run_workflow(
 
         // Check if entering a new cycle
         if run_spec.cycle != ctx.current_display_cycle {
-            // Print cost for previous cycle if not the first one
-            if ctx.current_display_cycle > 0 {
-                crate::display::print_cycle_cost(cycle_cost);
-            }
-            // Print header for new cycle
-            crate::display::print_cycle_header(run_spec.cycle, workflow.max_cycles);
+            let prev_cost = if ctx.current_display_cycle > 0 {
+                Some(cycle_cost)
+            } else {
+                None
+            };
+            crate::display::print_cycle_boundary(run_spec.cycle, prev_cost);
             cycle_cost = 0.0;
             ctx.current_display_cycle = run_spec.cycle;
         }

@@ -90,19 +90,19 @@ F-188 (Styled List Table), F-189 (Styled Dry Run Output)
 **Files:** `src/display.rs`, `src/engine.rs`
 
 **Steps:**
-1. Rewrite `print_cycle_header` and `print_cycle_cost` in `src/display.rs`
-2. Merge into a single `print_cycle_boundary(cycle: u32, prev_cycle_cost: Option<f64>)`
-3. Format: `── Cycle 2 ────────────────────────── $0.14 prev ──`
+1. [x] Rewrite `print_cycle_header` and `print_cycle_cost` in `src/display.rs`
+2. [x] Merge into a single `print_cycle_boundary(cycle: u32, prev_cycle_cost: Option<f64>)`
+3. [x] Format: `── Cycle 2 ────────────────────────── $0.14 prev ──`
    - Divider (`──`) via `style::dim()`
    - Cycle number via `style::bold()`
    - Cost via `style::accent()`
    - First cycle (no prev cost): `── Cycle 1 ──────────────────────────────────────`
-4. Update call sites in `src/engine.rs` (~lines 597-603) to call the merged function
+4. [x] Update call sites in `src/engine.rs` (~lines 597-603) to call the merged function
 
 **Tests:**
-- Output format matches spec pattern
-- First cycle has no cost suffix
-- Subsequent cycles show previous cycle cost in cyan
+- [x] Output format matches spec pattern
+- [x] First cycle has no cost suffix
+- [x] Subsequent cycles show previous cycle cost in cyan
 
 ---
 

@@ -1,40 +1,22 @@
-Implement the next task from the ready-to-implement queue.
+Implement the next task from the TODO list.
 
 ## Steps
 
-### 1. Check for active work
+### 1. Find the next task
 
-Read `rings/build/queue/NEXT.md`.
+Read `TODO.md` at the repo root.
 
-If it has any unchecked tasks (`- [ ]`), skip to **Step 3**.
+Find the first task (`### Task N: ...`) that has unchecked steps (`- [ ]`). Tasks are ordered by dependency — do not skip to a later task if an earlier one is incomplete.
 
-### 2. Refill NEXT.md from the queue
-
-NEXT.md has no unchecked tasks. Archive and refill:
-
-1. If NEXT.md has content (completed tasks):
-   - Append its entire content to `rings/build/activities/BATCHES_COMPLETED.md` (create if absent).
-   - Then overwrite `NEXT.md` with empty content.
-
-2. Read `rings/build/queue/READY_TO_IMPLEMENT.md`. Find the first batch (starts with `## Batch:`).
-
-3. If there are no batches, tell the user the queue is empty and stop.
-
-4. Copy the first batch from `READY_TO_IMPLEMENT.md` into `NEXT.md`, then remove it from `READY_TO_IMPLEMENT.md`. Then stop — do not continue to Step 3.
-
-### 3. Choose a task
-
-Read `specs/mvp.md` to orient yourself on the large-scale goal.
-
-In `NEXT.md`, find the first task (`### Task N: ...`) that has unchecked steps (`- [ ]`). Tasks are ordered by dependency — do not skip to a later task if an earlier one is incomplete.
+If there are no unchecked tasks, tell the user the TODO list is complete and stop.
 
 Tell the user which task you are starting before proceeding.
 
-### 4. Check if the task is already done
+### 2. Check if the task is already done
 
-Explore the code to see if the task has already been implemented. If it has, mark all its steps done (`- [x]`) in `NEXT.md` and stop.
+Explore the code to see if the task has already been implemented. If it has, mark all its steps done (`- [x]`) in `TODO.md` and stop.
 
-### 5. Implement
+### 3. Implement
 
 Work through **all steps** of the chosen task. Follow the `CLAUDE.md` quality gates:
 
@@ -44,7 +26,7 @@ Work through **all steps** of the chosen task. Follow the `CLAUDE.md` quality ga
 - No `unwrap()` or `expect()` in production code
 - Update `REVIEW.md` with decisions, conflicts, or open questions
 
-When all steps are complete, mark each finished step in `NEXT.md` (`- [ ]` → `- [x]`).
+When all steps are complete, mark each finished step in `TODO.md` (`- [ ]` → `- [x]`).
 
 Commit following the conventional commit rules in `CLAUDE.md`. Do not push unless asked.
 

@@ -25,20 +25,6 @@ Show the elected features to the user with brief rationale for each. Wait for co
 
 ### 3. Write results (after user confirms)
 
-Read `rings/plan-create/queue/PRIORITIZED_FEATURES.md` to find the current highest priority number N (look for the last `### Priority N:` heading). If empty, start at N = 0.
+Update `specs/feature_inventory.md`: change each elected feature's status from `BACKLOG` to `PRIORITIZED`. Change only the status cell.
 
-Append each elected feature in priority order:
-
-```markdown
-### Priority N+1: F-XXX — Feature Name
-
-- **Summary:** (copy the one-line summary from feature_inventory.md)
-- **Spec:** (copy the spec link from feature_inventory.md)
-- **Unblocks:** (list any BACKLOG features that list this one as a prerequisite, or "none")
-
----
-```
-
-Then update `specs/feature_inventory.md`: change each elected feature's status from `BACKLOG` to `PRIORITIZED`. Change only the status cell.
-
-Confirm to the user what was added and what the new priority numbers are.
+Confirm to the user which features were prioritized.

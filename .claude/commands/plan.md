@@ -1,13 +1,13 @@
-Draft and review an implementation plan for the next batch of prioritized features, then write it to the ready-to-implement queue.
+Draft and review an implementation plan for the next batch of prioritized features, then write it to TODO.md.
 
 ## Steps
 
 ### 1. Select the batch
 
-Read `rings/plan-create/queue/PRIORITIZED_FEATURES.md`. Select the next 5–10 features from the top of the queue that have not yet been planned (status `PRIORITIZED` in `specs/feature_inventory.md`).
+Read `specs/feature_inventory.md`. Select the next 5–10 features that have status `PRIORITIZED`.
 
 Use these grouping criteria:
-1. **Priority order** — lower priority numbers first
+1. **Priority order** — lower feature numbers first (generally)
 2. **Logical grouping** — prefer features sharing a spec file or implementation surface
 3. **Coherent scope** — the batch should be reviewable and implementable together
 
@@ -69,40 +69,28 @@ Produce four sections:
 
 Show the synthesized plan to the user and wait for approval before writing.
 
-### 5. Write to queue (after user confirms)
+### 5. Write to TODO.md (after user confirms)
 
-Append the finalized plan to `rings/build/queue/READY_TO_IMPLEMENT.md`:
+Append the finalized plan to `TODO.md` at the repo root:
 
 ```markdown
-## Batch: <batch name> — <today's date>
+## F-NNN: Feature Name
 
-**Features:** [F-NNN list with names]
+**Spec:** `specs/path/to/spec.md`
 
 ### Task 1: <short title>
 
 **Files:** <files to create or modify>
 
-<what to implement, including key types/traits/functions>
+**Steps:**
+- [ ] <concrete implementation step>
 
 **Tests:**
 - [ ] <test case>
 
-**Steps:**
-- [ ] <concrete implementation step>
-
 [repeat Task N blocks; prerequisite tasks first]
 
 ---
-
-### Open Decisions
-
-| ID | Decision | Recommendation |
-|----|----------|----------------|
-[one row per decision]
-
-### Spec Gaps
-
-[ambiguities to note; omit section if none]
 ```
 
 Then update `specs/feature_inventory.md`: change each feature's status from `PRIORITIZED` to `PLANNED`.

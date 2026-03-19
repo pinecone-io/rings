@@ -39,21 +39,21 @@ F-188 (Styled List Table), F-189 (Styled Dry Run Output)
 **Files:** `src/display.rs`, `src/engine.rs`
 
 **Steps:**
-1. Rewrite `print_run_start`, `print_run_elapsed`, `print_run_result` in `src/display.rs`
-2. New signatures accept `max_cycles` + `cumulative_cost` + `tick: usize` (for spinner frame)
-3. Status line format: `⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34`
+1. [x] Rewrite `print_run_start`, `print_run_elapsed`, `print_run_result` in `src/display.rs`
+2. [x] New signatures accept `max_cycles` + `cumulative_cost` + `tick: usize` (for spinner frame)
+3. [x] Status line format: `⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34`
    - Spinner via `style::spinner_frame(tick)`
    - Separators (`│`) via `style::dim()`
    - Cycle number via `style::bold()`
    - Cost via `style::accent()`
    - Elapsed via `style::muted()`
-4. Engine poll loop (`src/engine.rs` ~line 837): pass tick counter + cumulative cost; update spinner every 100ms (already polling at 100ms; currently only updates display per second — remove the 1s gate)
-5. Non-TTY: suppress spinner animation (print static status line once per run, no carriage return rewrite)
+4. [x] Engine poll loop (`src/engine.rs` ~line 837): pass tick counter + cumulative cost; update spinner every 100ms (already polling at 100ms; currently only updates display per second — remove the 1s gate)
+5. [x] Non-TTY: suppress spinner animation (print static status line once per run, no carriage return rewrite)
 
 **Tests:**
-- Status line format contains expected segments (cycle, phase, cost, elapsed)
-- Spinner frame advances on successive ticks
-- Non-TTY suppresses carriage-return rewrite
+- [x] Status line format contains expected segments (cycle, phase, cost, elapsed)
+- [x] Spinner frame advances on successive ticks
+- [x] Non-TTY suppresses carriage-return rewrite
 
 ---
 

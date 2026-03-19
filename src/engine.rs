@@ -737,7 +737,7 @@ pub fn run_workflow(
         let mut timeout_occurred = false;
         let mut cancel_occurred = false;
         let run_start = std::time::Instant::now();
-        let mut last_display_elapsed: u64 = 0;
+        let mut tick: usize = 0;
 
         // Pre-run consumes check (cycle >= 2): warn if patterns still match nothing.
         if !skip_contract_checks && run_spec.cycle >= 2 {
@@ -768,7 +768,12 @@ pub fn run_workflow(
 
         'retry_loop: loop {
             // Show in-progress indicator before spawning.
-            crate::display::print_run_start(&run_spec);
+            crate::display::print_run_start(
+                &run_spec,
+                workflow.max_cycles,
+                ctx.budget.cumulative_cost,
+                tick,
+            );
 
             // Spawn the subprocess and implement wait loop with timeout/cancellation.
             let mut handle = executor.spawn(&invocation, config.verbose)?;
@@ -924,12 +929,16 @@ pub fn run_workflow(
                         break;
                     }
                     Ok(None) => {
-                        // Process still running; update elapsed display once per second.
+                        // Process still running; update spinner every 100ms poll tick.
                         let elapsed = run_start.elapsed().as_secs();
-                        if elapsed != last_display_elapsed {
-                            crate::display::print_run_elapsed(&run_spec, elapsed);
-                            last_display_elapsed = elapsed;
-                        }
+                        tick += 1;
+                        crate::display::print_run_elapsed(
+                            &run_spec,
+                            elapsed,
+                            workflow.max_cycles,
+                            ctx.budget.cumulative_cost,
+                            tick,
+                        );
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
                     Err(e) => {
@@ -1027,7 +1036,13 @@ pub fn run_workflow(
         }
 
         // Print per-run result
-        crate::display::print_run_result(&run_spec, cost.cost_usd.unwrap_or(0.0), elapsed_secs);
+        crate::display::print_run_result(
+            &run_spec,
+            cost.cost_usd.unwrap_or(0.0),
+            elapsed_secs,
+            workflow.max_cycles,
+            ctx.budget.cumulative_cost,
+        );
 
         // Accumulate cycle cost
         cycle_cost += cost.cost_usd.unwrap_or(0.0);

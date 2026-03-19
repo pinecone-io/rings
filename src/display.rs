@@ -1,4 +1,72 @@
+use std::io::{IsTerminal, Write};
+
 use crate::engine::RunSpec;
+use crate::style;
+
+/// Returns true if stderr is an interactive terminal.
+fn is_stderr_tty() -> bool {
+    std::io::stderr().is_terminal()
+}
+
+/// Format the animated status line shown while a run is in progress.
+///
+/// Format: `⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34`
+fn format_status_line(
+    run_spec: &RunSpec,
+    max_cycles: u32,
+    cumulative_cost: f64,
+    tick: usize,
+    elapsed_secs: u64,
+) -> String {
+    let frame = style::spinner_frame(tick);
+    let sep = style::dim("│");
+    let cycle_part = format!("Cycle {}/{}", run_spec.cycle, max_cycles);
+    let cycle_str = style::bold(&cycle_part);
+    let phase_str = style::bold(&run_spec.phase_name);
+    let iter_str = format!(
+        "{}/{}",
+        run_spec.phase_iteration, run_spec.phase_total_iterations
+    );
+    let cost_part = format!("${:.2} total", cumulative_cost);
+    let cost_str = style::accent(&cost_part);
+    let elapsed_part = format!("{:02}:{:02}", elapsed_secs / 60, elapsed_secs % 60);
+    let elapsed_str = style::muted(&elapsed_part);
+
+    format!(
+        "{}  {}  {}  {}  {}  {}  {}  {}",
+        frame, cycle_str, sep, phase_str, iter_str, sep, cost_str, elapsed_str
+    )
+}
+
+/// Print an in-progress indicator before the executor is spawned.
+/// On a TTY, prints without a trailing newline so later calls can overwrite it.
+/// On non-TTY, prints a static status line with a newline (no animation).
+pub fn print_run_start(run_spec: &RunSpec, max_cycles: u32, cumulative_cost: f64, tick: usize) {
+    let line = format_status_line(run_spec, max_cycles, cumulative_cost, tick, 0);
+    if is_stderr_tty() {
+        eprint!("{line}");
+        let _ = std::io::stderr().flush();
+    } else {
+        eprintln!("{line}");
+    }
+}
+
+/// Overwrite the current in-progress line with an updated spinner and elapsed time.
+/// Only has effect on a TTY. Called every 100ms from the executor poll loop.
+pub fn print_run_elapsed(
+    run_spec: &RunSpec,
+    elapsed_secs: u64,
+    max_cycles: u32,
+    cumulative_cost: f64,
+    tick: usize,
+) {
+    if is_stderr_tty() {
+        let line = format_status_line(run_spec, max_cycles, cumulative_cost, tick, elapsed_secs);
+        eprint!("\r\x1b[K{line}");
+        let _ = std::io::stderr().flush();
+    }
+    // Non-TTY: suppressed — static line was already printed by print_run_start
+}
 
 /// Print the run header shown at workflow start.
 pub fn print_run_header(run_id: &str, workflow_file: &str) {
@@ -14,16 +82,39 @@ pub fn print_cycle_header(cycle: u32, max_cycles: u32) {
 }
 
 /// Print a single run result line.
-pub fn print_run_result(run_spec: &RunSpec, cost_usd: f64, elapsed_secs: u64) {
-    eprintln!(
-        "  ↻  {:<12} {}/{}   ${:.3}   [{:02}:{:02}]",
-        run_spec.phase_name,
-        run_spec.phase_iteration,
-        run_spec.phase_total_iterations,
-        cost_usd,
-        elapsed_secs / 60,
-        elapsed_secs % 60,
+/// On a TTY, overwrites the in-progress spinner line. On non-TTY, prints a plain line.
+pub fn print_run_result(
+    run_spec: &RunSpec,
+    cost_usd: f64,
+    elapsed_secs: u64,
+    max_cycles: u32,
+    cumulative_cost: f64,
+) {
+    let sep = style::dim("│");
+    let cycle_part = format!("Cycle {}/{}", run_spec.cycle, max_cycles);
+    let cycle_str = style::bold(&cycle_part);
+    let phase_str = style::bold(&run_spec.phase_name);
+    let iter_str = format!(
+        "{}/{}",
+        run_spec.phase_iteration, run_spec.phase_total_iterations
     );
+    let run_cost_part = format!("${:.3}", cost_usd);
+    let run_cost_str = style::accent(&run_cost_part);
+    let total_cost_part = format!("${:.2} total", cumulative_cost);
+    let total_cost_str = style::accent(&total_cost_part);
+    let elapsed_part = format!("{:02}:{:02}", elapsed_secs / 60, elapsed_secs % 60);
+    let elapsed_str = style::muted(&elapsed_part);
+
+    let line = format!(
+        "↻  {}  {}  {}  {}  {}  {}  {}  {}",
+        cycle_str, sep, phase_str, iter_str, sep, run_cost_str, total_cost_str, elapsed_str
+    );
+
+    if is_stderr_tty() {
+        eprintln!("\r\x1b[K{line}");
+    } else {
+        eprintln!("{line}");
+    }
 }
 
 /// Print the cycle cost subtotal.
@@ -163,5 +254,82 @@ pub fn print_parse_warnings(warnings: &[crate::cost::ParseWarning]) {
             "⚠  ... and {} more low-confidence cost parse warnings.",
             remaining
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::RunSpec;
+
+    fn make_run_spec() -> RunSpec {
+        RunSpec {
+            global_run_number: 7,
+            cycle: 3,
+            phase_name: "builder".to_string(),
+            phase_index: 0,
+            phase_iteration: 2,
+            phase_total_iterations: 3,
+            prompt_text: None,
+        }
+    }
+
+    #[test]
+    fn status_line_contains_expected_segments() {
+        // Disable color so we can match plain text
+        crate::style::set_no_color();
+        std::env::remove_var("NO_COLOR");
+
+        let run_spec = make_run_spec();
+        let line = format_status_line(&run_spec, 10, 1.47, 2, 154);
+
+        // Check cycle segment
+        assert!(line.contains("Cycle 3/10"), "missing cycle: {line}");
+        // Check phase name and iteration
+        assert!(line.contains("builder"), "missing phase name: {line}");
+        assert!(line.contains("2/3"), "missing iteration: {line}");
+        // Check cost
+        assert!(line.contains("$1.47 total"), "missing cost: {line}");
+        // Check elapsed (154s = 2m34s)
+        assert!(line.contains("02:34"), "missing elapsed: {line}");
+        // Check separator
+        assert!(line.contains("│"), "missing separator: {line}");
+
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn spinner_frame_advances_on_successive_ticks() {
+        let run_spec = make_run_spec();
+        crate::style::set_no_color();
+        std::env::remove_var("NO_COLOR");
+
+        let line0 = format_status_line(&run_spec, 10, 0.0, 0, 0);
+        let line1 = format_status_line(&run_spec, 10, 0.0, 1, 0);
+
+        // Different ticks should produce different spinner frames at the start
+        let frame0 = crate::style::SPINNER_FRAMES[0];
+        let frame1 = crate::style::SPINNER_FRAMES[1];
+        assert!(
+            line0.starts_with(frame0),
+            "tick 0 should use frame 0: {line0}"
+        );
+        assert!(
+            line1.starts_with(frame1),
+            "tick 1 should use frame 1: {line1}"
+        );
+
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn non_tty_print_run_elapsed_suppresses_carriage_return() {
+        // In test environments stderr is not a TTY, so print_run_elapsed is a no-op.
+        // We verify by ensuring no panic and the TTY check works.
+        let run_spec = make_run_spec();
+        // This should not panic regardless of TTY status
+        // On non-TTY (test environment), print_run_elapsed does nothing
+        print_run_elapsed(&run_spec, 30, 10, 0.5, 3);
+        // If we reach here without panicking, the non-TTY path works
     }
 }

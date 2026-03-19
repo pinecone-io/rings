@@ -850,11 +850,51 @@ fn cmd_show(_args: cli::ShowArgs, _output_format: cli::OutputFormat) -> i32 {
     2
 }
 
-fn cmd_inspect(_args: cli::InspectArgs, _output_format: cli::OutputFormat) -> i32 {
-    // Inspect command will be implemented in Task 8
-    // For now, return a placeholder error
-    eprintln!("Error: 'rings inspect' is not yet implemented.");
-    2
+fn cmd_inspect(args: cli::InspectArgs, output_format: cli::OutputFormat) -> i32 {
+    match inspect_inner(args, output_format) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            2
+        }
+    }
+}
+
+fn inspect_inner(args: cli::InspectArgs, _output_format: cli::OutputFormat) -> Result<i32> {
+    let base_dir = resolve_output_dir(None, None);
+    let run_dir = base_dir.join(&args.run_id);
+
+    if !run_dir.exists() {
+        bail!("Run directory not found: {}", run_dir.display());
+    }
+
+    let views = if args.show.is_empty() {
+        vec![cli::InspectView::Summary]
+    } else {
+        args.show.clone()
+    };
+
+    for view in &views {
+        match view {
+            cli::InspectView::DataFlow => {
+                let declared = rings::inspect::load_declared_flow(&run_dir)?;
+                print!("{}", rings::inspect::render_data_flow_declared(&declared));
+
+                let actual_changes = rings::inspect::load_actual_changes(&run_dir)?;
+                if !actual_changes.is_empty() {
+                    print!(
+                        "{}",
+                        rings::inspect::render_data_flow_actual(&actual_changes)
+                    );
+                }
+            }
+            _ => {
+                eprintln!("View '{:?}' is not yet implemented.", view);
+            }
+        }
+    }
+
+    Ok(0)
 }
 
 fn cmd_lineage(_args: cli::LineageArgs, _output_format: cli::OutputFormat) -> i32 {

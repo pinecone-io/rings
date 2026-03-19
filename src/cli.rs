@@ -221,6 +221,9 @@ pub enum InspectView {
     /// Data flow and phase contracts
     #[value(name = "data-flow")]
     DataFlow,
+    /// Raw claude output from each run (equivalent to cat runs/*.log)
+    #[value(name = "claude-output")]
+    ClaudeOutput,
 }
 
 #[derive(Args, Debug)]

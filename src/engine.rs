@@ -593,6 +593,30 @@ pub fn run_workflow(
         }
     }
 
+    // Write workflow_contracts.json: snapshot phase contracts at run start for historical data-flow views.
+    let contracts_path = config.output_dir.join("workflow_contracts.json");
+    let contracts_data: Vec<serde_json::Value> = workflow
+        .phases
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "phase": p.name,
+                "consumes": p.consumes,
+                "produces": p.produces,
+            })
+        })
+        .collect();
+    match serde_json::to_string_pretty(&contracts_data) {
+        Ok(json_str) => {
+            if let Err(e) = std::fs::write(&contracts_path, &json_str) {
+                eprintln!("⚠  Failed to write workflow_contracts.json: {}", e);
+            }
+        }
+        Err(e) => {
+            eprintln!("⚠  Failed to serialize workflow_contracts.json: {}", e);
+        }
+    }
+
     // Startup consumes check: warn once per phase at start of run.
     let skip_contract_checks = config.no_contract_check;
     if !skip_contract_checks {

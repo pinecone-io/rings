@@ -292,19 +292,19 @@ Wire into `cmd_inspect` for `InspectView::DataFlow`: load `workflow_contracts.js
 **Partial/canceled run behavior:** The declared view always renders (it comes from `workflow_contracts.json`, not execution data). For the actual view, render all changes that were recorded, then append a note if the run status is not `completed`: `(incomplete — run was canceled at cycle N, run M)`. Missing manifests for unstarted phases/runs are silently skipped; no error is raised.
 
 **Tests (`tests/inspect.rs`):**
-- [ ] `render_data_flow_declared`: 2-phase workflow with full consumes/produces → ASCII graph matches spec format
-- [ ] `render_data_flow_declared`: phase with no contracts → renders without errors (shows phase name, no arrows)
-- [ ] `render_data_flow_declared`: consumes-only phase (no produces) → one-sided arrow
-- [ ] `render_data_flow_actual`: list of `ActualFileChange` entries → correct attribution by phase and cycle
-- [ ] `rings inspect <run-id> --show data-flow` exits 0 and produces output (not stub error message)
+- [x] `render_data_flow_declared`: 2-phase workflow with full consumes/produces → ASCII graph matches spec format
+- [x] `render_data_flow_declared`: phase with no contracts → renders without errors (shows phase name, no arrows)
+- [x] `render_data_flow_declared`: consumes-only phase (no produces) → one-sided arrow
+- [x] `render_data_flow_actual`: list of `ActualFileChange` entries → correct attribution by phase and cycle
+- [x] `rings inspect <run-id> --show data-flow` exits 0 and produces output (not stub error message)
 
 **Steps:**
-- [ ] Write `workflow_contracts.json` at run start in `src/engine.rs`
-- [ ] Create `src/inspect.rs` with `DeclaredFlow`, `ActualFileChange`, `render_data_flow_declared`, `render_data_flow_actual`
-- [ ] Add `InspectView::ClaudeOutput` to `src/cli.rs` enum (stub)
-- [ ] Add `pub mod inspect;` to `src/lib.rs`
-- [ ] Wire `InspectView::DataFlow` dispatch in `cmd_inspect` in `src/main.rs`
-- [ ] Write `tests/inspect.rs`
+- [x] Write `workflow_contracts.json` at run start in `src/engine.rs`
+- [x] Create `src/inspect.rs` with `DeclaredFlow`, `ActualFileChange`, `render_data_flow_declared`, `render_data_flow_actual`
+- [x] Add `InspectView::ClaudeOutput` to `src/cli.rs` enum (stub)
+- [x] Add `pub mod inspect;` to `src/lib.rs`
+- [x] Wire `InspectView::DataFlow` dispatch in `cmd_inspect` in `src/main.rs`
+- [x] Write `tests/inspect.rs`
 
 ---
 

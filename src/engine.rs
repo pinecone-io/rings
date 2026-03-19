@@ -7,6 +7,9 @@ use crate::cancel::CancelState;
 use crate::completion::{
     output_contains_signal, output_line_contains_signal, output_regex_matches_signal,
 };
+use crate::contracts::{
+    check_consumes_at_startup, check_consumes_pre_run, check_produces_after_run,
+};
 use crate::cost::parse_cost_from_output;
 use crate::executor::{extract_response_text, Executor, Invocation};
 use crate::manifest::{compute_manifest, diff_manifests, read_manifest_gz, write_manifest_gz};
@@ -590,6 +593,41 @@ pub fn run_workflow(
         }
     }
 
+    // Startup consumes check: warn once per phase at start of run.
+    let skip_contract_checks = config.no_contract_check;
+    if !skip_contract_checks {
+        let context_dir = std::path::PathBuf::from(&workflow.context_dir);
+        for phase in &workflow.phases {
+            if phase.consumes.is_empty() {
+                continue;
+            }
+            // Resolve prompt text for this phase (best-effort; skip if file read fails)
+            let prompt_text = match (&phase.prompt_text, &phase.prompt) {
+                (Some(text), _) => text.clone(),
+                (None, Some(file)) => std::fs::read_to_string(file).unwrap_or_default(),
+                _ => String::new(),
+            };
+            match check_consumes_at_startup(
+                &phase.name,
+                &phase.consumes,
+                &context_dir,
+                &prompt_text,
+            ) {
+                Ok(warnings) => {
+                    for w in warnings {
+                        eprintln!("{}", w.format_message());
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "⚠  Error checking consumes for phase \"{}\": {}",
+                        phase.name, e
+                    );
+                }
+            }
+        }
+    }
+
     while let Some(run_spec) = schedule.next() {
         ctx.last_cycle = run_spec.cycle;
 
@@ -676,6 +714,33 @@ pub fn run_workflow(
         let mut cancel_occurred = false;
         let run_start = std::time::Instant::now();
         let mut last_display_elapsed: u64 = 0;
+
+        // Pre-run consumes check (cycle >= 2): warn if patterns still match nothing.
+        if !skip_contract_checks && run_spec.cycle >= 2 {
+            let phase = &workflow.phases[run_spec.phase_index];
+            if !phase.consumes.is_empty() {
+                let context_dir = std::path::PathBuf::from(&workflow.context_dir);
+                match check_consumes_pre_run(
+                    &phase.name,
+                    &phase.consumes,
+                    &context_dir,
+                    run_spec.cycle,
+                    run_spec.global_run_number,
+                ) {
+                    Ok(warnings) => {
+                        for w in warnings {
+                            eprintln!("{}", w.format_message());
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "⚠  Error checking consumes for phase \"{}\": {}",
+                            phase.name, e
+                        );
+                    }
+                }
+            }
+        }
 
         'retry_loop: loop {
             // Show in-progress indicator before spawning.
@@ -1103,6 +1168,10 @@ pub fn run_workflow(
         let mut files_deleted = 0u32;
         let mut files_changed = 0u32;
 
+        // Retain diff paths for produces contract check.
+        let mut diff_added_paths: Vec<String> = vec![];
+        let mut diff_modified_paths: Vec<String> = vec![];
+
         if workflow.manifest_enabled {
             let after_manifest_path =
                 manifests_dir.join(format!("{:03}-after.json.gz", run_spec.global_run_number));
@@ -1124,6 +1193,9 @@ pub fn run_workflow(
                     files_modified = diff.modified.len() as u32;
                     files_deleted = diff.deleted.len() as u32;
                     files_changed = files_added + files_modified;
+                    // Retain paths for produces contract check.
+                    diff_added_paths = diff.added;
+                    diff_modified_paths = diff.modified;
                 }
 
                 // Write the after-manifest
@@ -1135,6 +1207,31 @@ pub fn run_workflow(
                 }
             }
         }
+
+        // Post-run produces contract check.
+        let phase_produces = &workflow.phases[run_spec.phase_index].produces;
+        let phase_produces_required = workflow.phases[run_spec.phase_index].produces_required;
+        let produces_violations = if workflow.manifest_enabled
+            && !skip_contract_checks
+            && !phase_produces.is_empty()
+        {
+            let violations =
+                check_produces_after_run(phase_produces, &diff_added_paths, &diff_modified_paths);
+            if !violations.is_empty() {
+                eprintln!(
+                    "⚠  Phase \"{}\" declared produces = {:?}\n   but no matching files were modified in run {} (cycle {}, iteration {}/{}).\n   This may indicate the phase did not complete its intended work.",
+                    run_spec.phase_name,
+                    violations,
+                    run_spec.global_run_number,
+                    run_spec.cycle,
+                    run_spec.phase_iteration,
+                    run_spec.phase_total_iterations,
+                );
+            }
+            violations
+        } else {
+            vec![]
+        };
 
         // Append cost entry after state is safely checkpointed.
         append_cost_entry(
@@ -1153,9 +1250,35 @@ pub fn run_workflow(
                 files_deleted,
                 files_changed,
                 event: None,
-                produces_violations: vec![],
+                produces_violations: produces_violations.clone(),
             },
         )?;
+
+        // Hard exit if produces_required and violations found.
+        if phase_produces_required && !produces_violations.is_empty() {
+            if ctx.current_display_cycle > 0 {
+                crate::display::print_cycle_cost(cycle_cost);
+            }
+            eprintln!(
+                "rings: phase \"{}\" requires produces contract to be satisfied (produces_required = true), but no matching files were modified.",
+                run_spec.phase_name
+            );
+            let state = make_state_snapshot(
+                &ctx,
+                config,
+                &run_spec,
+                ExitReason::ExecutorError(FailureReason::Unknown),
+            );
+            state.write_atomic(&state_path)?;
+            return Ok(EngineResult {
+                exit_code: 2,
+                completed_cycles: ctx.last_cycle,
+                total_cost_usd: ctx.budget.cumulative_cost,
+                total_runs: ctx.total_runs,
+                parse_warnings: ctx.parse_warnings,
+                failure_reason: None,
+            });
+        }
 
         ctx.last_successful_run = run_spec.global_run_number;
 

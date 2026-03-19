@@ -432,6 +432,7 @@ impl RunHandle for SlowMockRunHandle {
 #[cfg(feature = "testing")]
 pub struct MockExecutor {
     outputs: Mutex<Vec<ExecutorOutput>>,
+    side_effect: Option<Arc<Mutex<dyn FnMut(&Invocation) + Send>>>,
 }
 
 #[cfg(feature = "testing")]
@@ -440,13 +441,33 @@ impl MockExecutor {
         outputs.reverse(); // pop from back = FIFO
         Self {
             outputs: Mutex::new(outputs),
+            side_effect: None,
+        }
+    }
+
+    /// Create a MockExecutor that runs `effect` before returning each output.
+    pub fn with_side_effect(
+        mut outputs: Vec<ExecutorOutput>,
+        effect: impl FnMut(&Invocation) + Send + 'static,
+    ) -> Self {
+        outputs.reverse();
+        Self {
+            outputs: Mutex::new(outputs),
+            side_effect: Some(Arc::new(Mutex::new(effect))),
         }
     }
 }
 
 #[cfg(feature = "testing")]
 impl Executor for MockExecutor {
-    fn spawn(&self, _invocation: &Invocation, _verbose: bool) -> Result<Box<dyn RunHandle>> {
+    fn spawn(&self, invocation: &Invocation, _verbose: bool) -> Result<Box<dyn RunHandle>> {
+        if let Some(ref effect) = self.side_effect {
+            effect
+                .lock()
+                .map_err(|_| anyhow::anyhow!("MockExecutor side_effect mutex poisoned"))?(
+                invocation,
+            );
+        }
         let output = self
             .outputs
             .lock()

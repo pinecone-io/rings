@@ -213,34 +213,34 @@ Use `globset::GlobSetBuilder` (already a dependency) for glob matching in all th
 ```
 
 **Tests (`tests/phase_contracts.rs`):**
-- [ ] `non_glob_prefix("src/**/*.rs")` = `"src/"`
-- [ ] `non_glob_prefix("review-notes.md")` = `"review-notes.md"` (no metachar → full string)
-- [ ] `non_glob_prefix("*.rs")` = `""` (starts with metachar → empty prefix)
-- [ ] `check_consumes_at_startup`: file `review-notes.md` exists in context_dir → no warning
-- [ ] `check_consumes_at_startup`: no files, prompt contains `"src/"` (prefix of `"src/**/*.rs"`) → no warning
-- [ ] `check_consumes_at_startup`: no files, prompt does not contain prefix → warning fires with correct message text
-- [ ] `check_consumes_pre_run` cycle=2: no files match → per-run warning (different message from startup)
-- [ ] `check_produces_after_run`: `produces = ["src/**/*.rs"]`, `diff_added = ["src/main.rs"]` → `[]` (no violations)
-- [ ] `check_produces_after_run`: `produces = ["src/**/*.rs"]`, diff empty → `["src/**/*.rs"]`
-- [ ] `check_produces_after_run`: `produces = ["src/**/*.rs"]`, `diff_deleted = ["src/main.rs"]` only → violation (deleted doesn't count)
-- [ ] `check_produces_after_run`: `produces = []` → `[]` always
-- [ ] `check_produces_after_run`: partial match (2 patterns, 1 matched) → only unmatched in violations
-- [ ] Engine integration: `produces_violations` in `costs.jsonl` is `[]` when all matched, populated when not
-- [ ] Engine integration: `produces_required = true` + no matching files → exit code 2, state saved, stderr contains error
-- [ ] Engine integration: `produces_required = false` + no matching files → advisory warning, continues (exit 0 or 1)
-- [ ] Engine integration: `manifest_enabled = false` → produces check skipped, `produces_violations` always `[]`
-- [ ] Engine integration: `--no-contract-check` → no consumes or produces warnings emitted
+- [x] `non_glob_prefix("src/**/*.rs")` = `"src/"`
+- [x] `non_glob_prefix("review-notes.md")` = `"review-notes.md"` (no metachar → full string)
+- [x] `non_glob_prefix("*.rs")` = `""` (starts with metachar → empty prefix)
+- [x] `check_consumes_at_startup`: file `review-notes.md` exists in context_dir → no warning
+- [x] `check_consumes_at_startup`: no files, prompt contains `"src/"` (prefix of `"src/**/*.rs"`) → no warning
+- [x] `check_consumes_at_startup`: no files, prompt does not contain prefix → warning fires with correct message text
+- [x] `check_consumes_pre_run` cycle=2: no files match → per-run warning (different message from startup)
+- [x] `check_produces_after_run`: `produces = ["src/**/*.rs"]`, `diff_added = ["src/main.rs"]` → `[]` (no violations)
+- [x] `check_produces_after_run`: `produces = ["src/**/*.rs"]`, diff empty → `["src/**/*.rs"]`
+- [x] `check_produces_after_run`: `produces = ["src/**/*.rs"]`, `diff_deleted = ["src/main.rs"]` only → violation (deleted doesn't count)
+- [x] `check_produces_after_run`: `produces = []` → `[]` always
+- [x] `check_produces_after_run`: partial match (2 patterns, 1 matched) → only unmatched in violations
+- [x] Engine integration: `produces_violations` in `costs.jsonl` is `[]` when all matched, populated when not
+- [x] Engine integration: `produces_required = true` + no matching files → exit code 2, state saved, stderr contains error
+- [x] Engine integration: `produces_required = false` + no matching files → advisory warning, continues (exit 0 or 1)
+- [x] Engine integration: `manifest_enabled = false` → produces check skipped, `produces_violations` always `[]`
+- [x] Engine integration: `--no-contract-check` → no consumes or produces warnings emitted
 - [ ] Engine integration: `--no-completion-check` → also suppresses contract warnings
 
 **Steps:**
-- [ ] Create `src/contracts.rs` with `non_glob_prefix`, `check_consumes_at_startup`, `check_consumes_pre_run`, `check_produces_after_run`
-- [ ] Add `pub mod contracts;` to `src/lib.rs`
-- [ ] Retain `FileDiff` paths in the engine post-run section (before they are discarded)
-- [ ] Add pre-loop startup consumes check in engine
-- [ ] Add pre-run consumes check (cycle >= 2) in engine
-- [ ] Add post-run produces check in engine; populate `cost_entry.produces_violations`
-- [ ] Add `produces_required` hard-exit path in engine
-- [ ] Write `tests/phase_contracts.rs`
+- [x] Create `src/contracts.rs` with `non_glob_prefix`, `check_consumes_at_startup`, `check_consumes_pre_run`, `check_produces_after_run`
+- [x] Add `pub mod contracts;` to `src/lib.rs`
+- [x] Retain `FileDiff` paths in the engine post-run section (before they are discarded)
+- [x] Add pre-loop startup consumes check in engine
+- [x] Add pre-run consumes check (cycle >= 2) in engine
+- [x] Add post-run produces check in engine; populate `cost_entry.produces_violations`
+- [x] Add `produces_required` hard-exit path in engine
+- [x] Write `tests/phase_contracts.rs`
 
 ---
 

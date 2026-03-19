@@ -3,6 +3,7 @@ pub mod backoff;
 pub mod cancel;
 pub mod cli;
 pub mod completion;
+pub mod contracts;
 pub mod cost;
 pub mod display;
 pub mod dry_run;

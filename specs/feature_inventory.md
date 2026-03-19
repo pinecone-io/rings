@@ -311,3 +311,9 @@ Summaries are written from the user's perspective. Features with dependencies no
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-182 | `rings init` | I can scaffold a new, immediately runnable workflow TOML file with `rings init [NAME]` so I don't have to write boilerplate by hand | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+
+## Self-Update
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-192 | `rings update` | I can update rings to the latest nightly release with a single command instead of re-running the install script manually | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |

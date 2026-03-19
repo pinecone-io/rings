@@ -1040,30 +1040,61 @@ fn resolve_init_path(name: Option<&str>) -> Result<PathBuf> {
 }
 
 const INIT_TEMPLATE: &str = r#"[workflow]
-completion_signal = "TASK_COMPLETE"
-context_dir = "."
-max_cycles = 10
+# Pick up tasks from TODO.md and work through them one at a time.
+#
+# Run with:    rings run <this-file>
+# Preview:     rings run --dry-run <this-file>
+# Resume:      rings resume <run-id>
+
+completion_signal = "ALL_TASKS_COMPLETE"
 completion_signal_mode = "line"
+context_dir = "."
+max_cycles = 20
 budget_cap_usd = 5.00
+
+[executor]
+binary = "claude"
+# Change --model to use a different model (e.g. claude-opus-4-6, claude-haiku-4-5)
+args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]
 
 [[phases]]
 name = "builder"
 prompt_text = """
-You are a helpful AI assistant working on a software task.
+Complete ONE task from the TODO list, then stop.
 
-Review the current state of the project and make progress on the next logical step.
-Be thorough and systematic in your approach.
+## Context
 
-When you have completed your assigned task, output the following signal on its own line:
-TASK_COMPLETE
+Before starting, read these files to understand the project:
+- `README.md` — what the project does and how it works
+# Add any other files that are important for grounding:
+# - `ARCHITECTURE.md`, `CONTRIBUTING.md`, a spec directory, etc.
 
-# Available template variables (use in prompt_text with double curly braces):
-# {{phase_name}}      — current phase name
-# {{cycle}}           — current cycle number (1-based)
-# {{max_cycles}}      — maximum number of cycles configured
-# {{iteration}}       — current iteration within this phase (1-based)
-# {{run}}             — global run number across all phases and cycles
-# {{cost_so_far_usd}} — cumulative cost in USD so far
+## Step 1: Find the next task
+
+Read `TODO.md`. Find the first task with unchecked steps (`- [ ]`).
+Tasks are ordered by dependency — do not skip ahead.
+
+If there are no unchecked tasks, print exactly on its own line:
+ALL_TASKS_COMPLETE
+
+Then stop.
+
+## Step 2: Do the work
+
+Work through all steps of the chosen task.
+When each step is done, mark it complete in TODO.md (`- [ ]` → `- [x]`).
+Commit your changes when the task is complete.
+
+## Step 3: Report
+
+Print a brief summary of what you did, then stop.
+Do not start another task.
+
+# Template variables you can use in this prompt:
+# {{cycle}}           — current cycle number
+# {{max_cycles}}      — max cycles configured
+# {{run}}             — global run number
+# {{cost_so_far_usd}} — cumulative cost so far
 """
 "#;
 
@@ -1388,12 +1419,12 @@ mod tests {
     #[test]
     fn init_scaffolded_file_template_variables_comment_present() {
         assert!(
-            INIT_TEMPLATE.contains("{{phase_name}}"),
-            "template variables comment must list {{phase_name}}"
-        );
-        assert!(
             INIT_TEMPLATE.contains("{{cycle}}"),
             "template variables comment must list {{cycle}}"
+        );
+        assert!(
+            INIT_TEMPLATE.contains("{{run}}"),
+            "template variables comment must list {{run}}"
         );
         assert!(
             INIT_TEMPLATE.contains("{{cost_so_far_usd}}"),

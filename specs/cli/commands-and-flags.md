@@ -261,19 +261,31 @@ runnable workflow template. The write is atomic: rings writes to `<dest>.tmp` fi
 then renames, so a Ctrl+C during write never leaves a half-written file.
 
 The scaffolded file is designed to pass `rings run --dry-run` without modification.
-It uses `prompt_text` (inline prompt, F-003) rather than `prompt = "..."` (file
-reference, F-004) so no external file is needed. It sets `context_dir = "."` (always
-valid), `max_cycles = 10` (a conservative bound), and `completion_signal_mode = "line"`
-(the safer default — avoids false positives when Claude mentions the signal string
-in prose). The `completion_signal` string is embedded inside the `prompt_text` body
-so the F-151 startup warning does not fire. A `budget_cap_usd` field is included as
-an active field with a placeholder value so the F-116 no-cap warning does not fire on
-first run.
+It demonstrates the primary use case: picking up tasks from a TODO file and looping
+to completion.
 
-The `prompt_text` in the scaffold includes a comment listing all available template
-variables (`{{phase_name}}`, `{{cycle}}`, `{{max_cycles}}`, `{{iteration}}`, `{{run}}`,
-`{{cost_so_far_usd}}`), since these are otherwise not discoverable without reading the
-spec.
+**Template structure:**
+
+- `[workflow]` section with `completion_signal`, `completion_signal_mode = "line"`,
+  `context_dir = "."`, `max_cycles = 10`, `budget_cap_usd = 5.00`
+- `[executor]` section showing how to configure the model choice:
+  `args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]`
+  with a comment explaining how to change the model
+- One `[[phases]]` named `"builder"` with a `prompt_text` that:
+  - Reads a `TODO.md` for the next unchecked task (`- [ ]`)
+  - Works through all steps of that task
+  - Marks steps done (`- [x]`) when complete
+  - Commits the work
+  - Prints the completion signal when no unchecked tasks remain
+  - Is generic — no project-specific language, paths, or tooling baked in
+
+The prompt is structured with clear numbered steps so users can see the pattern and
+adapt it to their own workflow. The `[executor]` section is included explicitly (rather
+than relying on the default) so users immediately see where to change the model.
+
+The `completion_signal` string is embedded inside the `prompt_text` body so the F-151
+startup warning does not fire. A `budget_cap_usd` field is included as an active field
+so the F-116 no-cap warning does not fire on first run.
 
 v1 is non-interactive: it writes a static template and exits. Interactive wizard
 features (prompting for phase names, signal strings, etc.) are deferred to a
@@ -290,6 +302,44 @@ written unconditionally (subject to the `--force` check).
 
 **Dependencies:** F-001 (Workflow File Format), F-141 (Startup Validation), F-151
 (Completion Signal Presence Check), F-157 (Exit Code 2), F-116 (No Budget Cap Warning)
+
+---
+
+### `rings update`
+
+Update rings to the latest nightly release.
+
+```
+USAGE:
+    rings update
+```
+
+`rings update` downloads and installs the latest nightly release from GitHub, replacing the current binary in place.
+
+**Strategy:** rings downloads `install.sh` from the repository's `main` branch and executes it with `bash`, passing the path of the currently running binary as the install destination. This reuses the same platform detection, checksum verification, and install logic that the initial install uses.
+
+**Detailed flow:**
+
+1. Detect the current binary's path via `std::env::current_exe()` and canonicalize it.
+2. Download `install.sh` from `https://raw.githubusercontent.com/<REPO>/main/install.sh` to a temp file.
+3. Run `bash <temp_install.sh> <current_binary_path>`, inheriting stdout/stderr so the user sees progress.
+4. On success (exit code 0): print the new version by running `<current_binary_path> --version`.
+5. On failure (non-zero exit): print the error and exit with code 1.
+
+The `<REPO>` value is compiled into the binary as a constant (e.g., `pinecone-io/rings`).
+
+**Requirements:**
+- `curl` and `bash` must be available on PATH. If either is missing, rings prints a clear error message suggesting the user download manually, and exits with code 1.
+- The install script handles `sudo` escalation if the binary is in a root-owned directory.
+- No `--force` or `--version` flags in v1. Always updates to the latest nightly.
+
+**Non-TTY behavior:** `rings update` works identically in non-TTY contexts. The install script's output goes to stderr.
+
+**Exit codes:**
+- `0` — update successful
+- `1` — update failed (missing curl/bash, download error, checksum mismatch, permission denied)
+
+**Dependencies:** None (standalone command, no workflow required).
 
 ---
 

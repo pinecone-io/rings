@@ -5,33 +5,27 @@
 rings runs Claude Code in a loop — cycling through your defined phases until work is done. You get cost tracking, safe cancellation, and resumable runs out of the box.
 
 ```
-⟳  Cycle 4/20  |  builder  (run 2/3)  |  $0.34 total
+⠹  Cycle 4/20  │  builder  2/3  │  $0.34 total  │  1.2k in · 340 out  │  01:12
 ```
 
 ---
 
 ## Install
 
-**macOS / Linux — download a single binary:**
+**One-liner (macOS and Linux):**
 
 ```bash
-# macOS (Intel + Apple Silicon)
-curl -L https://github.com/owner/rings/releases/latest/download/rings-macos -o rings
-chmod +x rings && sudo mv rings /usr/local/bin/
-
-# Linux x86_64
-curl -L https://github.com/owner/rings/releases/latest/download/rings-linux-x86_64 -o rings
-chmod +x rings && sudo mv rings /usr/local/bin/
-
-# Linux ARM64
-curl -L https://github.com/owner/rings/releases/latest/download/rings-linux-aarch64 -o rings
-chmod +x rings && sudo mv rings /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/pinecone-io/rings/main/install.sh | bash
 ```
+
+This auto-detects your platform, downloads the right binary, verifies the SHA256 checksum, and installs to `/usr/local/bin/rings`.
+
+To install somewhere else: `curl -fsSL ... | bash -s -- ~/.local/bin/rings`
 
 **With Rust installed:**
 
 ```bash
-cargo install rings
+cargo install --git https://github.com/pinecone-io/rings.git
 ```
 
 Verify:

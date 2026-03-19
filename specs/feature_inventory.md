@@ -297,6 +297,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-187 | Styled Cycle Transitions | Cycle boundaries show a horizontal rule with the cycle number and previous cycle cost embedded | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 | F-188 | Styled List Table | `rings list` output uses color-coded status, bold headers, and accent cost figures | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 | F-189 | Styled Dry Run Output | `rings run --dry-run` uses the same color system as live runs for visual consistency | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-190 | Cumulative Token Display | The status line and summaries show cumulative input/output token counts that update after each completed run | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-191 | Model Name Display | The startup header shows the detected model name or "(default)" so I always know which model is being used | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 
 ## Executor Args Ergonomics
 

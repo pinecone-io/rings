@@ -46,13 +46,14 @@ When color is disabled, all styling helpers become identity functions — output
 During execution, rings displays a single-line status in the terminal:
 
 ```
-⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34
+⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  18.2k in · 4.1k out  │  02:34
 ```
 
 - **Spinner** — braille animation frames: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`. One frame per poll tick (100ms).
 - Cycle count shows current/max (or `current/?` if max_cycles is not set). Cycle number is **bold**.
 - Phase name and run-within-phase counts are shown.
-- Running cost total is shown in **cyan**.
+- Running cost total is shown in **cyan**. Cost reflects all completed runs — it updates between runs but cannot update mid-run (cost is only known after the executor exits).
+- Cumulative token counts are shown in **dim**: `18.2k in · 4.1k out`. Formatted with `k` suffix for thousands (e.g., `1.2k`), plain integers below 1000 (e.g., `842 in`). Omitted entirely if no token data has been parsed yet.
 - Elapsed time is shown in **dim**.
 - Separators (`│`) are rendered **dim**.
 
@@ -83,6 +84,7 @@ rings v0.1.0                          ← bold
   Workflow   my-task.rings.toml       ← label dim, value white
   Context    ./src
   Phases     builder ×10, reviewer ×1
+  Model      claude-sonnet-4-5       ← dim; or "(default)" when not specified
   Max        50 cycles · 550 runs
   Budget     $5.00                    ← cyan
   Output     ~/.local/share/rings/... ← dim
@@ -91,6 +93,7 @@ rings v0.1.0                          ← bold
 - Version string is **bold**
 - Field labels (`Workflow`, `Context`, etc.) are **dim**
 - Field values are regular (white)
+- Model line is always shown. When a `--model` flag is detectable in executor args or `extra_args`, shows the model name. Otherwise shows `(default)` in **dim** to indicate Claude Code's configured default is used.
 - Budget value is **cyan**
 - Output path is **dim** (muted — less important than other fields)
 - Two-space indent for all fields below version line
@@ -104,6 +107,7 @@ On success:
 
    Duration    8m 14s                          ← label dim, value white
    Total cost  $1.10  (12 runs)                ← cost cyan
+   Tokens      18,204 input · 4,102 output     ← dim
 
    builder    ████████████████████  $0.89  (10 runs)   ← proportional bar
    reviewer   █████                 $0.21  ( 2 runs)
@@ -152,6 +156,7 @@ When the user presses Ctrl+C:
    Run ID      run_20240315_143022_a1b2c3       ← label dim, value white
    Progress    cycle 3, builder 2/3 (23 runs)
    Cost        $2.14                             ← cyan
+   Tokens      42,810 input · 9,347 output      ← dim
 
    builder    ██████████████████    $1.71  (18 runs)
    reviewer   █████                 $0.43  ( 5 runs)

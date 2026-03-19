@@ -62,9 +62,9 @@ F-188 (Styled List Table), F-189 (Styled Dry Run Output)
 **Files:** `src/display.rs`, `src/main.rs`
 
 **Steps:**
-1. Rewrite `print_run_header` in `src/display.rs`
-2. New signature: accept workflow details struct or individual params (phases, max_cycles, budget_cap, context_dir, output_dir, version)
-3. Layout:
+1. [x] Rewrite `print_run_header` in `src/display.rs`
+2. [x] New signature: accept workflow details struct or individual params (phases, max_cycles, budget_cap, context_dir, output_dir, version)
+3. [x] Layout:
    ```
    rings v0.1.0                    ← style::bold()
 
@@ -75,13 +75,13 @@ F-188 (Styled List Table), F-189 (Styled Dry Run Output)
      Budget     $5.00               ← style::accent()
      Output     ~/.local/share/...  ← style::muted()
    ```
-4. Budget line only shown when `budget_cap_usd` is Some
-5. Update call sites in `src/main.rs` (`run_inner` ~line 243, `resume_inner` ~line 560)
+4. [x] Budget line only shown when `budget_cap_usd` is Some
+5. [x] Update call sites in `src/main.rs` (`run_inner` ~line 243, `resume_inner` ~line 560)
 
 **Tests:**
-- Output contains expected labels (`Workflow`, `Context`, `Phases`, `Max`, `Output`)
-- Budget line present when budget_cap is Some, absent when None
-- Respects no-color (no ANSI escapes when color disabled)
+- [x] Output contains expected labels (`Workflow`, `Context`, `Phases`, `Max`, `Output`)
+- [x] Budget line present when budget_cap is Some, absent when None
+- [x] Respects no-color (no ANSI escapes when color disabled)
 
 ---
 

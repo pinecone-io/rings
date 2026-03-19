@@ -253,7 +253,20 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         }
     }
 
-    display::print_run_header(&run_id, &args.workflow_file);
+    let phase_name_runs: Vec<(String, u32)> = workflow
+        .phases
+        .iter()
+        .map(|p| (p.name.clone(), p.runs_per_cycle))
+        .collect();
+    display::print_run_header(&display::RunHeaderParams {
+        workflow_file: &args.workflow_file,
+        context_dir: &workflow.context_dir,
+        phases: &phase_name_runs,
+        max_cycles: workflow.max_cycles,
+        budget_cap_usd: workflow.budget_cap_usd,
+        output_dir: &run_dir.to_string_lossy(),
+        version: env!("CARGO_PKG_VERSION"),
+    });
 
     // Acquire context directory lock
     #[cfg(unix)]
@@ -570,10 +583,25 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         );
     }
 
-    eprintln!("Resuming {} (previously {})", new_run_id, args.run_id);
-    eprintln!("Workflow:  {}", meta.workflow_file);
-    eprintln!("Previous cost: ${:.3}", saved_state.cumulative_cost_usd);
-    eprintln!();
+    eprintln!(
+        "Resuming from {}  (previous cost: ${:.3})",
+        style::dim(&args.run_id),
+        saved_state.cumulative_cost_usd
+    );
+    let phase_name_runs_resume: Vec<(String, u32)> = workflow
+        .phases
+        .iter()
+        .map(|p| (p.name.clone(), p.runs_per_cycle))
+        .collect();
+    display::print_run_header(&display::RunHeaderParams {
+        workflow_file: &meta.workflow_file,
+        context_dir: &workflow.context_dir,
+        phases: &phase_name_runs_resume,
+        max_cycles: workflow.max_cycles,
+        budget_cap_usd: workflow.budget_cap_usd,
+        output_dir: &run_dir.to_string_lossy(),
+        version: env!("CARGO_PKG_VERSION"),
+    });
 
     // Acquire context directory lock
     #[cfg(unix)]

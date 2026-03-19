@@ -68,10 +68,88 @@ pub fn print_run_elapsed(
     // Non-TTY: suppressed — static line was already printed by print_run_start
 }
 
-/// Print the run header shown at workflow start.
-pub fn print_run_header(run_id: &str, workflow_file: &str) {
-    eprintln!("● rings  {workflow_file}");
-    eprintln!("  Run ID: {run_id}");
+/// Parameters for the styled startup header.
+pub struct RunHeaderParams<'a> {
+    pub workflow_file: &'a str,
+    pub context_dir: &'a str,
+    /// Phase names and their runs_per_cycle, in declaration order.
+    pub phases: &'a [(String, u32)],
+    pub max_cycles: u32,
+    pub budget_cap_usd: Option<f64>,
+    pub output_dir: &'a str,
+    pub version: &'a str,
+}
+
+/// Format the styled startup header as a string (for testing).
+fn format_run_header(params: &RunHeaderParams<'_>) -> String {
+    let lw = 8usize; // "Workflow" is 8 chars — widest label
+    let version_line = style::bold(&format!("rings v{}", params.version));
+    let mut lines = vec![version_line, String::new()];
+
+    lines.push(format!(
+        "  {}  {}",
+        style::dim(&format!("{:<lw$}", "Workflow")),
+        params.workflow_file
+    ));
+    lines.push(format!(
+        "  {}  {}",
+        style::dim(&format!("{:<lw$}", "Context")),
+        params.context_dir
+    ));
+
+    let phases_str = params
+        .phases
+        .iter()
+        .map(|(name, runs)| format!("{name} \u{00D7}{runs}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    lines.push(format!(
+        "  {}  {}",
+        style::dim(&format!("{:<lw$}", "Phases")),
+        phases_str
+    ));
+
+    let total_runs_per_cycle: u32 = params.phases.iter().map(|(_, r)| r).sum();
+    let max_total_runs = params.max_cycles * total_runs_per_cycle;
+    lines.push(format!(
+        "  {}  {} cycles \u{00B7} {} runs",
+        style::dim(&format!("{:<lw$}", "Max")),
+        params.max_cycles,
+        max_total_runs
+    ));
+
+    if let Some(cap) = params.budget_cap_usd {
+        lines.push(format!(
+            "  {}  {}",
+            style::dim(&format!("{:<lw$}", "Budget")),
+            style::accent(&format!("${cap:.2}"))
+        ));
+    }
+
+    lines.push(format!(
+        "  {}  {}",
+        style::dim(&format!("{:<lw$}", "Output")),
+        style::muted(params.output_dir)
+    ));
+
+    lines.join("\n")
+}
+
+/// Print the styled startup header shown at workflow start.
+///
+/// Example (no color):
+/// ```text
+/// rings v0.1.0
+///
+///   Workflow   my-task.rings.toml
+///   Context    ./src
+///   Phases     builder ×10, reviewer ×1
+///   Max        50 cycles · 550 runs
+///   Budget     $5.00
+///   Output     ~/.local/share/rings/runs/run_...
+/// ```
+pub fn print_run_header(params: &RunHeaderParams<'_>) {
+    eprintln!("{}", format_run_header(params));
     eprintln!();
 }
 
@@ -319,6 +397,109 @@ mod tests {
             "tick 1 should use frame 1: {line1}"
         );
 
+        crate::style::set_color_enabled();
+    }
+
+    fn make_header_params() -> (Vec<(String, u32)>, String) {
+        let phases = vec![
+            ("builder".to_string(), 10u32),
+            ("reviewer".to_string(), 1u32),
+        ];
+        let output = "/home/user/.local/share/rings/runs/run_abc".to_string();
+        (phases, output)
+    }
+
+    #[test]
+    fn run_header_contains_expected_labels() {
+        crate::style::set_no_color();
+        let (phases, output) = make_header_params();
+        let params = RunHeaderParams {
+            workflow_file: "my-task.rings.toml",
+            context_dir: "./src",
+            phases: &phases,
+            max_cycles: 50,
+            budget_cap_usd: None,
+            output_dir: &output,
+            version: "0.1.0",
+        };
+        let s = format_run_header(&params);
+        assert!(s.contains("Workflow"), "missing Workflow: {s}");
+        assert!(
+            s.contains("my-task.rings.toml"),
+            "missing workflow file: {s}"
+        );
+        assert!(s.contains("Context"), "missing Context: {s}");
+        assert!(s.contains("./src"), "missing context_dir: {s}");
+        assert!(s.contains("Phases"), "missing Phases: {s}");
+        assert!(s.contains("builder"), "missing phase name: {s}");
+        assert!(s.contains("Max"), "missing Max: {s}");
+        assert!(s.contains("50 cycles"), "missing cycles: {s}");
+        assert!(s.contains("550 runs"), "missing total runs: {s}");
+        assert!(s.contains("Output"), "missing Output: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn run_header_budget_line_present_when_cap_set() {
+        crate::style::set_no_color();
+        let (phases, output) = make_header_params();
+        let params = RunHeaderParams {
+            workflow_file: "my-task.rings.toml",
+            context_dir: "./src",
+            phases: &phases,
+            max_cycles: 50,
+            budget_cap_usd: Some(5.0),
+            output_dir: &output,
+            version: "0.1.0",
+        };
+        let s = format_run_header(&params);
+        assert!(
+            s.contains("Budget"),
+            "Budget line missing when cap set: {s}"
+        );
+        assert!(s.contains("$5.00"), "Budget value missing: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn run_header_budget_line_absent_when_no_cap() {
+        crate::style::set_no_color();
+        let (phases, output) = make_header_params();
+        let params = RunHeaderParams {
+            workflow_file: "my-task.rings.toml",
+            context_dir: "./src",
+            phases: &phases,
+            max_cycles: 50,
+            budget_cap_usd: None,
+            output_dir: &output,
+            version: "0.1.0",
+        };
+        let s = format_run_header(&params);
+        assert!(
+            !s.contains("Budget"),
+            "Budget line present when cap is None: {s}"
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn run_header_no_ansi_when_color_disabled() {
+        crate::style::set_no_color();
+        let (phases, output) = make_header_params();
+        let params = RunHeaderParams {
+            workflow_file: "my-task.rings.toml",
+            context_dir: "./src",
+            phases: &phases,
+            max_cycles: 50,
+            budget_cap_usd: Some(5.0),
+            output_dir: &output,
+            version: "0.1.0",
+        };
+        let s = format_run_header(&params);
+        assert!(
+            !s.contains('\x1b'),
+            "ANSI escapes present when color disabled: {s:?}"
+        );
         crate::style::set_color_enabled();
     }
 

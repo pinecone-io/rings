@@ -147,6 +147,14 @@ pub struct RunArgs {
     /// Skip consumes/produces contract checks
     #[arg(long)]
     pub no_contract_check: bool,
+
+    /// Pause after every run for interactive inspection (ignored in non-TTY contexts)
+    #[arg(long)]
+    pub step: bool,
+
+    /// Pause only at cycle boundaries (ignored in non-TTY contexts)
+    #[arg(long)]
+    pub step_cycles: bool,
 }
 
 #[derive(Args, Debug)]

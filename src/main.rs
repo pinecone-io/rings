@@ -91,6 +91,15 @@ fn run_inner(
     cancel: Arc<CancelState>,
     output_format: cli::OutputFormat,
 ) -> Result<i32> {
+    // Conflict check: --step is incompatible with --output-format jsonl
+    if args.step && output_format == cli::OutputFormat::Jsonl {
+        eprintln!(
+            "Error: --step is incompatible with --output-format jsonl. \
+             Remove --step or use human output format."
+        );
+        return Ok(2);
+    }
+
     // Load and validate workflow
     let toml_content = std::fs::read_to_string(&args.workflow_file)
         .with_context(|| format!("Cannot read workflow file: {}", args.workflow_file))?;

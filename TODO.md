@@ -227,18 +227,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`, `src/engine.rs`
 
 **Steps:**
-- [ ] Verify: in JSONL mode, all structured events go to stdout (println!), human display is suppressed
-- [ ] Verify: in JSONL mode, only unstructured fatal errors (before first event can be emitted) go to stderr
-- [ ] Verify: in Human mode, stdout is empty (all display goes to stderr via eprintln!)
-- [ ] Add `--step` + `--output-format jsonl` conflict check: exit 2 with error message (per spec)
-- [ ] Write integration test: run a complete 2-cycle workflow in JSONL mode, capture stdout, parse each line as JSON, verify event sequence: start → run_start → run_end → ... → summary
-- [ ] Write integration test: verify stdout is empty in human mode
+- [x] Verify: in JSONL mode, all structured events go to stdout (println!), human display is suppressed
+- [x] Verify: in JSONL mode, only unstructured fatal errors (before first event can be emitted) go to stderr
+- [x] Verify: in Human mode, stdout is empty (all display goes to stderr via eprintln!)
+- [x] Add `--step` + `--output-format jsonl` conflict check: exit 2 with error message (per spec)
+- [x] Write integration test: run a complete 2-cycle workflow in JSONL mode, capture stdout, parse each line as JSON, verify event sequence: start → run_start → run_end → ... → summary
+- [x] Write integration test: verify stdout is empty in human mode
 
 **Tests:**
-- [ ] Full JSONL workflow produces parseable JSON on every stdout line
-- [ ] Event sequence is: start, (run_start, run_end)+, completion_signal?, summary
-- [ ] `jq` can filter events by run_id (all events share the same run_id)
-- [ ] `--step --output-format jsonl` exits 2 with error message
-- [ ] Human mode produces zero bytes on stdout
+- [x] Full JSONL workflow produces parseable JSON on every stdout line
+- [x] Event sequence is: start, (run_start, run_end)+, completion_signal?, summary
+- [x] `jq` can filter events by run_id (all events share the same run_id)
+- [x] `--step --output-format jsonl` exits 2 with error message
+- [x] Human mode produces zero bytes on stdout
 
 ---

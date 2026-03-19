@@ -12,37 +12,53 @@ rings runs Claude Code in a loop — cycling through your defined phases until w
 
 ## Install
 
-**One-liner (macOS and Linux):**
-
-If you have the [GitHub CLI](https://cli.github.com/) authenticated:
+**Requires:** [Claude Code](https://claude.ai/code) installed and on your PATH.
 
 ```bash
+# If you have the GitHub CLI authenticated:
 curl -fsSL https://raw.githubusercontent.com/pinecone-io/rings/main/install.sh | bash
-```
 
-Or with a GitHub token:
-
-```bash
+# Or with a token:
 GITHUB_TOKEN=ghp_... curl -fsSL https://raw.githubusercontent.com/pinecone-io/rings/main/install.sh | bash
-```
 
-This auto-detects your platform, downloads the right binary, verifies the SHA256 checksum, and installs to `/usr/local/bin/rings`.
-
-To install somewhere else, pass the path: `... | bash -s -- ~/.local/bin/rings`
-
-**With Rust installed:**
-
-```bash
+# From source:
 cargo install --git https://github.com/pinecone-io/rings.git
 ```
 
-Verify:
+Auto-detects your platform (Linux/macOS, x86_64/aarch64), verifies the SHA256 checksum, and installs to `/usr/local/bin/rings`. Pass a path to install elsewhere: `... | bash -s -- ~/.local/bin/rings`
+
+Update to the latest version:
 
 ```bash
-rings --version
+rings update
 ```
 
-**Requires:** [Claude Code](https://claude.ai/code) installed and on your PATH.
+---
+
+## Quickstart
+
+Scaffold a new workflow:
+
+```bash
+rings init my-task
+```
+
+This creates `my-task.rings.toml` — a complete, runnable workflow that picks up tasks from `TODO.md`. Edit the prompt to fit your project, then:
+
+```bash
+rings run --dry-run my-task.rings.toml   # preview the execution plan
+rings run my-task.rings.toml             # run it
+```
+
+### What the scaffold looks like
+
+`rings init` generates a workflow pre-configured with:
+- An `[executor]` section showing how to set the model (`--model claude-sonnet-4-6`)
+- A prompt that reads `TODO.md`, finds the next unchecked task, does the work, and marks it done
+- A completion signal that fires when all tasks are complete
+- A budget cap so you don't accidentally run up costs
+
+You'll want to customize the prompt's **Context** section to point at your project's important files (architecture docs, specs, contributing guide, etc.).
 
 ---
 
@@ -50,48 +66,20 @@ rings --version
 
 You write a workflow file. rings runs it in cycles.
 
-Each cycle executes your phases in order. Each phase invokes Claude Code with your prompt, in your working directory. When Claude prints your completion signal, the workflow exits. If it doesn't within `max_cycles`, rings exits cleanly and tells you how to resume.
+```
+Cycle 1:  builder → builder → builder → reviewer
+Cycle 2:  builder → builder → builder → reviewer
+...
+Cycle N:  builder prints APPROVED → rings exits
+```
 
-That's it.
+Each cycle executes your phases in order. Each phase invokes Claude Code with your prompt, in your working directory. When Claude prints your completion signal, the workflow exits. If it doesn't within `max_cycles`, rings saves state and tells you how to resume.
 
 ---
 
-## Quickstart
+## Builder + reviewer pattern
 
-### The simplest workflow
-
-Create `task.rings.toml`:
-
-```toml
-[workflow]
-completion_signal = "DONE"
-context_dir = "."
-max_cycles = 10
-
-[[phases]]
-name = "builder"
-prompt_text = """
-Look at the code in this directory. Make it better.
-Fix bugs, add tests, improve clarity.
-When you're satisfied with the quality, print exactly: DONE
-"""
-```
-
-Preview it first:
-
-```bash
-rings run --dry-run task.rings.toml
-```
-
-Run it:
-
-```bash
-rings run task.rings.toml
-```
-
-### Builder + reviewer loop
-
-The most common pattern: a builder writes, a reviewer critiques, repeat.
+The most common pattern: a builder writes code, a reviewer critiques it, repeat.
 
 ```toml
 [workflow]
@@ -99,6 +87,10 @@ completion_signal = "APPROVED"
 context_dir = "./src"
 max_cycles = 20
 completion_signal_phases = ["reviewer"]  # only reviewer can approve
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]
 
 [[phases]]
 name = "builder"
@@ -132,60 +124,37 @@ This runs: builder, builder, builder, reviewer — then repeats. The reviewer co
 
 ---
 
-## Testing a new prompt
-
-When developing a prompt, use `--step` to pause after every run and inspect what happened before continuing:
-
-```bash
-rings run --step task.rings.toml
-```
-
-After each run, rings pauses and shows a summary:
-
-```
-─────────────────────────────────────────────────────
-  Run 3  |  cycle 1  |  builder  (iteration 3/3)
-  Cost:   $0.031  (1,204 input, 312 output tokens)
-  Files:  2 modified  →  src/main.rs, src/engine.rs
-  Signal: not detected
-
-  [Enter] continue   [s] skip to next cycle   [v] view output   [q] quit
-─────────────────────────────────────────────────────
-```
-
-Press `v` to read the full Claude Code output for that run. Press `q` to quit and save state. Press Enter to continue.
-
-Use `--step-cycles` to pause only at cycle boundaries instead of after every run — less granular but less interruptive when a phase runs 3+ times per cycle.
-
----
-
 ## Cost tracking
 
-rings parses Claude Code's cost output after every run and keeps a running total.
+rings parses Claude Code's cost output after every run and keeps a running total. The status line shows cumulative cost and token counts updating in real time:
 
 ```
-Cost Summary
-─────────────────────────────────────────────────
-Phase       Runs   Input Tok   Output Tok   Cost
-─────────────────────────────────────────────────
-builder       30    245,123      89,432     $3.12
-reviewer      10     82,341      21,089     $1.11
-─────────────────────────────────────────────────
-TOTAL         40    327,464     110,521     $4.23
+⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  18.2k in · 4.1k out  │  02:34
 ```
 
-Set a budget cap to protect yourself on exploratory runs:
+At completion, you get a per-phase breakdown:
+
+```
+✓  Completed — cycle 2, run 12 (builder)
+
+   Duration    8m 14s
+   Total cost  $1.10  (12 runs)
+   Tokens      18,204 input · 4,102 output
+
+   builder    ████████████████████  $0.89  (10 runs)
+   reviewer   █████                 $0.21  ( 2 runs)
+
+   Budget     ████████████░░░░░░░░  $1.10 / $5.00  (22%)
+```
+
+Set a budget cap to protect yourself:
 
 ```toml
 [workflow]
 budget_cap_usd = 5.00   # stop and save state if spend exceeds $5
 ```
 
-Or pass it at runtime:
-
-```bash
-rings run --budget-cap 5.00 task.rings.toml
-```
+Or at runtime: `rings run --budget-cap 5.00 task.rings.toml`
 
 ---
 
@@ -194,37 +163,40 @@ rings run --budget-cap 5.00 task.rings.toml
 Press `Ctrl+C` at any point. rings saves where it was and prints the resume command:
 
 ```
-Interrupted.
+✗  Interrupted
 
-Run ID:    run_20240315_143022_a1b2c3
-Progress:  cycle 3, phase builder, run 2/3 (23 runs completed)
+   Run ID      run_20240315_143022_a1b2c3
+   Progress    cycle 3, builder 2/3 (23 runs)
+   Cost        $2.14
 
-Cost so far: $2.14
-  builder  (18 runs)  $1.71
-  reviewer  (5 runs)  $0.43
+   builder    ██████████████████    $1.71  (18 runs)
+   reviewer   █████                 $0.43  ( 5 runs)
 
-To resume this run:
-  rings resume run_20240315_143022_a1b2c3
-```
-
-Resume later:
-
-```bash
-rings resume run_20240315_143022_a1b2c3
+   To resume:
+     rings resume run_20240315_143022_a1b2c3
 ```
 
 No work is lost. Execution picks up from the next unstarted run.
 
 ---
 
-## Inspecting runs
+## Commands
 
 ```bash
+rings init [name]                    # scaffold a new workflow
+rings run <workflow.toml>            # start a workflow
+rings resume <run-id>                # resume an interrupted run
 rings list                           # recent runs with status and cost
-rings show <run-id>                  # one-screen summary
-rings inspect <run-id>               # detailed view
-rings inspect <run-id> --show costs  # per-phase cost breakdown
-rings lineage <run-id>               # full ancestry chain across resumed sessions
+rings update                         # update rings to the latest version
+```
+
+Common flags:
+
+```bash
+rings run --dry-run workflow.toml    # preview execution plan
+rings run --budget-cap 5 workflow.toml
+rings run --max-cycles 5 workflow.toml
+rings run --verbose workflow.toml    # stream Claude's output live
 ```
 
 ---
@@ -242,6 +214,11 @@ completion_signal_mode = "line"         # "substring" (default), "line", or "reg
 completion_signal_phases = ["reviewer"] # optional: only these phases can trigger completion
 budget_cap_usd = 10.00                  # optional: stop if cost exceeds this amount
 delay_between_runs = 2                  # optional: seconds between runs (default: 0)
+
+[executor]
+binary = "claude"
+# Change --model to use a different model
+args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]
 
 [[phases]]
 name = "builder"
@@ -272,7 +249,7 @@ Print TASK_COMPLETE when done.
 
 ### Phase contracts (optional)
 
-Declare what each phase reads and writes for lineage tracking and early mismatch detection:
+Declare what each phase reads and writes for early mismatch detection:
 
 ```toml
 [[phases]]
@@ -288,19 +265,7 @@ consumes = ["src/**/*.rs"]
 produces = ["REVIEW_NOTES.md"]
 ```
 
-rings warns at startup if `consumes` files don't exist and aren't mentioned in the prompt, and warns after each run if `produces` patterns weren't touched.
-
----
-
-## Automation and CI
-
-Use `--output-format jsonl` for structured output suitable for pipelines:
-
-```bash
-rings run --output-format jsonl workflow.toml | jq 'select(.event == "run_end")'
-```
-
-All structured events go to stdout; errors go to stderr. Interactive prompts are skipped in non-TTY contexts. Exit codes are documented and stable.
+rings warns at startup if `consumes` files don't exist and warns after each run if `produces` patterns weren't touched.
 
 ---
 

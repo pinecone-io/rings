@@ -34,6 +34,8 @@ pub enum SleepResult {
 #[derive(Debug)]
 pub struct BudgetTracker {
     pub cumulative_cost: f64,
+    pub cumulative_input_tokens: u64,
+    pub cumulative_output_tokens: u64,
     pub phase_costs: HashMap<String, f64>,
     pub phase_run_counts: HashMap<String, u32>,
     pub budget_warned_80_global: bool,
@@ -53,6 +55,8 @@ impl BudgetTracker {
     pub fn new() -> Self {
         Self {
             cumulative_cost: 0.0,
+            cumulative_input_tokens: 0,
+            cumulative_output_tokens: 0,
             phase_costs: HashMap::new(),
             phase_run_counts: HashMap::new(),
             budget_warned_80_global: false,
@@ -99,6 +103,14 @@ impl BudgetTracker {
                     .phase_run_counts
                     .entry(entry.phase.clone())
                     .or_insert(0) += 1;
+            }
+
+            // Always accumulate token counts (even if cost is None)
+            if let Some(t) = entry.input_tokens {
+                tracker.cumulative_input_tokens += t;
+            }
+            if let Some(t) = entry.output_tokens {
+                tracker.cumulative_output_tokens += t;
             }
 
             // Skip entries with None cost
@@ -353,6 +365,8 @@ pub struct EngineResult {
     pub completed_cycles: u32,
     pub total_cost_usd: f64,
     pub total_runs: u32,
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
     pub parse_warnings: Vec<crate::cost::ParseWarning>,
     pub failure_reason: Option<FailureReason>,
     /// Per-phase cost and run count, in workflow declaration order.
@@ -568,10 +582,18 @@ pub fn run_workflow(
 
     // Restore cumulative cost from resume point if provided.
     if let Some(ref _r) = resume_from {
-        // Reconstruct cumulative_cost from costs.jsonl
+        // Reconstruct cumulative_cost and token totals from costs.jsonl
         if let Ok(content) = std::fs::read_to_string(&costs_path) {
             for line in content.lines() {
                 if let Ok(entry) = serde_json::from_str::<crate::audit::CostEntry>(line.trim()) {
+                    // Accumulate token counts
+                    if let Some(t) = entry.input_tokens {
+                        ctx.budget.cumulative_input_tokens += t;
+                    }
+                    if let Some(t) = entry.output_tokens {
+                        ctx.budget.cumulative_output_tokens += t;
+                    }
+
                     if let Some(cost) = entry.cost_usd {
                         ctx.budget.cumulative_cost += cost;
                         ctx.budget
@@ -1043,6 +1065,12 @@ pub fn run_workflow(
         // Record cost
         let cost = parse_cost_from_output(&output.combined);
         ctx.budget.cumulative_cost += cost.cost_usd.unwrap_or(0.0);
+        if let Some(t) = cost.input_tokens {
+            ctx.budget.cumulative_input_tokens += t;
+        }
+        if let Some(t) = cost.output_tokens {
+            ctx.budget.cumulative_output_tokens += t;
+        }
         ctx.total_runs += 1;
 
         // Accumulate low-confidence parse warnings
@@ -1109,6 +1137,8 @@ pub fn run_workflow(
                 completed_cycles: ctx.last_cycle,
                 total_cost_usd: ctx.budget.cumulative_cost,
                 total_runs: ctx.total_runs,
+                total_input_tokens: ctx.budget.cumulative_input_tokens,
+                total_output_tokens: ctx.budget.cumulative_output_tokens,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
                 phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1145,6 +1175,8 @@ pub fn run_workflow(
                 completed_cycles: ctx.last_cycle,
                 total_cost_usd: ctx.budget.cumulative_cost,
                 total_runs: ctx.total_runs,
+                total_input_tokens: ctx.budget.cumulative_input_tokens,
+                total_output_tokens: ctx.budget.cumulative_output_tokens,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
                 phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1216,6 +1248,8 @@ pub fn run_workflow(
                 completed_cycles: ctx.last_cycle,
                 total_cost_usd: ctx.budget.cumulative_cost,
                 total_runs: ctx.total_runs,
+                total_input_tokens: ctx.budget.cumulative_input_tokens,
+                total_output_tokens: ctx.budget.cumulative_output_tokens,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: Some(failure_reason),
                 phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1341,6 +1375,8 @@ pub fn run_workflow(
                 completed_cycles: ctx.last_cycle,
                 total_cost_usd: ctx.budget.cumulative_cost,
                 total_runs: ctx.total_runs,
+                total_input_tokens: ctx.budget.cumulative_input_tokens,
+                total_output_tokens: ctx.budget.cumulative_output_tokens,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
                 phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1424,6 +1460,8 @@ pub fn run_workflow(
                     completed_cycles: ctx.last_cycle,
                     total_cost_usd: ctx.budget.cumulative_cost,
                     total_runs: ctx.total_runs,
+                    total_input_tokens: ctx.budget.cumulative_input_tokens,
+                    total_output_tokens: ctx.budget.cumulative_output_tokens,
                     parse_warnings: ctx.parse_warnings,
                     failure_reason: None,
                     phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1506,6 +1544,8 @@ pub fn run_workflow(
                             completed_cycles: ctx.last_cycle,
                             total_cost_usd: ctx.budget.cumulative_cost,
                             total_runs: ctx.total_runs,
+                            total_input_tokens: ctx.budget.cumulative_input_tokens,
+                            total_output_tokens: ctx.budget.cumulative_output_tokens,
                             parse_warnings: ctx.parse_warnings,
                             failure_reason: None,
                             phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1584,6 +1624,8 @@ pub fn run_workflow(
                     completed_cycles: ctx.last_cycle,
                     total_cost_usd: ctx.budget.cumulative_cost,
                     total_runs: ctx.total_runs,
+                    total_input_tokens: ctx.budget.cumulative_input_tokens,
+                    total_output_tokens: ctx.budget.cumulative_output_tokens,
                     parse_warnings: ctx.parse_warnings,
                     failure_reason: None,
                     phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1612,6 +1654,8 @@ pub fn run_workflow(
                 completed_cycles: ctx.last_cycle,
                 total_cost_usd: ctx.budget.cumulative_cost,
                 total_runs: ctx.total_runs,
+                total_input_tokens: ctx.budget.cumulative_input_tokens,
+                total_output_tokens: ctx.budget.cumulative_output_tokens,
                 parse_warnings: ctx.parse_warnings,
                 failure_reason: None,
                 phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
@@ -1645,6 +1689,8 @@ pub fn run_workflow(
         completed_cycles: ctx.last_cycle,
         total_cost_usd: ctx.budget.cumulative_cost,
         total_runs: ctx.total_runs,
+        total_input_tokens: ctx.budget.cumulative_input_tokens,
+        total_output_tokens: ctx.budget.cumulative_output_tokens,
         parse_warnings: ctx.parse_warnings,
         failure_reason: None,
         phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),

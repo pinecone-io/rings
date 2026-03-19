@@ -41,3 +41,8 @@ testing = []
 name = "engine_integration"
 path = "tests/engine_integration.rs"
 required-features = ["testing"]
+
+[[test]]
+name = "token_tracking"
+path = "tests/token_tracking.rs"
+required-features = ["testing"]

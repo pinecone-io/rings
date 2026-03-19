@@ -1,162 +1,73 @@
-## Batch: Visual Output Overhaul — 2026-03-19
+## Batch: Token Display + Model Indicator — 2026-03-19
 
-**Features:** F-094 (`--no-color`), F-125 (Human Output Mode), F-129 (Animated Spinner),
-F-183 (Color System), F-184 (Phase Cost Bar Chart), F-185 (Budget Gauge),
-F-186 (Styled Startup Header), F-187 (Styled Cycle Transitions),
-F-188 (Styled List Table), F-189 (Styled Dry Run Output)
+**Features:** F-190 (Cumulative Token Display), F-191 (Model Name Display)
 
-**Design direction:** Turborepo/Vercel aesthetic — minimal, clean, subtle colors, generous whitespace.
-**Dependency:** `owo-colors` (zero-alloc) + hand-rolled spinner. No throwaway work if TUI comes later.
+**Context:** Token counts are already parsed per-run (`input_tokens`, `output_tokens` in `RunCost` / `CostEntry`) but not accumulated or shown in the status line or summaries. Model name is not yet captured from executor args (F-181 prerequisite for full support), but we can extract it from existing args today for the common case.
 
-### Task 1: Style Module Foundation
+### Task 1: Cumulative Token Tracking in Engine
 
-**Files:** `Cargo.toml`, `src/style.rs` (new), `src/lib.rs`, `src/cli.rs`, `src/main.rs`
+**Files:** `src/engine.rs`
 
 **Steps:**
-1. [x] Add `owo-colors = "4"` to `[dependencies]` in `Cargo.toml`
-2. [x] Create `src/style.rs` with:
-   - `color_enabled() -> bool` — checks an `AtomicBool` (default: true for TTY, false for non-TTY)
-   - `set_no_color()` — sets the `AtomicBool` to false
-   - Semantic helper functions: `dim(s)`, `bold(s)`, `success(s)`, `error(s)`, `warn(s)`, `accent(s)`, `muted(s)` — each applies the corresponding `owo-colors` style if `color_enabled()`, otherwise returns the input unchanged
-   - `SPINNER_FRAMES: &[&str] = &["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]`
-   - `spinner_frame(tick: usize) -> &'static str` — returns `SPINNER_FRAMES[tick % SPINNER_FRAMES.len()]`
-3. [x] Register `pub mod style;` in `src/lib.rs`
-4. [x] Add `--no-color` to CLI global args in `src/cli.rs` (global flag, available on all subcommands)
-5. [x] Wire in `src/main.rs`: check `--no-color` flag + `NO_COLOR` env var + TTY detection on stderr; call `set_no_color()` if any are true
+1. - [x] Add `cumulative_input_tokens: u64` and `cumulative_output_tokens: u64` fields to `BudgetTracker`
+2. - [x] After each successful run's cost is parsed, accumulate token counts: `if let Some(t) = cost.input_tokens { ctx.budget.cumulative_input_tokens += t; }` (same for output)
+3. - [x] On resume, reconstruct cumulative tokens from `costs.jsonl` in the existing `reconstruct_from_costs()` pass (same loop that rebuilds `cumulative_cost` and rolling windows)
+4. - [x] Add `total_input_tokens: u64` and `total_output_tokens: u64` to `EngineResult` so summaries can display them
 
 **Tests:**
-- [x] `color_enabled` respects `AtomicBool` toggle
-- [x] `color_enabled` respects `NO_COLOR` env var
-- [x] `spinner_frame` cycles correctly through all 10 frames
-- [x] `dim`/`bold`/`success`/`error`/`warn`/`accent`/`muted` return unstyled text when color disabled
-
-**No other tasks depend on the test file; all tasks depend on `src/style.rs` existing.**
+- [x] Cumulative tokens increment correctly across multiple runs
+- [x] Resume reconstructs token totals from costs.jsonl
+- [x] Runs with `None` tokens don't affect totals
 
 ---
 
-### Task 2: Animated Spinner + Rich Status Line (depends Task 1)
+### Task 2: Token Display in Status Line
 
-**Files:** `src/display.rs`, `src/engine.rs`
+**Files:** `src/display.rs`
 
 **Steps:**
-1. [x] Rewrite `print_run_start`, `print_run_elapsed`, `print_run_result` in `src/display.rs`
-2. [x] New signatures accept `max_cycles` + `cumulative_cost` + `tick: usize` (for spinner frame)
-3. [x] Status line format: `⠹  Cycle 3/10  │  builder  2/3  │  $1.47 total  │  02:34`
-   - Spinner via `style::spinner_frame(tick)`
-   - Separators (`│`) via `style::dim()`
-   - Cycle number via `style::bold()`
-   - Cost via `style::accent()`
-   - Elapsed via `style::muted()`
-4. [x] Engine poll loop (`src/engine.rs` ~line 837): pass tick counter + cumulative cost; update spinner every 100ms (already polling at 100ms; currently only updates display per second — remove the 1s gate)
-5. [x] Non-TTY: suppress spinner animation (print static status line once per run, no carriage return rewrite)
+1. - [ ] Update `format_status_line` / `print_run_elapsed` signatures to accept `cumulative_input_tokens: u64` and `cumulative_output_tokens: u64`
+2. - [ ] Add `format_token_count(n: u64) -> String` helper: below 1000 → plain integer (e.g., `842`), 1000+ → one decimal `k` (e.g., `1.2k`, `18.2k`), 1M+ → one decimal `M` (e.g., `1.1M`)
+3. - [ ] Append token segment to status line: `│  18.2k in · 4.1k out` — rendered **dim**, separator **dim**
+4. - [ ] Omit the token segment entirely when both cumulative counts are 0 (no data parsed yet)
+5. - [ ] Update call sites in `src/engine.rs` poll loop to pass the new fields
 
 **Tests:**
-- [x] Status line format contains expected segments (cycle, phase, cost, elapsed)
-- [x] Spinner frame advances on successive ticks
-- [x] Non-TTY suppresses carriage-return rewrite
+- [ ] `format_token_count`: 0 → `"0"`, 999 → `"999"`, 1000 → `"1.0k"`, 18200 → `"18.2k"`, 1100000 → `"1.1M"`
+- [ ] Status line includes token segment when tokens > 0
+- [ ] Status line omits token segment when both are 0
 
 ---
 
-### Task 3: Styled Startup Header (depends Task 1)
+### Task 3: Token Display in Summaries
 
 **Files:** `src/display.rs`, `src/main.rs`
 
 **Steps:**
-1. [x] Rewrite `print_run_header` in `src/display.rs`
-2. [x] New signature: accept workflow details struct or individual params (phases, max_cycles, budget_cap, context_dir, output_dir, version)
-3. [x] Layout:
-   ```
-   rings v0.1.0                    ← style::bold()
-
-     Workflow   my-task.rings.toml  ← label style::dim(), value plain
-     Context    ./src
-     Phases     builder ×10, reviewer ×1
-     Max        50 cycles · 550 runs
-     Budget     $5.00               ← style::accent()
-     Output     ~/.local/share/...  ← style::muted()
-   ```
-4. [x] Budget line only shown when `budget_cap_usd` is Some
-5. [x] Update call sites in `src/main.rs` (`run_inner` ~line 243, `resume_inner` ~line 560)
+1. - [ ] Update `print_completion` to accept and display total token counts: `Tokens      18,204 input · 4,102 output` — values in **dim**, with comma-separated formatting
+2. - [ ] Update `print_cancellation` to show the same token line
+3. - [ ] Update call sites in `src/main.rs` to pass `EngineResult.total_input_tokens` / `total_output_tokens`
 
 **Tests:**
-- [x] Output contains expected labels (`Workflow`, `Context`, `Phases`, `Max`, `Output`)
-- [x] Budget line present when budget_cap is Some, absent when None
-- [x] Respects no-color (no ANSI escapes when color disabled)
+- [ ] Completion output includes token line when tokens > 0
+- [ ] Token line omitted when both are 0
+- [ ] Comma formatting correct (e.g., `18,204`)
 
 ---
 
-### Task 4: Styled Cycle Transitions (depends Task 1)
+### Task 4: Model Name Detection + Startup Display
 
-**Files:** `src/display.rs`, `src/engine.rs`
-
-**Steps:**
-1. [x] Rewrite `print_cycle_header` and `print_cycle_cost` in `src/display.rs`
-2. [x] Merge into a single `print_cycle_boundary(cycle: u32, prev_cycle_cost: Option<f64>)`
-3. [x] Format: `── Cycle 2 ────────────────────────── $0.14 prev ──`
-   - Divider (`──`) via `style::dim()`
-   - Cycle number via `style::bold()`
-   - Cost via `style::accent()`
-   - First cycle (no prev cost): `── Cycle 1 ──────────────────────────────────────`
-4. [x] Update call sites in `src/engine.rs` (~lines 597-603) to call the merged function
-
-**Tests:**
-- [x] Output format matches spec pattern
-- [x] First cycle has no cost suffix
-- [x] Subsequent cycles show previous cycle cost in cyan
-
----
-
-### Task 5: Richer Summaries — Completion, Cancellation, Errors (depends Task 1)
-
-**Files:** `src/display.rs`, `src/style.rs` (or display.rs), `src/engine.rs`, `src/main.rs`
+**Files:** `src/workflow.rs`, `src/display.rs`, `src/main.rs`
 
 **Steps:**
-1. [x] Add bar chart rendering helper: `render_bar_chart(items: &[(String, f64, u32)], max_width: usize) -> Vec<String>`
-   - `█` blocks proportional to cost share, max `max_width` chars wide (default 20)
-   - Phase name left-aligned, cost in accent, run count in parens
-2. [x] Add budget gauge rendering helper: `render_budget_gauge(spent: f64, cap: f64, width: usize) -> String`
-   - `█` for consumed, `░` for remaining
-   - Color: green < 60%, yellow 60–85%, red > 85%
-3. [x] Rewrite `print_completion` to accept `phase_costs: &[(String, f64, u32)]` (name, cost, runs)
-   - Green `✓` via `style::success()`
-   - Cost values via `style::accent()`
-   - Labels via `style::dim()`
-   - Include bar chart and budget gauge
-4. [x] Expose `phase_costs` and `phase_run_counts` from `EngineResult` in `src/engine.rs`
-5. [x] Update `print_cancellation`: red `✗` via `style::error()`, resume command via `style::accent()` + `style::bold()`, include bar chart
-6. [x] Update `print_quota_error`, `print_auth_error`, `print_executor_error`: red `✗`, resume command bold cyan
-7. [x] Update `print_budget_cap_reached` with budget gauge
-8. [x] Update `print_parse_warnings` with yellow coloring via `style::warn()`
-9. [x] Update all call sites in `src/main.rs`
+1. - [ ] Add `pub fn detect_model_name(&self) -> Option<String>` to `Workflow` — scans `executor.args` and each phase's `extra_args` for `--model` followed by a value. Returns the global model if all phases use the same one, or `None` if mixed or undetectable.
+2. - [ ] Update `print_run_header` to accept `model: Option<&str>` — if `Some`, show `Model      claude-sonnet-4-5` in **dim**; if `None`, show `Model      (default)` in **dim** to indicate Claude Code's configured default is being used
+3. - [ ] Update call sites in `src/main.rs` (`run_inner`, `resume_inner`) to pass `workflow.detect_model_name().as_deref()`
 
 **Tests:**
-- [x] Bar chart proportions: 100% cost in one phase → full bar; 50/50 → equal bars
-- [x] Budget gauge: < 60% → green, 70% → yellow, 90% → red
-- [x] Budget gauge: 0% → all `░`, 100% → all `█`
-- [x] Phase breakdown format includes phase name, cost, run count
-- [x] Completion output includes `✓`; cancellation includes `✗`
-
----
-
-### Task 6: Styled List + Dry Run (depends Task 1)
-
-**Files:** `src/main.rs`
-
-**Steps:**
-1. [x] Update `list_inner` in `src/main.rs` (~lines 787-824):
-   - Header row via `style::bold()`
-   - Status column: `completed` → `style::success()`, `incomplete`/`canceled` → `style::warn()`, `failed` → `style::error()`
-   - Cost column via `style::accent()`
-   - Divider lines via `style::dim()`
-2. [x] Update dry-run output block in `src/main.rs` (~lines 110-157):
-   - Labels via `style::dim()`
-   - Values via `style::bold()`
-   - `✓` (signal found) via `style::success()`, `✗` (not found) via `style::error()`
-   - Phase table header via `style::bold()`
-
-**Tests:**
-- [x] List output applies success color to "completed" status
-- [x] List output applies error color to "failed" status
-- [x] Dry-run `✓` uses success styling, `✗` uses error styling
+- [ ] `detect_model_name` returns `Some("claude-sonnet-4-5")` when `args = ["--model", "claude-sonnet-4-5"]`
+- [ ] Returns `None` when no `--model` flag present
+- [ ] Returns `None` when phases use different models
+- [ ] Startup header shows model name when detected, shows `(default)` when not
 
 ---

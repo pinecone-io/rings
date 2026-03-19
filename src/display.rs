@@ -636,6 +636,10 @@ pub fn print_parse_warnings(warnings: &[crate::cost::ParseWarning]) {
 mod tests {
     use super::*;
     use crate::engine::RunSpec;
+    use std::sync::Mutex;
+
+    // Serialize tests that mutate global color state to prevent races.
+    static COLOR_LOCK: Mutex<()> = Mutex::new(());
 
     fn make_run_spec() -> RunSpec {
         RunSpec {
@@ -652,6 +656,7 @@ mod tests {
     #[test]
     fn status_line_contains_expected_segments() {
         // Disable color so we can match plain text
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         std::env::remove_var("NO_COLOR");
 
@@ -676,6 +681,7 @@ mod tests {
     #[test]
     fn spinner_frame_advances_on_successive_ticks() {
         let run_spec = make_run_spec();
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         std::env::remove_var("NO_COLOR");
 
@@ -708,6 +714,7 @@ mod tests {
 
     #[test]
     fn run_header_contains_expected_labels() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let (phases, output) = make_header_params();
         let params = RunHeaderParams {
@@ -738,6 +745,7 @@ mod tests {
 
     #[test]
     fn run_header_budget_line_present_when_cap_set() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let (phases, output) = make_header_params();
         let params = RunHeaderParams {
@@ -760,6 +768,7 @@ mod tests {
 
     #[test]
     fn run_header_budget_line_absent_when_no_cap() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let (phases, output) = make_header_params();
         let params = RunHeaderParams {
@@ -781,6 +790,7 @@ mod tests {
 
     #[test]
     fn run_header_no_ansi_when_color_disabled() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let (phases, output) = make_header_params();
         let params = RunHeaderParams {
@@ -813,6 +823,7 @@ mod tests {
 
     #[test]
     fn cycle_boundary_first_cycle_no_cost_suffix() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let s = format_cycle_boundary(1, None);
         assert!(s.contains("Cycle 1"), "missing cycle number: {s}");
@@ -827,6 +838,7 @@ mod tests {
 
     #[test]
     fn cycle_boundary_subsequent_cycle_shows_prev_cost() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let s = format_cycle_boundary(2, Some(0.14));
         assert!(s.contains("Cycle 2"), "missing cycle number: {s}");
@@ -837,6 +849,7 @@ mod tests {
 
     #[test]
     fn cycle_boundary_format_matches_spec_pattern() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         // Without color, the format should be: "── Cycle N <dashes>"
         // or "── Cycle N <dashes> $X.XX prev ──"
@@ -860,6 +873,7 @@ mod tests {
 
     #[test]
     fn bar_chart_full_single_phase_is_full_bar() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let items = vec![("builder".to_string(), 1.0, 10u32)];
         let lines = render_bar_chart(&items, 20);
@@ -876,6 +890,7 @@ mod tests {
 
     #[test]
     fn bar_chart_fifty_fifty_equal_bars() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let items = vec![
             ("builder".to_string(), 0.5, 5u32),
@@ -899,6 +914,7 @@ mod tests {
 
     #[test]
     fn bar_chart_includes_phase_name_cost_runs() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let items = vec![("builder".to_string(), 0.89, 10u32)];
         let lines = render_bar_chart(&items, 20);
@@ -918,6 +934,7 @@ mod tests {
 
     #[test]
     fn budget_gauge_zero_spent_all_empty() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let gauge = render_budget_gauge(0.0, 5.0, 20);
         assert!(
@@ -930,6 +947,7 @@ mod tests {
 
     #[test]
     fn budget_gauge_full_all_filled() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let gauge = render_budget_gauge(5.0, 5.0, 20);
         assert!(
@@ -942,6 +960,7 @@ mod tests {
 
     #[test]
     fn budget_gauge_shows_cost_and_percentage() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         // 22% spent
         let gauge = render_budget_gauge(1.1, 5.0, 20);
@@ -955,6 +974,7 @@ mod tests {
 
     #[test]
     fn completion_output_contains_expected_fields() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let phase_costs = vec![
             ("builder".to_string(), 0.89, 10u32),
@@ -987,6 +1007,7 @@ mod tests {
 
     #[test]
     fn completion_output_no_budget_when_no_cap() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let phase_costs: Vec<(String, f64, u32)> = vec![];
         let s = format_completion(
@@ -1009,6 +1030,7 @@ mod tests {
 
     #[test]
     fn completion_output_contains_checkmark() {
+        let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
         let phase_costs: Vec<(String, f64, u32)> = vec![];
         let s = format_completion(

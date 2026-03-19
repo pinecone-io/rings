@@ -58,6 +58,7 @@ fn make_config(dir: &tempfile::TempDir) -> EngineConfig {
         run_id: "test-run-id".to_string(),
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
     }
 }
 

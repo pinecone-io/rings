@@ -57,8 +57,8 @@ fn main() {
     }
 
     let exit_code = match cli.command {
-        Command::Run(args) => cmd_run(args, Arc::clone(&cancel)),
-        Command::Resume(args) => cmd_resume(args, Arc::clone(&cancel)),
+        Command::Run(args) => cmd_run(args, Arc::clone(&cancel), cli.output_format),
+        Command::Resume(args) => cmd_resume(args, Arc::clone(&cancel), cli.output_format),
         Command::List(args) => cmd_list(args, cli.output_format),
         Command::Show(args) => cmd_show(args, cli.output_format),
         Command::Inspect(args) => cmd_inspect(args, cli.output_format),
@@ -70,8 +70,8 @@ fn main() {
     std::process::exit(exit_code);
 }
 
-fn cmd_run(args: cli::RunArgs, cancel: Arc<CancelState>) -> i32 {
-    match run_inner(args, cancel) {
+fn cmd_run(args: cli::RunArgs, cancel: Arc<CancelState>, output_format: cli::OutputFormat) -> i32 {
+    match run_inner(args, cancel, output_format) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {e:#}");
@@ -80,7 +80,11 @@ fn cmd_run(args: cli::RunArgs, cancel: Arc<CancelState>) -> i32 {
     }
 }
 
-fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
+fn run_inner(
+    args: cli::RunArgs,
+    cancel: Arc<CancelState>,
+    output_format: cli::OutputFormat,
+) -> Result<i32> {
     // Load and validate workflow
     let toml_content = std::fs::read_to_string(&args.workflow_file)
         .with_context(|| format!("Cannot read workflow file: {}", args.workflow_file))?;
@@ -256,7 +260,10 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     meta.write(&run_dir.join("run.toml"))?;
 
     // Advisory check: no budget cap configured
-    if workflow.budget_cap_usd.is_none() && args.budget_cap.is_none() {
+    if output_format == cli::OutputFormat::Human
+        && workflow.budget_cap_usd.is_none()
+        && args.budget_cap.is_none()
+    {
         eprintln!(
             "⚠  Warning: No budget cap configured. \
              Use --budget-cap or budget_cap_usd to prevent unbounded spend."
@@ -264,7 +271,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     }
 
     // Advisory check: completion signal in prompts
-    if !args.no_completion_check {
+    if output_format == cli::OutputFormat::Human && !args.no_completion_check {
         let mut prompt_texts: Vec<String> = Vec::new();
         for phase in &workflow.phases {
             if let Some(text) = &phase.prompt_text {
@@ -286,22 +293,24 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         }
     }
 
-    let phase_name_runs: Vec<(String, u32)> = workflow
-        .phases
-        .iter()
-        .map(|p| (p.name.clone(), p.runs_per_cycle))
-        .collect();
-    let detected_model = workflow.detect_model_name();
-    display::print_run_header(&display::RunHeaderParams {
-        workflow_file: &args.workflow_file,
-        context_dir: &workflow.context_dir,
-        phases: &phase_name_runs,
-        max_cycles: workflow.max_cycles,
-        budget_cap_usd: workflow.budget_cap_usd,
-        output_dir: &run_dir.to_string_lossy(),
-        version: env!("CARGO_PKG_VERSION"),
-        model: detected_model.as_deref(),
-    });
+    if output_format == cli::OutputFormat::Human {
+        let phase_name_runs: Vec<(String, u32)> = workflow
+            .phases
+            .iter()
+            .map(|p| (p.name.clone(), p.runs_per_cycle))
+            .collect();
+        let detected_model = workflow.detect_model_name();
+        display::print_run_header(&display::RunHeaderParams {
+            workflow_file: &args.workflow_file,
+            context_dir: &workflow.context_dir,
+            phases: &phase_name_runs,
+            max_cycles: workflow.max_cycles,
+            budget_cap_usd: workflow.budget_cap_usd,
+            output_dir: &run_dir.to_string_lossy(),
+            version: env!("CARGO_PKG_VERSION"),
+            model: detected_model.as_deref(),
+        });
+    }
 
     // Acquire context directory lock
     #[cfg(unix)]
@@ -335,6 +344,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         ancestry_continuation_of: continuation_of,
         ancestry_depth,
         no_contract_check: args.no_contract_check,
+        output_format,
     };
 
     let run_start = std::time::Instant::now();
@@ -371,114 +381,120 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
     };
     meta.update_status(&run_dir.join("run.toml"), final_status)?;
 
-    // Print completion, error, or max-cycles summary based on exit code
-    match result.exit_code {
-        0 => {
-            // Completion: read state.json to get last cycle/phase/run
-            let state_path = run_dir.join("state.json");
-            if let Ok(state) = state::StateFile::read(&state_path) {
-                let phase = workflow.phases.get(state.last_completed_phase_index);
-                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
-                display::print_completion(
-                    state.last_completed_cycle,
-                    state.last_completed_run,
-                    phase_name,
+    // Print completion, error, or max-cycles summary based on exit code (human mode only)
+    if output_format == cli::OutputFormat::Human {
+        match result.exit_code {
+            0 => {
+                // Completion: read state.json to get last cycle/phase/run
+                let state_path = run_dir.join("state.json");
+                if let Ok(state) = state::StateFile::read(&state_path) {
+                    let phase = workflow.phases.get(state.last_completed_phase_index);
+                    let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                    display::print_completion(
+                        state.last_completed_cycle,
+                        state.last_completed_run,
+                        phase_name,
+                        result.total_cost_usd,
+                        result.total_runs,
+                        total_elapsed_secs,
+                        &run_dir.to_string_lossy(),
+                        &result.phase_costs,
+                        workflow.budget_cap_usd,
+                        result.total_input_tokens,
+                        result.total_output_tokens,
+                    );
+                }
+            }
+            1 => {
+                // Max cycles reached
+                display::print_max_cycles(
+                    workflow.max_cycles,
                     result.total_cost_usd,
                     result.total_runs,
-                    total_elapsed_secs,
-                    &run_dir.to_string_lossy(),
-                    &result.phase_costs,
-                    workflow.budget_cap_usd,
-                    result.total_input_tokens,
-                    result.total_output_tokens,
+                    &run_id,
                 );
             }
-        }
-        1 => {
-            // Max cycles reached
-            display::print_max_cycles(
-                workflow.max_cycles,
-                result.total_cost_usd,
-                result.total_runs,
-                &run_id,
-            );
-        }
-        3 => {
-            // Executor error: dispatch based on failure_reason
-            let state_path = run_dir.join("state.json");
-            if let Ok(state) = state::StateFile::read(&state_path) {
-                let failed_run_number = state.last_completed_run + 1;
-                let log_path = run_dir
-                    .join("runs")
-                    .join(format!("{:03}.log", failed_run_number));
-                let phase = workflow.phases.get(state.last_completed_phase_index);
-                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+            3 => {
+                // Executor error: dispatch based on failure_reason
+                let state_path = run_dir.join("state.json");
+                if let Ok(state) = state::StateFile::read(&state_path) {
+                    let failed_run_number = state.last_completed_run + 1;
+                    let log_path = run_dir
+                        .join("runs")
+                        .join(format!("{:03}.log", failed_run_number));
+                    let phase = workflow.phases.get(state.last_completed_phase_index);
+                    let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
 
-                match result.failure_reason {
-                    Some(state::FailureReason::Quota) => {
-                        display::print_quota_error(
-                            failed_run_number,
-                            state.last_completed_cycle,
-                            phase_name,
-                            &run_id,
-                            state.cumulative_cost_usd,
-                            &log_path.to_string_lossy(),
-                        );
-                    }
-                    Some(state::FailureReason::Auth) => {
-                        display::print_auth_error(
-                            failed_run_number,
-                            state.last_completed_cycle,
-                            phase_name,
-                            &run_id,
-                            &log_path.to_string_lossy(),
-                        );
-                    }
-                    _ => {
-                        display::print_executor_error(
-                            failed_run_number,
-                            3,
-                            &run_id,
-                            &log_path.to_string_lossy(),
-                        );
+                    match result.failure_reason {
+                        Some(state::FailureReason::Quota) => {
+                            display::print_quota_error(
+                                failed_run_number,
+                                state.last_completed_cycle,
+                                phase_name,
+                                &run_id,
+                                state.cumulative_cost_usd,
+                                &log_path.to_string_lossy(),
+                            );
+                        }
+                        Some(state::FailureReason::Auth) => {
+                            display::print_auth_error(
+                                failed_run_number,
+                                state.last_completed_cycle,
+                                phase_name,
+                                &run_id,
+                                &log_path.to_string_lossy(),
+                            );
+                        }
+                        _ => {
+                            display::print_executor_error(
+                                failed_run_number,
+                                3,
+                                &run_id,
+                                &log_path.to_string_lossy(),
+                            );
+                        }
                     }
                 }
             }
-        }
-        4 => {
-            // Budget cap reached: already printed inline by engine; no extra output needed here
-        }
-        130 => {
-            // Cancellation: load the state that was saved during cancellation to get last run position
-            let state_path = run_dir.join("state.json");
-            if let Ok(state) = state::StateFile::read(&state_path) {
-                let phase = workflow.phases.get(state.last_completed_phase_index);
-                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
-                display::print_cancellation(
-                    &run_id,
-                    state.last_completed_cycle,
-                    phase_name,
-                    result.total_cost_usd,
-                    result.total_runs,
-                    &result.phase_costs,
-                    &state.claude_resume_commands,
-                    &run_dir.to_string_lossy(),
-                    result.total_input_tokens,
-                    result.total_output_tokens,
-                );
+            4 => {
+                // Budget cap reached: already printed inline by engine; no extra output needed here
             }
+            130 => {
+                // Cancellation: load the state that was saved during cancellation to get last run position
+                let state_path = run_dir.join("state.json");
+                if let Ok(state) = state::StateFile::read(&state_path) {
+                    let phase = workflow.phases.get(state.last_completed_phase_index);
+                    let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                    display::print_cancellation(
+                        &run_id,
+                        state.last_completed_cycle,
+                        phase_name,
+                        result.total_cost_usd,
+                        result.total_runs,
+                        &result.phase_costs,
+                        &state.claude_resume_commands,
+                        &run_dir.to_string_lossy(),
+                        result.total_input_tokens,
+                        result.total_output_tokens,
+                    );
+                }
+            }
+            _ => {}
         }
-        _ => {}
-    }
 
-    // Print low-confidence cost parse warnings
-    display::print_parse_warnings(&result.parse_warnings);
+        // Print low-confidence cost parse warnings
+        display::print_parse_warnings(&result.parse_warnings);
+    }
 
     Ok(result.exit_code)
 }
 
-fn cmd_resume(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> i32 {
-    match resume_inner(args, cancel) {
+fn cmd_resume(
+    args: cli::ResumeArgs,
+    cancel: Arc<CancelState>,
+    output_format: cli::OutputFormat,
+) -> i32 {
+    match resume_inner(args, cancel, output_format) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {e:#}");
@@ -487,7 +503,11 @@ fn cmd_resume(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> i32 {
     }
 }
 
-fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> {
+fn resume_inner(
+    args: cli::ResumeArgs,
+    cancel: Arc<CancelState>,
+    output_format: cli::OutputFormat,
+) -> Result<i32> {
     // Find old run directory to resume from
     let output_base = resolve_output_dir(args.output_dir.as_deref(), None);
     let old_run_dir = output_base.join(&args.run_id);
@@ -617,34 +637,39 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     }
 
     // Advisory check: no budget cap configured
-    if workflow.budget_cap_usd.is_none() && args.budget_cap.is_none() {
+    if output_format == cli::OutputFormat::Human
+        && workflow.budget_cap_usd.is_none()
+        && args.budget_cap.is_none()
+    {
         eprintln!(
             "⚠  Warning: No budget cap configured. \
              Use --budget-cap or budget_cap_usd to prevent unbounded spend."
         );
     }
 
-    eprintln!(
-        "Resuming from {}  (previous cost: ${:.3})",
-        style::dim(&args.run_id),
-        saved_state.cumulative_cost_usd
-    );
-    let phase_name_runs_resume: Vec<(String, u32)> = workflow
-        .phases
-        .iter()
-        .map(|p| (p.name.clone(), p.runs_per_cycle))
-        .collect();
-    let detected_model_resume = workflow.detect_model_name();
-    display::print_run_header(&display::RunHeaderParams {
-        workflow_file: &meta.workflow_file,
-        context_dir: &workflow.context_dir,
-        phases: &phase_name_runs_resume,
-        max_cycles: workflow.max_cycles,
-        budget_cap_usd: workflow.budget_cap_usd,
-        output_dir: &run_dir.to_string_lossy(),
-        version: env!("CARGO_PKG_VERSION"),
-        model: detected_model_resume.as_deref(),
-    });
+    if output_format == cli::OutputFormat::Human {
+        eprintln!(
+            "Resuming from {}  (previous cost: ${:.3})",
+            style::dim(&args.run_id),
+            saved_state.cumulative_cost_usd
+        );
+        let phase_name_runs_resume: Vec<(String, u32)> = workflow
+            .phases
+            .iter()
+            .map(|p| (p.name.clone(), p.runs_per_cycle))
+            .collect();
+        let detected_model_resume = workflow.detect_model_name();
+        display::print_run_header(&display::RunHeaderParams {
+            workflow_file: &meta.workflow_file,
+            context_dir: &workflow.context_dir,
+            phases: &phase_name_runs_resume,
+            max_cycles: workflow.max_cycles,
+            budget_cap_usd: workflow.budget_cap_usd,
+            output_dir: &run_dir.to_string_lossy(),
+            version: env!("CARGO_PKG_VERSION"),
+            model: detected_model_resume.as_deref(),
+        });
+    }
 
     // Acquire context directory lock
     #[cfg(unix)]
@@ -683,6 +708,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         ancestry_continuation_of: None, // continuation_of is not set on resume
         ancestry_depth: 1,              // resumed runs always start at depth 1
         no_contract_check: args.no_contract_check,
+        output_format,
     };
 
     let resume_point = Some(ResumePoint {
@@ -728,108 +754,110 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
     };
     meta.update_status(&meta_path, final_status)?;
 
-    // Print completion, error, or max-cycles summary based on exit code
-    match result.exit_code {
-        0 => {
-            // Completion: read state.json to get last cycle/phase/run
-            let state_path = run_dir.join("state.json");
-            if let Ok(state) = state::StateFile::read(&state_path) {
-                let phase = workflow.phases.get(state.last_completed_phase_index);
-                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
-                display::print_completion(
-                    state.last_completed_cycle,
-                    state.last_completed_run,
-                    phase_name,
+    // Print completion, error, or max-cycles summary based on exit code (human mode only)
+    if output_format == cli::OutputFormat::Human {
+        match result.exit_code {
+            0 => {
+                // Completion: read state.json to get last cycle/phase/run
+                let state_path = run_dir.join("state.json");
+                if let Ok(state) = state::StateFile::read(&state_path) {
+                    let phase = workflow.phases.get(state.last_completed_phase_index);
+                    let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                    display::print_completion(
+                        state.last_completed_cycle,
+                        state.last_completed_run,
+                        phase_name,
+                        result.total_cost_usd,
+                        result.total_runs,
+                        total_elapsed_secs,
+                        &run_dir.to_string_lossy(),
+                        &result.phase_costs,
+                        workflow.budget_cap_usd,
+                        result.total_input_tokens,
+                        result.total_output_tokens,
+                    );
+                }
+            }
+            1 => {
+                // Max cycles reached
+                display::print_max_cycles(
+                    workflow.max_cycles,
                     result.total_cost_usd,
                     result.total_runs,
-                    total_elapsed_secs,
-                    &run_dir.to_string_lossy(),
-                    &result.phase_costs,
-                    workflow.budget_cap_usd,
-                    result.total_input_tokens,
-                    result.total_output_tokens,
+                    &new_run_id,
                 );
             }
-        }
-        1 => {
-            // Max cycles reached
-            display::print_max_cycles(
-                workflow.max_cycles,
-                result.total_cost_usd,
-                result.total_runs,
-                &new_run_id,
-            );
-        }
-        3 => {
-            // Executor error: dispatch based on failure_reason
-            let state_path = run_dir.join("state.json");
-            if let Ok(state) = state::StateFile::read(&state_path) {
-                let failed_run_number = state.last_completed_run + 1;
-                let log_path = run_dir
-                    .join("runs")
-                    .join(format!("{:03}.log", failed_run_number));
-                let phase = workflow.phases.get(state.last_completed_phase_index);
-                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+            3 => {
+                // Executor error: dispatch based on failure_reason
+                let state_path = run_dir.join("state.json");
+                if let Ok(state) = state::StateFile::read(&state_path) {
+                    let failed_run_number = state.last_completed_run + 1;
+                    let log_path = run_dir
+                        .join("runs")
+                        .join(format!("{:03}.log", failed_run_number));
+                    let phase = workflow.phases.get(state.last_completed_phase_index);
+                    let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
 
-                match result.failure_reason {
-                    Some(state::FailureReason::Quota) => {
-                        display::print_quota_error(
-                            failed_run_number,
-                            state.last_completed_cycle,
-                            phase_name,
-                            &new_run_id,
-                            state.cumulative_cost_usd,
-                            &log_path.to_string_lossy(),
-                        );
-                    }
-                    Some(state::FailureReason::Auth) => {
-                        display::print_auth_error(
-                            failed_run_number,
-                            state.last_completed_cycle,
-                            phase_name,
-                            &new_run_id,
-                            &log_path.to_string_lossy(),
-                        );
-                    }
-                    _ => {
-                        display::print_executor_error(
-                            failed_run_number,
-                            3,
-                            &new_run_id,
-                            &log_path.to_string_lossy(),
-                        );
+                    match result.failure_reason {
+                        Some(state::FailureReason::Quota) => {
+                            display::print_quota_error(
+                                failed_run_number,
+                                state.last_completed_cycle,
+                                phase_name,
+                                &new_run_id,
+                                state.cumulative_cost_usd,
+                                &log_path.to_string_lossy(),
+                            );
+                        }
+                        Some(state::FailureReason::Auth) => {
+                            display::print_auth_error(
+                                failed_run_number,
+                                state.last_completed_cycle,
+                                phase_name,
+                                &new_run_id,
+                                &log_path.to_string_lossy(),
+                            );
+                        }
+                        _ => {
+                            display::print_executor_error(
+                                failed_run_number,
+                                3,
+                                &new_run_id,
+                                &log_path.to_string_lossy(),
+                            );
+                        }
                     }
                 }
             }
-        }
-        4 => {
-            // Budget cap reached: already printed inline by engine; no extra output needed here
-        }
-        130 => {
-            // Cancellation: load the state that was saved during cancellation to get last run position
-            let state_path = run_dir.join("state.json");
-            if let Ok(state) = state::StateFile::read(&state_path) {
-                let phase = workflow.phases.get(state.last_completed_phase_index);
-                let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
-                display::print_cancellation(
-                    &new_run_id,
-                    state.last_completed_cycle,
-                    phase_name,
-                    result.total_cost_usd,
-                    result.total_runs,
-                    &result.phase_costs,
-                    &state.claude_resume_commands,
-                    &run_dir.to_string_lossy(),
-                    result.total_input_tokens,
-                    result.total_output_tokens,
-                );
+            4 => {
+                // Budget cap reached: already printed inline by engine; no extra output needed here
             }
+            130 => {
+                // Cancellation: load the state that was saved during cancellation to get last run position
+                let state_path = run_dir.join("state.json");
+                if let Ok(state) = state::StateFile::read(&state_path) {
+                    let phase = workflow.phases.get(state.last_completed_phase_index);
+                    let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                    display::print_cancellation(
+                        &new_run_id,
+                        state.last_completed_cycle,
+                        phase_name,
+                        result.total_cost_usd,
+                        result.total_runs,
+                        &result.phase_costs,
+                        &state.claude_resume_commands,
+                        &run_dir.to_string_lossy(),
+                        result.total_input_tokens,
+                        result.total_output_tokens,
+                    );
+                }
+            }
+            _ => {}
         }
-        _ => {}
-    }
 
-    // Print low-confidence cost parse warnings
-    display::print_parse_warnings(&result.parse_warnings);
+        // Print low-confidence cost parse warnings
+        display::print_parse_warnings(&result.parse_warnings);
+    }
 
     Ok(result.exit_code)
 }

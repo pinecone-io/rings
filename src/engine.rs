@@ -358,6 +358,7 @@ pub struct EngineConfig {
     pub ancestry_continuation_of: Option<String>,
     pub ancestry_depth: u32,
     pub no_contract_check: bool,
+    pub output_format: crate::cli::OutputFormat,
 }
 
 pub struct EngineResult {
@@ -708,7 +709,9 @@ pub fn run_workflow(
             } else {
                 None
             };
-            crate::display::print_cycle_boundary(run_spec.cycle, prev_cost);
+            if config.output_format == crate::cli::OutputFormat::Human {
+                crate::display::print_cycle_boundary(run_spec.cycle, prev_cost);
+            }
             cycle_cost = 0.0;
             ctx.current_display_cycle = run_spec.cycle;
         }
@@ -814,14 +817,16 @@ pub fn run_workflow(
 
         'retry_loop: loop {
             // Show in-progress indicator before spawning.
-            crate::display::print_run_start(
-                &run_spec,
-                workflow.max_cycles,
-                ctx.budget.cumulative_cost,
-                tick,
-                ctx.budget.cumulative_input_tokens,
-                ctx.budget.cumulative_output_tokens,
-            );
+            if config.output_format == crate::cli::OutputFormat::Human {
+                crate::display::print_run_start(
+                    &run_spec,
+                    workflow.max_cycles,
+                    ctx.budget.cumulative_cost,
+                    tick,
+                    ctx.budget.cumulative_input_tokens,
+                    ctx.budget.cumulative_output_tokens,
+                );
+            }
 
             // Spawn the subprocess and implement wait loop with timeout/cancellation.
             let mut handle = executor.spawn(&invocation, config.verbose)?;
@@ -980,15 +985,17 @@ pub fn run_workflow(
                         // Process still running; update spinner every 100ms poll tick.
                         let elapsed = run_start.elapsed().as_secs();
                         tick += 1;
-                        crate::display::print_run_elapsed(
-                            &run_spec,
-                            elapsed,
-                            workflow.max_cycles,
-                            ctx.budget.cumulative_cost,
-                            tick,
-                            ctx.budget.cumulative_input_tokens,
-                            ctx.budget.cumulative_output_tokens,
-                        );
+                        if config.output_format == crate::cli::OutputFormat::Human {
+                            crate::display::print_run_elapsed(
+                                &run_spec,
+                                elapsed,
+                                workflow.max_cycles,
+                                ctx.budget.cumulative_cost,
+                                tick,
+                                ctx.budget.cumulative_input_tokens,
+                                ctx.budget.cumulative_output_tokens,
+                            );
+                        }
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
                     Err(e) => {
@@ -1092,13 +1099,15 @@ pub fn run_workflow(
         }
 
         // Print per-run result
-        crate::display::print_run_result(
-            &run_spec,
-            cost.cost_usd.unwrap_or(0.0),
-            elapsed_secs,
-            workflow.max_cycles,
-            ctx.budget.cumulative_cost,
-        );
+        if config.output_format == crate::cli::OutputFormat::Human {
+            crate::display::print_run_result(
+                &run_spec,
+                cost.cost_usd.unwrap_or(0.0),
+                elapsed_secs,
+                workflow.max_cycles,
+                ctx.budget.cumulative_cost,
+            );
+        }
 
         // Accumulate cycle cost
         cycle_cost += cost.cost_usd.unwrap_or(0.0);
@@ -1114,7 +1123,9 @@ pub fn run_workflow(
         // Handle timeout
         if timeout_occurred {
             // Print final cycle cost before returning
-            if ctx.current_display_cycle > 0 {
+            if config.output_format == crate::cli::OutputFormat::Human
+                && ctx.current_display_cycle > 0
+            {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             append_cost_entry(
@@ -1152,7 +1163,9 @@ pub fn run_workflow(
         // Handle cancellation
         if cancel_occurred {
             // Print final cycle cost before returning
-            if ctx.current_display_cycle > 0 {
+            if config.output_format == crate::cli::OutputFormat::Human
+                && ctx.current_display_cycle > 0
+            {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             append_cost_entry(
@@ -1216,7 +1229,9 @@ pub fn run_workflow(
             };
 
             // Print final cycle cost before returning
-            if ctx.current_display_cycle > 0 {
+            if config.output_format == crate::cli::OutputFormat::Human
+                && ctx.current_display_cycle > 0
+            {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             // Write state BEFORE costs.jsonl to prevent duplicate cost entries on resume.
@@ -1360,7 +1375,9 @@ pub fn run_workflow(
 
         // Hard exit if produces_required and violations found.
         if phase_produces_required && !produces_violations.is_empty() {
-            if ctx.current_display_cycle > 0 {
+            if config.output_format == crate::cli::OutputFormat::Human
+                && ctx.current_display_cycle > 0
+            {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             eprintln!(
@@ -1437,11 +1454,15 @@ pub fn run_workflow(
             // ≥100%: budget cap reached
             if ctx.budget.cumulative_cost >= cap {
                 // Print final cycle cost before returning
-                if ctx.current_display_cycle > 0 {
+                if config.output_format == crate::cli::OutputFormat::Human
+                    && ctx.current_display_cycle > 0
+                {
                     crate::display::print_cycle_cost(cycle_cost);
                 }
                 // Print budget cap reached message
-                crate::display::print_budget_cap_reached(cap, ctx.budget.cumulative_cost);
+                if config.output_format == crate::cli::OutputFormat::Human {
+                    crate::display::print_budget_cap_reached(cap, ctx.budget.cumulative_cost);
+                }
 
                 // Emit budget_cap event
                 let event = BudgetCapEvent {
@@ -1475,10 +1496,12 @@ pub fn run_workflow(
             // ≥80%: warning (once)
             if pct >= 80 && !ctx.budget.budget_warned_80_global {
                 ctx.budget.budget_warned_80_global = true;
-                eprintln!(
-                    "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap.",
-                    ctx.budget.cumulative_cost, cap
-                );
+                if config.output_format == crate::cli::OutputFormat::Human {
+                    eprintln!(
+                        "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap.",
+                        ctx.budget.cumulative_cost, cap
+                    );
+                }
                 let event = BudgetWarningEvent {
                     event: "budget_warning".to_string(),
                     run_id: config.run_id.clone(),
@@ -1494,10 +1517,12 @@ pub fn run_workflow(
             // ≥90%: warning (once)
             if pct >= 90 && !ctx.budget.budget_warned_90_global {
                 ctx.budget.budget_warned_90_global = true;
-                eprintln!(
-                    "⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit.",
-                    ctx.budget.cumulative_cost, cap
-                );
+                if config.output_format == crate::cli::OutputFormat::Human {
+                    eprintln!(
+                        "⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit.",
+                        ctx.budget.cumulative_cost, cap
+                    );
+                }
                 let event = BudgetWarningEvent {
                     event: "budget_warning".to_string(),
                     run_id: config.run_id.clone(),
@@ -1520,11 +1545,15 @@ pub fn run_workflow(
                     // ≥100%: phase budget cap reached
                     if phase_cost >= cap {
                         // Print final cycle cost before returning
-                        if ctx.current_display_cycle > 0 {
+                        if config.output_format == crate::cli::OutputFormat::Human
+                            && ctx.current_display_cycle > 0
+                        {
                             crate::display::print_cycle_cost(cycle_cost);
                         }
                         // Print budget cap reached message
-                        crate::display::print_budget_cap_reached(cap, phase_cost);
+                        if config.output_format == crate::cli::OutputFormat::Human {
+                            crate::display::print_budget_cap_reached(cap, phase_cost);
+                        }
 
                         // Emit budget_cap event with phase scope
                         let event = BudgetCapEvent {
@@ -1568,10 +1597,12 @@ pub fn run_workflow(
                         ctx.budget
                             .budget_warned_80_phase
                             .insert(phase.name.clone(), true);
-                        eprintln!(
-                            "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap (phase: {}).",
-                            phase_cost, cap, phase.name
-                        );
+                        if config.output_format == crate::cli::OutputFormat::Human {
+                            eprintln!(
+                                "⚠  Budget: ${:.2} spent — 80% of ${:.2} cap (phase: {}).",
+                                phase_cost, cap, phase.name
+                            );
+                        }
                         let event = BudgetWarningEvent {
                             event: "budget_warning".to_string(),
                             run_id: config.run_id.clone(),
@@ -1596,7 +1627,9 @@ pub fn run_workflow(
                         ctx.budget
                             .budget_warned_90_phase
                             .insert(phase.name.clone(), true);
-                        eprintln!("⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit (phase: {}).", phase_cost, cap, phase.name);
+                        if config.output_format == crate::cli::OutputFormat::Human {
+                            eprintln!("⚠  Budget: ${:.2} spent — 90% of ${:.2} cap. Approaching limit (phase: {}).", phase_cost, cap, phase.name);
+                        }
                         let event = BudgetWarningEvent {
                             event: "budget_warning".to_string(),
                             run_id: config.run_id.clone(),
@@ -1616,7 +1649,9 @@ pub fn run_workflow(
         if let Some(ref cancel_state) = cancel {
             if cancel_state.is_canceling() {
                 // Print final cycle cost before returning
-                if ctx.current_display_cycle > 0 {
+                if config.output_format == crate::cli::OutputFormat::Human
+                    && ctx.current_display_cycle > 0
+                {
                     crate::display::print_cycle_cost(cycle_cost);
                 }
                 // Save state with canceled_at timestamp before returning
@@ -1650,7 +1685,9 @@ pub fn run_workflow(
             )
         {
             // Print final cycle cost before returning
-            if ctx.current_display_cycle > 0 {
+            if config.output_format == crate::cli::OutputFormat::Human
+                && ctx.current_display_cycle > 0
+            {
                 crate::display::print_cycle_cost(cycle_cost);
             }
             return Ok(EngineResult {
@@ -1684,7 +1721,7 @@ pub fn run_workflow(
     }
 
     // Print final cycle cost before returning
-    if ctx.current_display_cycle > 0 {
+    if config.output_format == crate::cli::OutputFormat::Human && ctx.current_display_cycle > 0 {
         crate::display::print_cycle_cost(cycle_cost);
     }
 

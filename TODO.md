@@ -151,15 +151,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Add `output_format: OutputFormat` field to `EngineConfig`
-- [ ] Pass `cli.output_format` from `run_inner` and `resume_inner` in `main.rs` into `EngineConfig`
-- [ ] In `run_workflow`, wrap all `display::print_*` calls with `if config.output_format == Human` guards
-- [ ] When `output_format == Jsonl`, suppress: `print_run_header`, `print_run_start`, `print_run_elapsed`, `print_run_result`, `print_cycle_boundary`, `print_cycle_cost`, and all other stderr display calls
-- [ ] In `main.rs`, similarly guard `print_completion`, `print_cancellation`, `print_executor_error`, etc. behind human-mode checks
+- [x] Add `output_format: OutputFormat` field to `EngineConfig`
+- [x] Pass `cli.output_format` from `run_inner` and `resume_inner` in `main.rs` into `EngineConfig`
+- [x] In `run_workflow`, wrap all `display::print_*` calls with `if config.output_format == Human` guards
+- [x] When `output_format == Jsonl`, suppress: `print_run_header`, `print_run_start`, `print_run_elapsed`, `print_run_result`, `print_cycle_boundary`, `print_cycle_cost`, and all other stderr display calls
+- [x] In `main.rs`, similarly guard `print_completion`, `print_cancellation`, `print_executor_error`, etc. behind human-mode checks
 
 **Tests:**
-- [ ] Engine with `output_format: Jsonl` produces no stderr output from display functions
-- [ ] Engine with `output_format: Human` still produces stderr output as before (regression check)
+- [x] Engine with `output_format: Jsonl` produces no stderr output from display functions
+- [x] Engine with `output_format: Human` still produces stderr output as before (regression check)
 
 ---
 

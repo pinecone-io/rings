@@ -12,7 +12,7 @@ fn validate_run_id(s: &str) -> Result<String, String> {
     }
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
     /// Human-readable output (tables, text)
     #[value(name = "human")]

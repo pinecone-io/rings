@@ -168,16 +168,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] At the top of `run_workflow`, if JSONL mode: emit `StartEvent` with run_id, workflow file path, rings version (`env!("CARGO_PKG_VERSION")`), schema_version 1
-- [ ] At the end of `run_workflow` (all exit paths), if JSONL mode: emit `SummaryEvent` with status (completed/canceled/max_cycles/budget_cap/executor_error), cycles completed, total runs, total cost, duration_secs, phase breakdown
-- [ ] In `main.rs`, for fatal errors before `run_workflow` is reached (bad TOML, missing file, executor not found): if JSONL mode, emit `FatalErrorEvent` to stdout before exiting with code 2
+- [x] At the top of `run_workflow`, if JSONL mode: emit `StartEvent` with run_id, workflow file path, rings version (`env!("CARGO_PKG_VERSION")`), schema_version 1
+- [x] At the end of `run_workflow` (all exit paths), if JSONL mode: emit `SummaryEvent` with status (completed/canceled/max_cycles/budget_cap/executor_error), cycles completed, total runs, total cost, duration_secs, phase breakdown
+- [x] In `main.rs`, for fatal errors before `run_workflow` is reached (bad TOML, missing file, executor not found): if JSONL mode, emit `FatalErrorEvent` to stdout before exiting with code 2
 
 **Tests:**
-- [ ] JSONL run emits `start` as first event and `summary` as last event
-- [ ] `summary` event `status` field matches exit reason (completed/canceled/max_cycles/budget_cap)
-- [ ] `summary.phases` array has correct per-phase cost and run counts
-- [ ] Fatal error before engine start emits `fatal_error` event with `run_id: null`
-- [ ] `start` event includes correct `rings_version` and `schema_version: 1`
+- [x] JSONL run emits `start` as first event and `summary` as last event
+- [x] `summary` event `status` field matches exit reason (completed/canceled/max_cycles/budget_cap)
+- [x] `summary.phases` array has correct per-phase cost and run counts
+- [x] Fatal error before engine start emits `fatal_error` event with `run_id: null`
+- [x] `start` event includes correct `rings_version` and `schema_version: 1`
 
 ---
 

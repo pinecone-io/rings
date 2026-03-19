@@ -74,6 +74,12 @@ fn cmd_run(args: cli::RunArgs, cancel: Arc<CancelState>, output_format: cli::Out
     match run_inner(args, cancel, output_format) {
         Ok(code) => code,
         Err(e) => {
+            if output_format == cli::OutputFormat::Jsonl {
+                rings::events::emit_jsonl(&rings::events::FatalErrorEvent::new(
+                    None,
+                    format!("{e:#}"),
+                ));
+            }
             eprintln!("Error: {e:#}");
             2
         }
@@ -497,6 +503,12 @@ fn cmd_resume(
     match resume_inner(args, cancel, output_format) {
         Ok(code) => code,
         Err(e) => {
+            if output_format == cli::OutputFormat::Jsonl {
+                rings::events::emit_jsonl(&rings::events::FatalErrorEvent::new(
+                    None,
+                    format!("{e:#}"),
+                ));
+            }
             eprintln!("Error: {e:#}");
             2
         }

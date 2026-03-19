@@ -1,15 +1,43 @@
 use chrono::Utc;
 use serde::Serialize;
+use std::cell::RefCell;
 
 /// Returns the current time as an ISO 8601 string (UTC).
 pub fn now_iso8601() -> String {
     Utc::now().to_rfc3339()
 }
 
+thread_local! {
+    /// When `Some`, `emit_jsonl` captures events here instead of printing to stdout.
+    static CAPTURED_EVENTS: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+/// Start capturing JSONL events emitted on this thread (for tests only).
+#[cfg(any(test, feature = "testing"))]
+pub fn start_capture() {
+    CAPTURED_EVENTS.with(|c| *c.borrow_mut() = Some(Vec::new()));
+}
+
+/// Stop capturing and return the captured event lines (for tests only).
+#[cfg(any(test, feature = "testing"))]
+pub fn stop_capture() -> Vec<String> {
+    CAPTURED_EVENTS.with(|c| c.borrow_mut().take().unwrap_or_default())
+}
+
 /// Serializes an event to a single-line JSON string and prints it to stdout.
+/// In test mode, if capture is active, events are stored instead of printed.
 pub fn emit_jsonl(event: &impl Serialize) {
     if let Ok(s) = serde_json::to_string(event) {
-        println!("{}", s);
+        let mut captured = false;
+        CAPTURED_EVENTS.with(|c| {
+            if let Some(ref mut events) = *c.borrow_mut() {
+                events.push(s.clone());
+                captured = true;
+            }
+        });
+        if !captured {
+            println!("{}", s);
+        }
     }
 }
 

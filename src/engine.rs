@@ -374,6 +374,35 @@ pub struct EngineResult {
     pub phase_costs: Vec<(String, f64, u32)>,
 }
 
+/// Emit a SummaryEvent if output_format is JSONL.
+fn emit_summary_if_jsonl(
+    config: &EngineConfig,
+    ctx: &RunContext,
+    phases: &[PhaseConfig],
+    status: &str,
+    workflow_start: std::time::Instant,
+) {
+    if config.output_format == crate::cli::OutputFormat::Jsonl {
+        let phase_summaries = build_phase_costs(phases, &ctx.budget)
+            .into_iter()
+            .map(|(name, cost, runs)| crate::events::PhaseSummary {
+                name,
+                runs: runs as u64,
+                cost_usd: cost,
+            })
+            .collect();
+        crate::events::emit_jsonl(&crate::events::SummaryEvent::new(
+            &config.run_id,
+            status,
+            ctx.last_cycle as u64,
+            ctx.total_runs as u64,
+            ctx.budget.cumulative_cost,
+            workflow_start.elapsed().as_secs_f64(),
+            phase_summaries,
+        ));
+    }
+}
+
 /// Build phase_costs in workflow declaration order from BudgetTracker data.
 fn build_phase_costs(phases: &[PhaseConfig], tracker: &BudgetTracker) -> Vec<(String, f64, u32)> {
     phases
@@ -537,6 +566,16 @@ pub fn run_workflow(
     let events_path = config.output_dir.join("events.jsonl");
 
     std::fs::create_dir_all(&config.output_dir)?;
+
+    let workflow_start = std::time::Instant::now();
+
+    // Emit start event in JSONL mode.
+    if config.output_format == crate::cli::OutputFormat::Jsonl {
+        crate::events::emit_jsonl(&crate::events::StartEvent::new(
+            &config.run_id,
+            &config.workflow_file,
+        ));
+    }
 
     // Initialize RunContext to consolidate mutable state
     let mut ctx = RunContext::new();
@@ -1147,6 +1186,13 @@ pub fn run_workflow(
                     produces_violations: vec![],
                 },
             )?;
+            emit_summary_if_jsonl(
+                config,
+                &ctx,
+                &workflow.phases,
+                "executor_error",
+                workflow_start,
+            );
             return Ok(EngineResult {
                 exit_code: 2,
                 completed_cycles: ctx.last_cycle,
@@ -1187,6 +1233,7 @@ pub fn run_workflow(
                     produces_violations: vec![],
                 },
             )?;
+            emit_summary_if_jsonl(config, &ctx, &workflow.phases, "canceled", workflow_start);
             return Ok(EngineResult {
                 exit_code: 130,
                 completed_cycles: ctx.last_cycle,
@@ -1262,6 +1309,13 @@ pub fn run_workflow(
                     produces_violations: vec![],
                 },
             )?;
+            emit_summary_if_jsonl(
+                config,
+                &ctx,
+                &workflow.phases,
+                "executor_error",
+                workflow_start,
+            );
             return Ok(EngineResult {
                 exit_code: 3,
                 completed_cycles: ctx.last_cycle,
@@ -1391,6 +1445,13 @@ pub fn run_workflow(
                 ExitReason::ExecutorError(FailureReason::Unknown),
             );
             state.write_atomic(&state_path)?;
+            emit_summary_if_jsonl(
+                config,
+                &ctx,
+                &workflow.phases,
+                "executor_error",
+                workflow_start,
+            );
             return Ok(EngineResult {
                 exit_code: 2,
                 completed_cycles: ctx.last_cycle,
@@ -1480,6 +1541,7 @@ pub fn run_workflow(
                 let state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::BudgetCap);
                 state.write_atomic(&state_path)?;
 
+                emit_summary_if_jsonl(config, &ctx, &workflow.phases, "budget_cap", workflow_start);
                 return Ok(EngineResult {
                     exit_code: 4,
                     completed_cycles: ctx.last_cycle,
@@ -1572,6 +1634,13 @@ pub fn run_workflow(
                             make_state_snapshot(&ctx, config, &run_spec, ExitReason::BudgetCap);
                         state.write_atomic(&state_path)?;
 
+                        emit_summary_if_jsonl(
+                            config,
+                            &ctx,
+                            &workflow.phases,
+                            "budget_cap",
+                            workflow_start,
+                        );
                         return Ok(EngineResult {
                             exit_code: 4,
                             completed_cycles: ctx.last_cycle,
@@ -1658,6 +1727,7 @@ pub fn run_workflow(
                 let mut state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::Canceled);
                 state.claude_resume_commands = resume_commands.clone();
                 state.write_atomic(&state_path)?;
+                emit_summary_if_jsonl(config, &ctx, &workflow.phases, "canceled", workflow_start);
                 return Ok(EngineResult {
                     exit_code: 130,
                     completed_cycles: ctx.last_cycle,
@@ -1690,6 +1760,7 @@ pub fn run_workflow(
             {
                 crate::display::print_cycle_cost(cycle_cost);
             }
+            emit_summary_if_jsonl(config, &ctx, &workflow.phases, "completed", workflow_start);
             return Ok(EngineResult {
                 exit_code: 0,
                 completed_cycles: ctx.last_cycle,
@@ -1725,6 +1796,7 @@ pub fn run_workflow(
         crate::display::print_cycle_cost(cycle_cost);
     }
 
+    emit_summary_if_jsonl(config, &ctx, &workflow.phases, "max_cycles", workflow_start);
     Ok(EngineResult {
         exit_code: 1,
         completed_cycles: ctx.last_cycle,

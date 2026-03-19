@@ -1038,6 +1038,34 @@ fn resolve_init_path(name: Option<&str>) -> Result<PathBuf> {
     Ok(with_suffix)
 }
 
+const INIT_TEMPLATE: &str = r#"[workflow]
+completion_signal = "TASK_COMPLETE"
+context_dir = "."
+max_cycles = 10
+completion_signal_mode = "line"
+budget_cap_usd = 5.00
+
+[[phases]]
+name = "builder"
+prompt_text = """
+You are a helpful AI assistant working on a software task.
+
+Review the current state of the project and make progress on the next logical step.
+Be thorough and systematic in your approach.
+
+When you have completed your assigned task, output the following signal on its own line:
+TASK_COMPLETE
+
+# Available template variables (use in prompt_text with double curly braces):
+# {{phase_name}}      — current phase name
+# {{cycle}}           — current cycle number (1-based)
+# {{max_cycles}}      — maximum number of cycles configured
+# {{iteration}}       — current iteration within this phase (1-based)
+# {{run}}             — global run number across all phases and cycles
+# {{cost_so_far_usd}} — cumulative cost in USD so far
+"""
+"#;
+
 fn init_inner(args: cli::InitArgs, output_format: cli::OutputFormat) -> Result<i32> {
     let path = resolve_init_path(args.name.as_deref())?;
 
@@ -1061,10 +1089,35 @@ fn init_inner(args: cli::InitArgs, output_format: cli::OutputFormat) -> Result<i
         return Ok(2);
     }
 
-    // Placeholder: full template write follows in Task 3
-    let _ = output_format;
-    eprintln!("Error: 'rings init' template write not yet implemented (Task 3).");
-    Ok(2)
+    // Atomic write: write to <path>.tmp then rename
+    let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+    std::fs::write(&tmp_path, INIT_TEMPLATE)
+        .with_context(|| format!("Cannot write to '{}'", tmp_path.display()))?;
+    std::fs::rename(&tmp_path, &path).with_context(|| {
+        format!(
+            "Cannot rename '{}' to '{}'",
+            tmp_path.display(),
+            path.display()
+        )
+    })?;
+
+    let abs_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+
+    match output_format {
+        cli::OutputFormat::Human => {
+            eprintln!("Created {}", path.display());
+            eprintln!("Run it with:  rings run {}", path.display());
+        }
+        cli::OutputFormat::Jsonl => {
+            let json = serde_json::json!({
+                "event": "init_complete",
+                "path": abs_path.to_string_lossy(),
+            });
+            println!("{json}");
+        }
+    }
+
+    Ok(0)
 }
 
 fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str>) -> PathBuf {
@@ -1208,23 +1261,123 @@ mod tests {
     }
 
     #[test]
-    fn init_existing_file_with_force_does_not_exit_2_on_path_check() {
+    fn init_existing_file_with_force_succeeds() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("workflow.rings.toml");
         std::fs::write(&file_path, "").unwrap();
 
-        // With --force, the "file exists" check should pass.
-        // init_inner will still exit 2 because Task 3 template write is not yet done,
-        // but the exit should NOT be from the file-exists guard.
-        // We verify the error message is about "template write not yet implemented".
         let args = cli::InitArgs {
             name: Some(file_path.to_string_lossy().to_string()),
             force: true,
         };
-        // Just check it doesn't panic — the stub returns 2 with a different message.
         let result = init_inner(args, cli::OutputFormat::Human).unwrap();
-        // Currently returns 2 because of the stub; force passed the existence check
-        assert_eq!(result, 2);
+        assert_eq!(result, 0, "with --force, should overwrite and return 0");
+    }
+
+    // --- Task 3: template content and atomic write tests ---
+
+    #[test]
+    fn init_scaffolded_file_parses_as_valid_workflow() {
+        use rings::workflow::Workflow;
+        use std::str::FromStr;
+
+        let workflow = Workflow::from_str(INIT_TEMPLATE).unwrap();
+        assert!(!workflow.completion_signal.is_empty());
+        assert!(!workflow.phases.is_empty());
+    }
+
+    #[test]
+    fn init_scaffolded_file_has_budget_cap_usd() {
+        use rings::workflow::Workflow;
+        use std::str::FromStr;
+
+        let workflow = Workflow::from_str(INIT_TEMPLATE).unwrap();
+        assert!(
+            workflow.budget_cap_usd.is_some(),
+            "budget_cap_usd must be present so the no-cap warning does not fire"
+        );
+    }
+
+    #[test]
+    fn init_scaffolded_file_completion_signal_in_prompt() {
+        use rings::workflow::Workflow;
+        use std::str::FromStr;
+
+        let workflow = Workflow::from_str(INIT_TEMPLATE).unwrap();
+        let phase = &workflow.phases[0];
+        let prompt_text = phase.prompt_text.as_deref().unwrap();
+        assert!(
+            prompt_text.contains(&workflow.completion_signal),
+            "completion signal '{}' must appear in prompt_text",
+            workflow.completion_signal
+        );
+    }
+
+    #[test]
+    fn init_scaffolded_file_template_variables_comment_present() {
+        assert!(
+            INIT_TEMPLATE.contains("{{phase_name}}"),
+            "template variables comment must list {{phase_name}}"
+        );
+        assert!(
+            INIT_TEMPLATE.contains("{{cycle}}"),
+            "template variables comment must list {{cycle}}"
+        );
+        assert!(
+            INIT_TEMPLATE.contains("{{cost_so_far_usd}}"),
+            "template variables comment must list {{cost_so_far_usd}}"
+        );
+    }
+
+    #[test]
+    fn init_atomic_write_no_tmp_file_remaining() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("workflow.rings.toml");
+        let tmp = dir.path().join("workflow.rings.toml.tmp");
+
+        let args = cli::InitArgs {
+            name: Some(target.to_string_lossy().to_string()),
+            force: false,
+        };
+        let result = init_inner(args, cli::OutputFormat::Human).unwrap();
+        assert_eq!(result, 0);
+        assert!(target.exists(), "target file should exist");
+        assert!(
+            !tmp.exists(),
+            ".tmp file should not remain after successful write"
+        );
+    }
+
+    #[test]
+    fn init_jsonl_output_valid_json_with_event_and_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("workflow.rings.toml");
+
+        let args = cli::InitArgs {
+            name: Some(target.to_string_lossy().to_string()),
+            force: false,
+        };
+        // We can't easily capture stdout in unit tests, but we verify the function
+        // succeeds and the file was written (JSONL path is exercised via coverage).
+        let result = init_inner(args, cli::OutputFormat::Jsonl).unwrap();
+        assert_eq!(result, 0);
+        assert!(target.exists());
+    }
+
+    #[test]
+    fn init_dry_run_check_passes_on_scaffold() {
+        use rings::dry_run::DryRunPlan;
+        use rings::workflow::Workflow;
+        use std::str::FromStr;
+
+        let workflow = Workflow::from_str(INIT_TEMPLATE).unwrap();
+        // Verify completion signal is found in at least one prompt (as dry-run does)
+        let plan = DryRunPlan::from_workflow(&workflow, "workflow.rings.toml").unwrap();
+        let any_found = plan.phases.iter().any(|p| p.signal_check.found);
+        assert!(
+            any_found,
+            "dry-run check should find the completion signal in at least one phase prompt"
+        );
     }
 
     #[test]

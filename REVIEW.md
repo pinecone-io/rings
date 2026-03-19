@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-19 / F-182 Task 3: rings init template and atomic write] Defined `INIT_TEMPLATE` as a `const &str` in `main.rs`. Template uses `completion_signal_mode = "line"` (the safer default from spec) and embeds the signal `TASK_COMPLETE` inside `prompt_text` so F-151 check passes. Atomic write uses `std::fs::write` to `<path>.tmp` then `std::fs::rename` to final path. Human mode prints two lines to stderr; JSONL mode emits a single JSON object to stdout with absolute path from `std::fs::canonicalize`. Template variables are listed in a comment block inside `prompt_text` using the TOML triple-quoted string format. All 8 new tests plus all prior tests pass.
+
 [2026-03-19 / F-182 Task 2: rings init path resolution] Implemented `resolve_init_path(name: Option<&str>) -> Result<PathBuf>` in `main.rs`. Rejects paths with `..` using `std::path::Component::ParentDir` iteration. Appends `.rings.toml` suffix only when not already present. The `init_inner` stub now handles parent directory existence check and file-exists/force check; returns exit code 2 for all guard failures. Template write deferred to Task 3.
 
 [2026-03-19 / F-182 Task 1: rings init CLI parsing] Added `InitArgs { name: Option<String>, force: bool }` and `Command::Init(InitArgs)` to cli.rs. Added `cmd_init` and `init_inner` stubs in main.rs matching the existing pattern for unimplemented commands (cmd_lineage, cmd_completions). Path resolution and template writing follow in Tasks 2–3.

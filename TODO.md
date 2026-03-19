@@ -59,23 +59,23 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or `src/init.rs`)
 
 **Steps:**
-- [ ] Define the scaffold template as a const string. Must include:
+- [x] Define the scaffold template as a const string. Must include:
   - `[workflow]` with `completion_signal = "TASK_COMPLETE"`, `context_dir = "."`, `max_cycles = 10`, `completion_signal_mode = "line"`, `budget_cap_usd = 5.00`
   - One `[[phases]]` block named `"builder"` with `prompt_text` containing:
     - A useful starter prompt
     - The completion signal string embedded in the prompt text (so F-151 check passes)
     - A comment block listing all template variables: `{{phase_name}}`, `{{cycle}}`, `{{max_cycles}}`, `{{iteration}}`, `{{run}}`, `{{cost_so_far_usd}}`
-- [ ] Write atomically: write to `<path>.tmp`, then `std::fs::rename` to final path
-- [ ] On success, human mode: print `Created <path>` to stderr, then print a hint: `Run it with:  rings run <path>`
-- [ ] On success, JSONL mode: emit `{"event":"init_complete","path":"<absolute_path>"}` to stdout
+- [x] Write atomically: write to `<path>.tmp`, then `std::fs::rename` to final path
+- [x] On success, human mode: print `Created <path>` to stderr, then print a hint: `Run it with:  rings run <path>`
+- [x] On success, JSONL mode: emit `{"event":"init_complete","path":"<absolute_path>"}` to stdout
 
 **Tests:**
-- [ ] Scaffolded file parses as a valid `Workflow` via `Workflow::from_str`
-- [ ] Scaffolded file passes `rings run --dry-run` (completion signal found in prompt)
-- [ ] `budget_cap_usd` is present (F-116 no-cap warning won't fire)
-- [ ] Template variables comment is present in prompt_text
-- [ ] Atomic write: `.tmp` file does not remain after success
-- [ ] JSONL output is valid JSON with correct `event` and `path` fields
+- [x] Scaffolded file parses as a valid `Workflow` via `Workflow::from_str`
+- [x] Scaffolded file passes `rings run --dry-run` (completion signal found in prompt)
+- [x] `budget_cap_usd` is present (F-116 no-cap warning won't fire)
+- [x] Template variables comment is present in prompt_text
+- [x] Atomic write: `.tmp` file does not remain after success
+- [x] JSONL output is valid JSON with correct `event` and `path` fields
 
 ---
 

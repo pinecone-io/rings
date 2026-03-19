@@ -61,8 +61,9 @@ At startup, rings performs a **soft validation** of each `consumes` pattern:
 **When the warning is suppressed:**
 - Any file in `context_dir` matches the pattern (files exist; the phase will have inputs on this run), OR
 - The pattern text appears in the prompt (user clearly knows about these files and references them), OR
-- `--no-contract-check` is passed (suppresses contract warnings without affecting the completion signal check), OR
-- `--no-completion-check` is passed (suppresses all advisory startup warnings including both completion signal and contract checks)
+- `--no-contract-check` is passed (suppresses contract warnings without affecting the completion signal check)
+
+`--no-completion-check` does **not** suppress contract warnings; it suppresses only the completion signal advisory. The two flags are independent.
 
 The startup warning is printed once, not repeated per-run.
 

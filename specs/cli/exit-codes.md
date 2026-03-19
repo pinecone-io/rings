@@ -8,7 +8,7 @@ rings uses standard exit codes. All codes are documented in the man page and `--
 |------|---------|
 | `0` | Workflow completed successfully (completion signal detected) |
 | `1` | Workflow ended without completion: `max_cycles` reached |
-| `2` | Fatal error: invalid workflow file, missing prompt file, or `claude` not found on PATH |
+| `2` | Fatal error: invalid workflow file, missing prompt file, `claude` not found on PATH, or a `produces_required` phase contract was violated |
 | `3` | Claude exited non-zero (quota exhausted, auth failure, or unknown error). State saved — use `rings resume`. |
 | `4` | Budget cap reached (`--budget-cap` or `budget_cap_usd`). State saved — use `rings resume`. |
 | `130` | Canceled by user (SIGINT / Ctrl+C) or by SIGTERM. rings uses `130` for both signals — this is the conventional exit code for keyboard interruption and is broadly understood by process managers. SIGTERM is treated as a graceful stop request, not a crash. |

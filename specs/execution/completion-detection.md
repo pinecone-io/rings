@@ -22,6 +22,8 @@ completion_signal = "TASK_COMPLETE"
 completion_signal_mode = "line"   # default: "substring"
 ```
 
+**Case sensitivity:** All three modes are case-sensitive. The signal string (and regex patterns) are matched against the literal bytes of executor output with no case folding. Use a regex with `(?i)` if case-insensitive matching is needed.
+
 **False positive risk with `substring` mode:** If the completion signal is a common phrase that might appear in Claude Code's prose (e.g., "Once the task is TASK_COMPLETE, move on"), the workflow will terminate prematurely. The startup advisory check warns if the signal appears in the prompt outside of an instruction context, but cannot catch all cases. Use `line` mode to require the signal to be on its own line.
 
 ## When the Check Runs

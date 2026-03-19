@@ -100,24 +100,24 @@ All downstream tasks depend on these data model changes landing first.
 - Update all `signal_matches` call sites (including in test helpers in `tests/engine_integration.rs`) to pass `&CompletionSignalMode` instead of `&str`
 
 **Tests (`tests/signal_modes.rs`):**
-- [ ] `output_regex_matches_signal`: valid regex matches → true
-- [ ] `output_regex_matches_signal`: valid regex no match → false
-- [ ] `output_regex_matches_signal`: anchored pattern `^DONE$` matches line of output
-- [ ] `output_regex_matches_signal`: capture group in pattern — still returns bool, no panic
-- [ ] `line` mode: `"  DONE  "` (leading/trailing whitespace) → match (trimmed)
-- [ ] `line` mode: `"DONE_EXTRA"` → no match (trim doesn't help superstring)
-- [ ] `line` mode: CRLF output `"DONE\r\n"` → match (`trim()` strips `\r`)
-- [ ] Regression: engine with `completion_signal_mode = "regex"` and matching output → exits 0 (fixes silent substring fallthrough bug)
-- [ ] `continue_signal` with `completion_signal_mode = "regex"` → continue_signal matched as substring, not regex
-- [ ] `dry_run` with `completion_signal_mode = "regex"`: signal found in prompt → `SignalCheck { found: true }`
+- [x] `output_regex_matches_signal`: valid regex matches → true
+- [x] `output_regex_matches_signal`: valid regex no match → false
+- [x] `output_regex_matches_signal`: anchored pattern `^DONE$` matches line of output
+- [x] `output_regex_matches_signal`: capture group in pattern — still returns bool, no panic
+- [x] `line` mode: `"  DONE  "` (leading/trailing whitespace) → match (trimmed)
+- [x] `line` mode: `"DONE_EXTRA"` → no match (trim doesn't help superstring)
+- [x] `line` mode: CRLF output `"DONE\r\n"` → match (`trim()` strips `\r`)
+- [x] Regression: engine with `completion_signal_mode = "regex"` and matching output → exits 0 (fixes silent substring fallthrough bug)
+- [x] `continue_signal` with `completion_signal_mode = "regex"` → continue_signal matched as substring, not regex
+- [x] `dry_run` with `completion_signal_mode = "regex"`: signal found in prompt → `SignalCheck { found: true }`
 
 **Steps:**
-- [ ] Add `output_regex_matches_signal` to `src/completion.rs`
-- [ ] Update `signal_matches` signature and body in `src/engine.rs`
-- [ ] Update `continue_signal` call site to always use substring
-- [ ] Update `dry_run.rs` to use compiled regex from `Workflow`
-- [ ] Update test helpers in `tests/engine_integration.rs` for new `signal_matches` signature
-- [ ] Write `tests/signal_modes.rs`
+- [x] Add `output_regex_matches_signal` to `src/completion.rs`
+- [x] Update `signal_matches` signature and body in `src/engine.rs`
+- [x] Update `continue_signal` call site to always use substring
+- [x] Update `dry_run.rs` to use compiled regex from `Workflow`
+- [x] Update test helpers in `tests/engine_integration.rs` for new `signal_matches` signature
+- [x] Write `tests/signal_modes.rs`
 
 ---
 

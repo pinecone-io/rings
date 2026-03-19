@@ -4,7 +4,9 @@ use crate::audit::{
 };
 use crate::backoff::QuotaBackoff;
 use crate::cancel::CancelState;
-use crate::completion::{output_contains_signal, output_line_contains_signal};
+use crate::completion::{
+    output_contains_signal, output_line_contains_signal, output_regex_matches_signal,
+};
 use crate::cost::parse_cost_from_output;
 use crate::executor::{extract_response_text, Executor, Invocation};
 use crate::manifest::{compute_manifest, diff_manifests, read_manifest_gz, write_manifest_gz};
@@ -347,7 +349,7 @@ fn signal_matches(output: &str, signal: &str, mode: &CompletionSignalMode) -> bo
     match mode {
         CompletionSignalMode::Substring => output_contains_signal(output, signal),
         CompletionSignalMode::Line => output_line_contains_signal(output, signal),
-        CompletionSignalMode::Regex(re) => re.is_match(output),
+        CompletionSignalMode::Regex(re) => output_regex_matches_signal(output, re),
     }
 }
 

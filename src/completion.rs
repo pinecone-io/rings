@@ -8,6 +8,11 @@ pub fn output_line_contains_signal(output: &str, signal: &str) -> bool {
     output.lines().any(|line| line.trim() == signal)
 }
 
+/// Returns true if `regex` matches anywhere in `output`.
+pub fn output_regex_matches_signal(output: &str, regex: &regex::Regex) -> bool {
+    regex.is_match(output)
+}
+
 /// Returns true if `signal` appears in the prompt text (used for startup advisory check).
 pub fn prompt_text_contains_signal(prompt: &str, signal: &str) -> bool {
     prompt.contains(signal)

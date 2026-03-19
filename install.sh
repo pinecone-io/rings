@@ -4,6 +4,21 @@ set -euo pipefail
 REPO="pinecone-io/rings"
 RELEASE="nightly"
 
+# Authentication: required for private repos.
+# Set GITHUB_TOKEN env var, or have `gh` CLI authenticated.
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
+elif command -v gh &>/dev/null; then
+  GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
+  if [ -n "${GITHUB_TOKEN}" ]; then
+    AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
+  else
+    AUTH_HEADER=""
+  fi
+else
+  AUTH_HEADER=""
+fi
+
 # Detect OS and architecture
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -29,14 +44,43 @@ case "${ARCH}" in
 esac
 
 BINARY="rings-${OS_TAG}-${ARCH_TAG}"
-URL="https://github.com/${REPO}/releases/download/${RELEASE}/${BINARY}"
-CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${RELEASE}/checksums-sha256.txt"
 DEST="${1:-/usr/local/bin/rings}"
 
 echo "Installing rings (${OS_TAG}-${ARCH_TAG})..."
 
+# Download helper: uses GitHub API for private repos, direct URL for public
+download_asset() {
+  local asset_name="$1"
+  local output_path="$2"
+
+  if [ -n "${AUTH_HEADER}" ]; then
+    # Use GitHub API to list release assets, find the right one, download it
+    local assets_url="https://api.github.com/repos/${REPO}/releases/tags/${RELEASE}"
+    local asset_id
+    asset_id=$(curl -fsSL -H "${AUTH_HEADER}" "${assets_url}" \
+      | grep -B 3 "\"name\": \"${asset_name}\"" \
+      | grep '"id"' | head -1 | grep -o '[0-9]\+')
+
+    if [ -z "${asset_id}" ]; then
+      echo "Error: Asset '${asset_name}' not found in release '${RELEASE}'"
+      exit 1
+    fi
+
+    curl -fsSL \
+      -H "${AUTH_HEADER}" \
+      -H "Accept: application/octet-stream" \
+      "https://api.github.com/repos/${REPO}/releases/assets/${asset_id}" \
+      -o "${output_path}"
+  else
+    # Public repo: direct download
+    curl -fsSL \
+      "https://github.com/${REPO}/releases/download/${RELEASE}/${asset_name}" \
+      -o "${output_path}"
+  fi
+}
+
 # Download binary
-curl -fsSL "${URL}" -o /tmp/rings-download
+download_asset "${BINARY}" /tmp/rings-download
 chmod +x /tmp/rings-download
 
 # Verify checksum
@@ -51,7 +95,7 @@ fi
 
 if [ -n "${SHA_CMD}" ]; then
   echo "Verifying checksum..."
-  curl -fsSL "${CHECKSUMS_URL}" -o /tmp/rings-checksums.txt
+  download_asset "checksums-sha256.txt" /tmp/rings-checksums.txt
   EXPECTED=$(grep "${BINARY}" /tmp/rings-checksums.txt | awk '{print $1}')
   ACTUAL=$(${SHA_CMD} /tmp/rings-download | awk '{print $1}')
   if [ "${EXPECTED}" != "${ACTUAL}" ]; then

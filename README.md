@@ -14,13 +14,21 @@ rings runs Claude Code in a loop — cycling through your defined phases until w
 
 **One-liner (macOS and Linux):**
 
+If you have the [GitHub CLI](https://cli.github.com/) authenticated:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pinecone-io/rings/main/install.sh | bash
 ```
 
+Or with a GitHub token:
+
+```bash
+GITHUB_TOKEN=ghp_... curl -fsSL https://raw.githubusercontent.com/pinecone-io/rings/main/install.sh | bash
+```
+
 This auto-detects your platform, downloads the right binary, verifies the SHA256 checksum, and installs to `/usr/local/bin/rings`.
 
-To install somewhere else: `curl -fsSL ... | bash -s -- ~/.local/bin/rings`
+To install somewhere else, pass the path: `... | bash -s -- ~/.local/bin/rings`
 
 **With Rust installed:**
 

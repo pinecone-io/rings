@@ -289,6 +289,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         .iter()
         .map(|p| (p.name.clone(), p.runs_per_cycle))
         .collect();
+    let detected_model = workflow.detect_model_name();
     display::print_run_header(&display::RunHeaderParams {
         workflow_file: &args.workflow_file,
         context_dir: &workflow.context_dir,
@@ -297,6 +298,7 @@ fn run_inner(args: cli::RunArgs, cancel: Arc<CancelState>) -> Result<i32> {
         budget_cap_usd: workflow.budget_cap_usd,
         output_dir: &run_dir.to_string_lossy(),
         version: env!("CARGO_PKG_VERSION"),
+        model: detected_model.as_deref(),
     });
 
     // Acquire context directory lock
@@ -630,6 +632,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         .iter()
         .map(|p| (p.name.clone(), p.runs_per_cycle))
         .collect();
+    let detected_model_resume = workflow.detect_model_name();
     display::print_run_header(&display::RunHeaderParams {
         workflow_file: &meta.workflow_file,
         context_dir: &workflow.context_dir,
@@ -638,6 +641,7 @@ fn resume_inner(args: cli::ResumeArgs, cancel: Arc<CancelState>) -> Result<i32> 
         budget_cap_usd: workflow.budget_cap_usd,
         output_dir: &run_dir.to_string_lossy(),
         version: env!("CARGO_PKG_VERSION"),
+        model: detected_model_resume.as_deref(),
     });
 
     // Acquire context directory lock

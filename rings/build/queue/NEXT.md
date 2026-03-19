@@ -60,14 +60,14 @@
 **Files:** `src/workflow.rs`, `src/display.rs`, `src/main.rs`
 
 **Steps:**
-1. - [ ] Add `pub fn detect_model_name(&self) -> Option<String>` to `Workflow` — scans `executor.args` and each phase's `extra_args` for `--model` followed by a value. Returns the global model if all phases use the same one, or `None` if mixed or undetectable.
-2. - [ ] Update `print_run_header` to accept `model: Option<&str>` — if `Some`, show `Model      claude-sonnet-4-5` in **dim**; if `None`, show `Model      (default)` in **dim** to indicate Claude Code's configured default is being used
-3. - [ ] Update call sites in `src/main.rs` (`run_inner`, `resume_inner`) to pass `workflow.detect_model_name().as_deref()`
+1. - [x] Add `pub fn detect_model_name(&self) -> Option<String>` to `Workflow` — scans `executor.args` and each phase's `extra_args` for `--model` followed by a value. Returns the global model if all phases use the same one, or `None` if mixed or undetectable.
+2. - [x] Update `print_run_header` to accept `model: Option<&str>` — if `Some`, show `Model      claude-sonnet-4-5` in **dim**; if `None`, show `Model      (default)` in **dim** to indicate Claude Code's configured default is being used
+3. - [x] Update call sites in `src/main.rs` (`run_inner`, `resume_inner`) to pass `workflow.detect_model_name().as_deref()`
 
 **Tests:**
-- [ ] `detect_model_name` returns `Some("claude-sonnet-4-5")` when `args = ["--model", "claude-sonnet-4-5"]`
-- [ ] Returns `None` when no `--model` flag present
-- [ ] Returns `None` when phases use different models
-- [ ] Startup header shows model name when detected, shows `(default)` when not
+- [x] `detect_model_name` returns `Some("claude-sonnet-4-5")` when `args = ["--model", "claude-sonnet-4-5"]`
+- [x] Returns `None` when no `--model` flag present
+- [x] Returns `None` when phases use different models
+- [x] Startup header shows model name when detected, shows `(default)` when not
 
 ---

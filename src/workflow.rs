@@ -292,6 +292,26 @@ impl Workflow {
         self.phases.iter().map(|p| p.name.clone()).collect()
     }
 
+    /// Detect the model name from executor args.
+    ///
+    /// Scans `executor.args` for `--model` followed by a value. Returns `Some(model_name)`
+    /// when a single consistent model is found, or `None` when no `--model` flag is present.
+    pub fn detect_model_name(&self) -> Option<String> {
+        let args = self.executor.as_ref().map(|e| e.args.as_slice())?;
+        let mut i = 0;
+        while i < args.len() {
+            if args[i] == "--model" {
+                if i + 1 < args.len() {
+                    return Some(args[i + 1].clone());
+                }
+            } else if let Some(val) = args[i].strip_prefix("--model=") {
+                return Some(val.to_string());
+            }
+            i += 1;
+        }
+        None
+    }
+
     fn validate(file: WorkflowFile) -> Result<Self, WorkflowError> {
         if file.workflow.completion_signal.is_empty() {
             return Err(WorkflowError::EmptyCompletionSignal);
@@ -551,5 +571,64 @@ produces_required = true
         assert!(phase.consumes.is_empty());
         assert!(phase.produces.is_empty());
         assert!(!phase.produces_required);
+    }
+
+    #[test]
+    fn detect_model_name_returns_some_when_flag_present() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+
+[executor]
+binary = "claude"
+args = ["--model", "claude-sonnet-4-5", "--output-format", "stream-json"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(
+            wf.detect_model_name(),
+            Some("claude-sonnet-4-5".to_string())
+        );
+    }
+
+    #[test]
+    fn detect_model_name_returns_none_when_no_flag() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+
+[executor]
+binary = "claude"
+args = ["--output-format", "stream-json"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.detect_model_name(), None);
+    }
+
+    #[test]
+    fn detect_model_name_returns_none_when_no_executor() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.detect_model_name(), None);
     }
 }

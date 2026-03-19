@@ -141,6 +141,8 @@ pub struct RunHeaderParams<'a> {
     pub budget_cap_usd: Option<f64>,
     pub output_dir: &'a str,
     pub version: &'a str,
+    /// Detected model name, or None to show "(default)".
+    pub model: Option<&'a str>,
 }
 
 /// Format the styled startup header as a string (for testing).
@@ -171,6 +173,19 @@ fn format_run_header(params: &RunHeaderParams<'_>) -> String {
         style::dim(&format!("{:<lw$}", "Phases")),
         phases_str
     ));
+
+    match params.model {
+        Some(name) => lines.push(format!(
+            "  {}  {}",
+            style::dim(&format!("{:<lw$}", "Model")),
+            name
+        )),
+        None => lines.push(format!(
+            "  {}  {}",
+            style::dim(&format!("{:<lw$}", "Model")),
+            style::dim("(default)")
+        )),
+    }
 
     let total_runs_per_cycle: u32 = params.phases.iter().map(|(_, r)| r).sum();
     let max_total_runs = params.max_cycles * total_runs_per_cycle;
@@ -822,6 +837,7 @@ mod tests {
             budget_cap_usd: None,
             output_dir: &output,
             version: "0.1.0",
+            model: None,
         };
         let s = format_run_header(&params);
         assert!(s.contains("Workflow"), "missing Workflow: {s}");
@@ -853,6 +869,7 @@ mod tests {
             budget_cap_usd: Some(5.0),
             output_dir: &output,
             version: "0.1.0",
+            model: None,
         };
         let s = format_run_header(&params);
         assert!(
@@ -876,6 +893,7 @@ mod tests {
             budget_cap_usd: None,
             output_dir: &output,
             version: "0.1.0",
+            model: None,
         };
         let s = format_run_header(&params);
         assert!(
@@ -898,12 +916,56 @@ mod tests {
             budget_cap_usd: Some(5.0),
             output_dir: &output,
             version: "0.1.0",
+            model: None,
         };
         let s = format_run_header(&params);
         assert!(
             !s.contains('\x1b'),
             "ANSI escapes present when color disabled: {s:?}"
         );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn run_header_shows_model_name_when_detected() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let (phases, output) = make_header_params();
+        let params = RunHeaderParams {
+            workflow_file: "my-task.rings.toml",
+            context_dir: "./src",
+            phases: &phases,
+            max_cycles: 50,
+            budget_cap_usd: None,
+            output_dir: &output,
+            version: "0.1.0",
+            model: Some("claude-sonnet-4-5"),
+        };
+        let s = format_run_header(&params);
+        assert!(s.contains("Model"), "Model label missing: {s}");
+        assert!(s.contains("claude-sonnet-4-5"), "model name missing: {s}");
+        assert!(!s.contains("(default)"), "should not show (default): {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn run_header_shows_default_when_no_model_detected() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let (phases, output) = make_header_params();
+        let params = RunHeaderParams {
+            workflow_file: "my-task.rings.toml",
+            context_dir: "./src",
+            phases: &phases,
+            max_cycles: 50,
+            budget_cap_usd: None,
+            output_dir: &output,
+            version: "0.1.0",
+            model: None,
+        };
+        let s = format_run_header(&params);
+        assert!(s.contains("Model"), "Model label missing: {s}");
+        assert!(s.contains("(default)"), "(default) missing: {s}");
         crate::style::set_color_enabled();
     }
 

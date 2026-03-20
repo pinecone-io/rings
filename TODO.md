@@ -23,33 +23,36 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-029: Unknown Template Variable Startup Warning (User-Visible)
+## F-082/F-083: Step-Through Mode
 
-**Spec:** `specs/execution/prompt-templating.md` (Unknown Variables section)
+**Spec:** `specs/cli/commands-and-flags.md` lines 43–48, `specs/observability/runtime-output.md` (F-136/137/138)
 
-**Summary:** The spec says unknown template variables should produce a **startup advisory warning** visible to the user before any Claude calls. The detection logic already exists (`template::find_unknown_variables`) and is used in two places: (1) `dry_run.rs` collects them for the dry-run plan, and (2) `engine.rs:835-852` logs them to `events.jsonl` at runtime. However, neither path prints a warning to stderr during startup in `run_inner()`, so users doing a normal `rings run` never see the warning — they'd have to inspect `events.jsonl` or use `--dry-run` to discover it.
+**Summary:** `--step` pauses after every individual run, showing a summary and waiting for confirmation. `--step-cycles` pauses only at cycle boundaries. The CLI flags already exist but the pause logic is not wired in the engine.
 
-### Task 1: Add startup unknown variable warning in run_inner
+### Task 1: Add step-through pause logic to engine
 
-**Files:** `src/main.rs`
+**Files:** `src/engine.rs`, `src/display.rs`
 
 **Steps:**
-- [x] After loading all phase prompts (inline and file-based) but before entering the engine, scan each prompt for unknown variables using `template::find_unknown_variables(&prompt, template::KNOWN_VARS)`
-- [x] Collect results as `(phase_name, prompt_source, Vec<String>)` tuples
-- [x] If any unknowns found and `output_format == Human`, print warning to stderr:
-  ```
-  ⚠  Unknown template variable(s) in prompts:
-     {{typo_var}} in phase "builder" (inline)
-     {{custom}} in phase "reviewer" (prompts/review.md)
-     Known variables: {{phase_name}}, {{cycle}}, {{max_cycles}}, {{iteration}}, {{run}}, {{cost_so_far_usd}}
-  ```
-- [x] This is advisory only — do not block execution
-- [x] Reuse the existing `template::find_unknown_variables` function and `template::KNOWN_VARS` constant
+- [ ] Add `step: bool` and `step_cycles: bool` fields to `EngineConfig`
+- [ ] Pass `args.step` and `args.step_cycles` through from `run_inner` in `main.rs`
+- [ ] After each completed run (after cost parsing, before next run): if `step` is true and stderr is a TTY:
+  1. Print step summary: cost of this run, cumulative cost, whether completion signal was detected
+  2. Prompt: `[c]ontinue, [s]kip cycle, [q]uit > `
+  3. Read a single character from stdin
+  4. `c` or Enter: continue to next run
+  5. `s`: skip remaining runs in this cycle, advance to next cycle
+  6. `q`: trigger normal cancellation flow (save state, print resume command)
+- [ ] For `step_cycles`: same logic but only prompt at cycle boundaries (after all phases in a cycle complete), not after every run
+- [ ] Non-TTY: `--step` and `--step-cycles` are silently ignored (no pausing)
+- [ ] Already have: `--step` + `--output-format jsonl` conflict check (exits 2)
 
 **Tests:**
-- [x] Prompt with `{{unknown_var}}` triggers visible warning on stderr
-- [x] Prompt with only known variables produces no warning
-- [x] JSONL mode suppresses the stderr warning
-- [x] `just validate` clean
+- [ ] `--step` with mock stdin `c\nc\nq\n`: runs 2 runs then quits with cancellation
+- [ ] `--step` with mock stdin `s\n`: skips remaining runs in cycle
+- [ ] `--step-cycles` only pauses at cycle boundaries, not between runs within a cycle
+- [ ] Non-TTY mode: `--step` runs without pausing
+- [ ] Step summary shows cost and completion signal status
+- [ ] `just validate` clean
 
 ---

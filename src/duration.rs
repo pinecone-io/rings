@@ -8,6 +8,7 @@ use std::str::FromStr;
 /// Accepts:
 /// - Integer-only strings (e.g., `"300"`) — treated as seconds
 /// - Single-char suffix strings: `"30s"` (seconds), `"5m"` (minutes), `"1h"` (hours), `"1d"` (days)
+/// - Combined strings: `"1h30m"` (1 hour and 30 minutes = 5400 seconds)
 ///
 /// Returns `Err` for zero values, unrecognized formats, and arithmetic overflow.
 pub fn parse_duration_secs(s: &str) -> Result<u64> {
@@ -24,30 +25,74 @@ pub fn parse_duration_secs(s: &str) -> Result<u64> {
         return Ok(n);
     }
 
-    // Must have exactly one suffix character at the end
-    let (digits, suffix) = s.split_at(s.len() - 1);
-    let n: u64 = digits
-        .parse()
-        .map_err(|_| anyhow::anyhow!("invalid duration: {:?}", s))?;
+    // Parse combined or single-suffix duration string.
+    // Supported tokens: <digits><suffix> where suffix is one of h, m, s, d.
+    // Tokens must appear in a known order and each may appear at most once.
+    let total =
+        parse_combined_duration(s).map_err(|_| anyhow::anyhow!("invalid duration: {:?}", s))?;
 
-    if n == 0 {
+    if total == 0 {
         bail!("duration must be greater than zero");
     }
+    Ok(total)
+}
 
-    let multiplier: u64 = match suffix {
-        "s" => 1,
-        "m" => 60,
-        "h" => 3600,
-        "d" => 86400,
-        _ => bail!(
-            "invalid duration suffix {:?} in {:?}; expected s, m, h, or d",
-            suffix,
-            s
-        ),
-    };
+/// Parses a combined duration string like "1h30m" or "30s" into total seconds.
+/// Returns Err if the string is not a valid sequence of <digits><suffix> tokens.
+fn parse_combined_duration(s: &str) -> Result<u64> {
+    // Each suffix may appear at most once, and must appear in descending order: d, h, m, s.
+    const SUFFIXES: &[(&str, u64)] = &[("d", 86400), ("h", 3600), ("m", 60), ("s", 1)];
 
-    n.checked_mul(multiplier)
-        .ok_or_else(|| anyhow::anyhow!("duration overflow: {:?}", s))
+    let mut remaining = s;
+    let mut total: u64 = 0;
+    let mut last_suffix_index: Option<usize> = None;
+    let mut matched_any = false;
+
+    while !remaining.is_empty() {
+        // Find the index of the next suffix character.
+        let suffix_pos = remaining
+            .find(['d', 'h', 'm', 's'])
+            .ok_or_else(|| anyhow::anyhow!("no suffix found in {:?}", s))?;
+
+        let digits = &remaining[..suffix_pos];
+        let suffix_char = &remaining[suffix_pos..suffix_pos + 1];
+        remaining = &remaining[suffix_pos + 1..];
+
+        if digits.is_empty() {
+            bail!("missing digits before suffix {:?}", suffix_char);
+        }
+        let n: u64 = digits
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid digits {:?}", digits))?;
+
+        // Find the multiplier and enforce ordering.
+        let suffix_index = SUFFIXES
+            .iter()
+            .position(|(suf, _)| *suf == suffix_char)
+            .ok_or_else(|| anyhow::anyhow!("unknown suffix {:?}", suffix_char))?;
+
+        if let Some(prev) = last_suffix_index {
+            if suffix_index <= prev {
+                bail!("suffixes out of order in {:?}", s);
+            }
+        }
+        last_suffix_index = Some(suffix_index);
+
+        let multiplier = SUFFIXES[suffix_index].1;
+        total = total
+            .checked_add(
+                n.checked_mul(multiplier)
+                    .ok_or_else(|| anyhow::anyhow!("overflow"))?,
+            )
+            .ok_or_else(|| anyhow::anyhow!("overflow"))?;
+        matched_any = true;
+    }
+
+    if !matched_any {
+        bail!("empty duration");
+    }
+
+    Ok(total)
 }
 
 /// Represents either an absolute date or a relative duration.
@@ -170,8 +215,23 @@ mod tests {
     }
 
     #[test]
-    fn test_compound_duration_is_err() {
-        assert!(parse_duration_secs("1h30m").is_err());
+    fn test_space_minutes_is_err() {
+        assert!(parse_duration_secs("5 minutes").is_err());
+    }
+
+    #[test]
+    fn test_compound_duration_1h30m() {
+        assert_eq!(parse_duration_secs("1h30m").unwrap(), 5400);
+    }
+
+    #[test]
+    fn test_compound_duration_1d2h30m() {
+        assert_eq!(parse_duration_secs("1d2h30m").unwrap(), 86400 + 7200 + 1800);
+    }
+
+    #[test]
+    fn test_compound_duration_out_of_order_is_err() {
+        assert!(parse_duration_secs("30m1h").is_err());
     }
 
     #[test]

@@ -59,7 +59,7 @@ pub struct WorkflowConfig {
     pub max_cycles: Option<u32>,
     pub output_dir: Option<String>,
     #[serde(default)]
-    pub delay_between_runs: u64,
+    pub delay_between_runs: Option<DurationField>,
     /// When a phase emits this signal, skip remaining phases in the current cycle.
     pub continue_signal: Option<String>,
     /// Phase names from which the completion signal may fire. Empty = any phase.
@@ -73,7 +73,7 @@ pub struct WorkflowConfig {
     pub timeout_per_run_secs: Option<DurationField>,
     /// Delay between full cycles.
     #[serde(default)]
-    pub delay_between_cycles: u64,
+    pub delay_between_cycles: Option<DurationField>,
     /// Enable quota backoff retry logic.
     #[serde(default)]
     pub quota_backoff: bool,
@@ -432,6 +432,21 @@ impl Workflow {
             }
         }
 
+        let delay_between_runs = match file.workflow.delay_between_runs {
+            None => 0,
+            Some(d) => d.to_secs().map_err(|e| WorkflowError::InvalidDuration {
+                field: "delay_between_runs".to_string(),
+                message: e.to_string(),
+            })?,
+        };
+        let delay_between_cycles = match file.workflow.delay_between_cycles {
+            None => 0,
+            Some(d) => d.to_secs().map_err(|e| WorkflowError::InvalidDuration {
+                field: "delay_between_cycles".to_string(),
+                message: e.to_string(),
+            })?,
+        };
+
         Ok(Workflow {
             completion_signal: file.workflow.completion_signal,
             continue_signal: file.workflow.continue_signal,
@@ -440,8 +455,8 @@ impl Workflow {
             context_dir: file.workflow.context_dir,
             max_cycles,
             output_dir: file.workflow.output_dir,
-            delay_between_runs: file.workflow.delay_between_runs,
-            delay_between_cycles: file.workflow.delay_between_cycles,
+            delay_between_runs,
+            delay_between_cycles,
             phases: file.phases,
             executor: file.executor,
             budget_cap_usd: file.workflow.budget_cap_usd,
@@ -717,5 +732,73 @@ budget_cap_usd = nan
         );
         let err = Workflow::from_str(&toml).unwrap_err();
         assert!(matches!(err, WorkflowError::InvalidBudgetCap));
+    }
+
+    #[test]
+    fn delay_between_runs_integer_parses_as_seconds() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "delay_between_runs = 30");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.delay_between_runs, 30);
+    }
+
+    #[test]
+    fn delay_between_runs_string_seconds() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"delay_between_runs = "30s""#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.delay_between_runs, 30);
+    }
+
+    #[test]
+    fn delay_between_runs_string_minutes() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), r#"delay_between_runs = "5m""#);
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.delay_between_runs, 300);
+    }
+
+    #[test]
+    fn delay_between_runs_string_combined() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"delay_between_runs = "1h30m""#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.delay_between_runs, 5400);
+    }
+
+    #[test]
+    fn delay_between_runs_default_is_zero() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.delay_between_runs, 0);
+    }
+
+    #[test]
+    fn delay_between_runs_invalid_string_is_error() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"delay_between_runs = "5 minutes""#,
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidDuration { .. }));
+    }
+
+    #[test]
+    fn delay_between_cycles_string_hours() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"delay_between_cycles = "1h""#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.delay_between_cycles, 3600);
     }
 }

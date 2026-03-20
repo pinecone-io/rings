@@ -4,8 +4,88 @@ use crate::engine::RunSpec;
 use crate::style;
 
 /// Returns true if stderr is an interactive terminal.
-fn is_stderr_tty() -> bool {
+pub(crate) fn is_stderr_tty() -> bool {
     std::io::stderr().is_terminal()
+}
+
+// ── Pinned status bar (verbose + TTY mode) ──────────────────────────────────
+
+/// Returns the number of rows in the stderr terminal.
+/// Returns `None` if stderr is not a TTY or the size cannot be determined.
+fn terminal_rows_stderr() -> Option<u16> {
+    if !is_stderr_tty() {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        // SAFETY: TIOCGWINSZ is a well-known, read-only ioctl that returns
+        // terminal dimensions. The winsize struct is zero-initialised before
+        // the call, which is the standard usage pattern.
+        let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
+        let fd = std::io::stderr().as_raw_fd();
+        let ret = unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut ws as *mut libc::winsize) };
+        if ret == 0 && ws.ws_row > 0 {
+            return Some(ws.ws_row);
+        }
+    }
+    None
+}
+
+/// Internal: ANSI sequence to set scroll region from row 1 to `rows-2`,
+/// pinning the bottom 2 rows outside the scroll region.
+fn format_scroll_region_setup(rows: u16) -> String {
+    format!("\x1b[1;{}r", rows.saturating_sub(2))
+}
+
+/// Internal: ANSI sequence to reset the scroll region to the full screen.
+fn format_scroll_region_teardown() -> &'static str {
+    "\x1b[r"
+}
+
+/// Internal: ANSI sequence to draw `line` at the pinned row (`rows-1`),
+/// saving and restoring the cursor position.
+fn format_pinned_status(line: &str, rows: u16) -> String {
+    let row = rows.saturating_sub(1);
+    format!("\x1b[s\x1b[{};1H\x1b[K{}\x1b[u", row, line)
+}
+
+/// Set up the ANSI scroll region to pin the bottom 2 rows for the status bar.
+/// Returns `true` if the scroll region was successfully established (stderr is
+/// a TTY and terminal dimensions could be detected), `false` otherwise.
+pub fn setup_scroll_region() -> bool {
+    if let Some(rows) = terminal_rows_stderr() {
+        eprint!("{}", format_scroll_region_setup(rows));
+        let _ = std::io::stderr().flush();
+        true
+    } else {
+        false
+    }
+}
+
+/// Reset the ANSI scroll region and clear the pinned status bar area.
+/// Safe to call even if `setup_scroll_region` was never called or returned `false`.
+pub fn teardown_scroll_region() {
+    if !is_stderr_tty() {
+        return;
+    }
+    // Save cursor, clear pinned row, restore cursor, then reset scroll region.
+    if let Some(rows) = terminal_rows_stderr() {
+        let row = rows.saturating_sub(1);
+        eprint!("\x1b[s\x1b[{};1H\x1b[K\x1b[u", row);
+    }
+    eprint!("{}", format_scroll_region_teardown());
+    let _ = std::io::stderr().flush();
+}
+
+/// Draw `line` at the pinned row (second-to-last terminal row).
+/// Saves and restores cursor position so surrounding content is undisturbed.
+/// No-op if stderr is not a TTY or terminal dimensions cannot be determined.
+pub fn draw_pinned_status(line: &str) {
+    if let Some(rows) = terminal_rows_stderr() {
+        eprint!("{}", format_pinned_status(line, rows));
+        let _ = std::io::stderr().flush();
+    }
 }
 
 /// Format a token count for display: plain integer below 1000, `k` suffix for thousands,
@@ -77,8 +157,10 @@ fn format_status_line(
 }
 
 /// Print an in-progress indicator before the executor is spawned.
-/// On a TTY, prints without a trailing newline so later calls can overwrite it.
-/// On non-TTY, prints a static status line with a newline (no animation).
+///
+/// In verbose+TTY mode the status is drawn in the pinned row at the terminal
+/// bottom. On a plain TTY it is printed without a trailing newline so later
+/// calls can overwrite it. On non-TTY it is printed with a newline.
 pub fn print_run_start(
     run_spec: &RunSpec,
     max_cycles: u32,
@@ -86,6 +168,7 @@ pub fn print_run_start(
     tick: usize,
     cumulative_input_tokens: u64,
     cumulative_output_tokens: u64,
+    verbose: bool,
 ) {
     let line = format_status_line(
         run_spec,
@@ -97,15 +180,24 @@ pub fn print_run_start(
         cumulative_output_tokens,
     );
     if is_stderr_tty() {
-        eprint!("{line}");
-        let _ = std::io::stderr().flush();
+        if verbose {
+            draw_pinned_status(&line);
+        } else {
+            eprint!("{line}");
+            let _ = std::io::stderr().flush();
+        }
     } else {
         eprintln!("{line}");
     }
 }
 
 /// Overwrite the current in-progress line with an updated spinner and elapsed time.
-/// Only has effect on a TTY. Called every 100ms from the executor poll loop.
+///
+/// In verbose+TTY mode the status is redrawn in the pinned row using
+/// save/restore cursor so executor output is not disturbed. On a plain TTY the
+/// line is overwritten in-place via `\r\x1b[K`. On non-TTY this is a no-op
+/// (the static line was already printed by `print_run_start`).
+#[allow(clippy::too_many_arguments)]
 pub fn print_run_elapsed(
     run_spec: &RunSpec,
     elapsed_secs: u64,
@@ -114,6 +206,7 @@ pub fn print_run_elapsed(
     tick: usize,
     cumulative_input_tokens: u64,
     cumulative_output_tokens: u64,
+    verbose: bool,
 ) {
     if is_stderr_tty() {
         let line = format_status_line(
@@ -125,8 +218,12 @@ pub fn print_run_elapsed(
             cumulative_input_tokens,
             cumulative_output_tokens,
         );
-        eprint!("\r\x1b[K{line}");
-        let _ = std::io::stderr().flush();
+        if verbose {
+            draw_pinned_status(&line);
+        } else {
+            eprint!("\r\x1b[K{line}");
+            let _ = std::io::stderr().flush();
+        }
     }
     // Non-TTY: suppressed — static line was already printed by print_run_start
 }
@@ -273,13 +370,19 @@ pub fn print_cycle_boundary(cycle: u32, prev_cycle_cost: Option<f64>) {
 }
 
 /// Print a single run result line.
-/// On a TTY, overwrites the in-progress spinner line. On non-TTY, prints a plain line.
+///
+/// On a plain TTY, overwrites the in-progress spinner line via `\r\x1b[K`.
+/// In verbose+TTY mode the scroll region has been torn down before this call,
+/// so the result is printed with a regular newline so it appears inline with
+/// executor output rather than overwriting anything. On non-TTY it is always
+/// printed with a plain newline.
 pub fn print_run_result(
     run_spec: &RunSpec,
     cost_usd: f64,
     elapsed_secs: u64,
     max_cycles: u32,
     cumulative_cost: f64,
+    verbose: bool,
 ) {
     let sep = style::dim("│");
     let cycle_part = format!("Cycle {}/{}", run_spec.cycle, max_cycles);
@@ -301,9 +404,11 @@ pub fn print_run_result(
         cycle_str, sep, phase_str, iter_str, sep, run_cost_str, total_cost_str, elapsed_str
     );
 
-    if is_stderr_tty() {
+    if is_stderr_tty() && !verbose {
+        // Normal TTY: overwrite the in-progress spinner line.
         eprintln!("\r\x1b[K{line}");
     } else {
+        // Verbose (scroll region torn down before call) or non-TTY: plain newline.
         eprintln!("{line}");
     }
 }
@@ -976,8 +1081,70 @@ mod tests {
         let run_spec = make_run_spec();
         // This should not panic regardless of TTY status
         // On non-TTY (test environment), print_run_elapsed does nothing
-        print_run_elapsed(&run_spec, 30, 10, 0.5, 3, 0, 0);
+        print_run_elapsed(&run_spec, 30, 10, 0.5, 3, 0, 0, false);
         // If we reach here without panicking, the non-TTY path works
+    }
+
+    // ── Scroll region / pinned status bar ─────────────────────────────────
+
+    #[test]
+    fn scroll_region_setup_sequence_excludes_bottom_two_rows() {
+        // With 24 rows: scroll region should be 1–22 (rows-2 = 22).
+        let seq = format_scroll_region_setup(24);
+        assert_eq!(
+            seq, "\x1b[1;22r",
+            "unexpected scroll region sequence: {seq:?}"
+        );
+    }
+
+    #[test]
+    fn scroll_region_setup_sequence_minimum_rows() {
+        // With 3 rows: scroll region 1–1 (3-2=1).
+        let seq = format_scroll_region_setup(3);
+        assert_eq!(seq, "\x1b[1;1r");
+    }
+
+    #[test]
+    fn scroll_region_teardown_sequence_is_reset_escape() {
+        assert_eq!(format_scroll_region_teardown(), "\x1b[r");
+    }
+
+    #[test]
+    fn pinned_status_sequence_saves_restores_cursor_and_draws_at_correct_row() {
+        // With 24 rows: pinned row = 24-1 = 23.
+        let seq = format_pinned_status("hello", 24);
+        // Must save cursor (\x1b[s), position at row 23 (\x1b[23;1H), clear line (\x1b[K),
+        // draw content, then restore cursor (\x1b[u).
+        assert!(seq.starts_with("\x1b[s"), "missing save-cursor: {seq:?}");
+        assert!(
+            seq.contains("\x1b[23;1H"),
+            "missing cursor-position: {seq:?}"
+        );
+        assert!(seq.contains("\x1b[K"), "missing erase-to-eol: {seq:?}");
+        assert!(seq.contains("hello"), "missing content: {seq:?}");
+        assert!(seq.ends_with("\x1b[u"), "missing restore-cursor: {seq:?}");
+    }
+
+    #[test]
+    fn setup_scroll_region_returns_false_on_non_tty() {
+        // In test environment stderr is not a TTY — setup must return false.
+        let result = setup_scroll_region();
+        assert!(
+            !result,
+            "setup_scroll_region should return false on non-TTY"
+        );
+    }
+
+    #[test]
+    fn teardown_scroll_region_is_noop_on_non_tty() {
+        // Should not panic on non-TTY.
+        teardown_scroll_region();
+    }
+
+    #[test]
+    fn draw_pinned_status_is_noop_on_non_tty() {
+        // Should not panic on non-TTY.
+        draw_pinned_status("test status");
     }
 
     #[test]

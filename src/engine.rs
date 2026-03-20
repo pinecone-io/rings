@@ -738,6 +738,23 @@ pub fn run_workflow(
         }
     }
 
+    // In verbose+TTY+Human mode, set up a pinned status bar at the bottom of
+    // the terminal using ANSI scroll regions.  The guard resets the scroll
+    // region on drop, covering every exit path from run_workflow.
+    let verbose_tty = config.verbose
+        && config.output_format == crate::cli::OutputFormat::Human
+        && crate::display::setup_scroll_region();
+
+    struct ScrollRegionGuard(bool);
+    impl Drop for ScrollRegionGuard {
+        fn drop(&mut self) {
+            if self.0 {
+                crate::display::teardown_scroll_region();
+            }
+        }
+    }
+    let _scroll_guard = ScrollRegionGuard(verbose_tty);
+
     while let Some(run_spec) = schedule.next() {
         ctx.last_cycle = run_spec.cycle;
 
@@ -773,7 +790,13 @@ pub fn run_workflow(
                 }
             }
             if config.output_format == crate::cli::OutputFormat::Human {
+                if verbose_tty {
+                    crate::display::teardown_scroll_region();
+                }
                 crate::display::print_cycle_boundary(run_spec.cycle, prev_cost);
+                if verbose_tty {
+                    let _ = crate::display::setup_scroll_region();
+                }
             }
             cycle_cost = 0.0;
             ctx.current_display_cycle = run_spec.cycle;
@@ -909,6 +932,7 @@ pub fn run_workflow(
                     tick,
                     ctx.budget.cumulative_input_tokens,
                     ctx.budget.cumulative_output_tokens,
+                    config.verbose,
                 );
             }
 
@@ -1078,6 +1102,7 @@ pub fn run_workflow(
                                 tick,
                                 ctx.budget.cumulative_input_tokens,
                                 ctx.budget.cumulative_output_tokens,
+                                config.verbose,
                             );
                         }
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1204,13 +1229,20 @@ pub fn run_workflow(
 
         // Print per-run result
         if config.output_format == crate::cli::OutputFormat::Human {
+            if verbose_tty {
+                crate::display::teardown_scroll_region();
+            }
             crate::display::print_run_result(
                 &run_spec,
                 cost.cost_usd.unwrap_or(0.0),
                 elapsed_secs,
                 workflow.max_cycles,
                 ctx.budget.cumulative_cost,
+                config.verbose,
             );
+            if verbose_tty {
+                let _ = crate::display::setup_scroll_region();
+            }
         }
 
         // Accumulate cycle cost

@@ -715,6 +715,7 @@ dependencies = [
  "globset",
  "hex",
  "lazy_static",
+ "libc",
  "nix 0.29.0",
  "owo-colors",
  "regex",

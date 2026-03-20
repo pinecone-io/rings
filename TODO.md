@@ -10,38 +10,21 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 **Summary:** Two small security improvements: (1) create output directories with mode 0700 so only the owner can read run logs, and (2) reject `output_dir` values containing `..` to prevent path traversal.
 
-### Task 1: Restricted directory permissions
-
-**Files:** `src/main.rs` (or wherever `create_dir_all` is called for the output directory)
-
-**Steps:**
-- [x] Find all calls to `std::fs::create_dir_all` for the output/run directory
-- [x] On Unix: after creating the directory, set permissions to 0700 using `std::fs::set_permissions` with `std::os::unix::fs::PermissionsExt`
-- [x] Use `#[cfg(unix)]` guard — on non-Unix platforms, skip the permission change (document this limitation)
-- [x] Ensure the permission is set on the run-specific directory, not the parent `~/.local/share/rings/runs/`
-
-**Tests:**
-- [x] Created run directory has mode 0700 on Unix
-- [x] Parent directory permissions are not changed
-- [x] Non-Unix builds compile without error (cfg guard works)
-
----
-
 ### Task 2: Path traversal protection
 
 **Files:** `src/main.rs` or `src/workflow.rs`
 
 **Steps:**
-- [ ] Before using any `output_dir` value (from CLI `--output-dir` or workflow TOML), check if the path contains `..` components
-- [ ] If `..` is found: print `Error: output_dir must not contain '..' components` and exit 2
-- [ ] Apply the check in both `run_inner` (for `--output-dir` flag) and workflow parsing (for TOML `output_dir`)
-- [ ] Use `std::path::Path::components()` and check for `Component::ParentDir`
+- [x] Before using any `output_dir` value (from CLI `--output-dir` or workflow TOML), check if the path contains `..` components
+- [x] If `..` is found: print `Error: output_dir must not contain '..' components` and exit 2
+- [x] Apply the check in both `run_inner` (for `--output-dir` flag) and workflow parsing (for TOML `output_dir`)
+- [x] Use `std::path::Path::components()` and check for `Component::ParentDir`
 
 **Tests:**
-- [ ] `--output-dir /tmp/safe/path` is accepted
-- [ ] `--output-dir /tmp/../etc/rings` is rejected with exit code 2
-- [ ] TOML `output_dir = "../outside"` is rejected at workflow parse time
-- [ ] Paths with `.` (current dir) are allowed (only `..` is dangerous)
+- [x] `--output-dir /tmp/safe/path` is accepted
+- [x] `--output-dir /tmp/../etc/rings` is rejected with exit code 2
+- [x] TOML `output_dir = "../outside"` is rejected at workflow parse time
+- [x] Paths with `.` (current dir) are allowed (only `..` is dangerous)
 
 ---
 

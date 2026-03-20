@@ -199,6 +199,8 @@ pub enum WorkflowError {
     UnknownCompletionSignalPhase(String),
     #[error("phase '{0}' has produces_required = true but manifest_enabled = false")]
     ProducesRequiredWithoutManifest(String),
+    #[error("output_dir contains path traversal ('..') which is not allowed")]
+    OutputDirContainsParentDir,
 }
 
 /// Compile an error profile into regex patterns.
@@ -329,6 +331,16 @@ impl Workflow {
             return Err(WorkflowError::ContextDirNotFound(
                 file.workflow.context_dir.clone(),
             ));
+        }
+
+        // Validate output_dir does not contain '..' path traversal.
+        if let Some(ref dir) = file.workflow.output_dir {
+            if Path::new(dir)
+                .components()
+                .any(|c| c == std::path::Component::ParentDir)
+            {
+                return Err(WorkflowError::OutputDirContainsParentDir);
+            }
         }
 
         // Validate and resolve global budget_cap_usd.
@@ -560,6 +572,36 @@ produces_required = true
         assert!(
             matches!(err, WorkflowError::ProducesRequiredWithoutManifest(ref name) if name == "builder")
         );
+    }
+
+    #[test]
+    fn output_dir_with_dotdot_is_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), r#"output_dir = "../outside""#);
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::OutputDirContainsParentDir));
+    }
+
+    #[test]
+    fn output_dir_with_dotdot_in_middle_is_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"output_dir = "/tmp/foo/../bar""#,
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::OutputDirContainsParentDir));
+    }
+
+    #[test]
+    fn output_dir_with_single_dot_is_allowed() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"output_dir = "./valid/path""#,
+        );
+        let result = Workflow::from_str(&toml);
+        assert!(result.is_ok(), "single-dot paths must be accepted");
     }
 
     #[test]

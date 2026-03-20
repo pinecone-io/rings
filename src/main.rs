@@ -238,6 +238,14 @@ fn run_inner(
         )
     })?;
 
+    // Validate --output-dir does not contain '..' path traversal.
+    if let Some(ref dir) = args.output_dir {
+        if path_contains_parent_dir(dir) {
+            eprintln!("Error: output_dir contains path traversal ('..') which is not allowed.");
+            return Ok(2);
+        }
+    }
+
     // Resolve output directory
     let output_base =
         resolve_output_dir(args.output_dir.as_deref(), workflow.output_dir.as_deref());
@@ -1577,6 +1585,14 @@ fn cleanup_inner(args: cli::CleanupArgs, output_format: cli::OutputFormat) -> Re
     Ok(0)
 }
 
+/// Returns true if the path contains any `..` (ParentDir) components.
+fn path_contains_parent_dir(path: &str) -> bool {
+    use std::path::Component;
+    std::path::Path::new(path)
+        .components()
+        .any(|c| c == Component::ParentDir)
+}
+
 fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str>) -> PathBuf {
     if let Some(p) = cli_override {
         return PathBuf::from(p);
@@ -1661,6 +1677,26 @@ fn generate_run_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_traversal_safe_path_not_flagged() {
+        assert!(!path_contains_parent_dir("/tmp/safe/path"));
+    }
+
+    #[test]
+    fn path_traversal_dotdot_detected() {
+        assert!(path_contains_parent_dir("/tmp/../etc/rings"));
+    }
+
+    #[test]
+    fn path_traversal_relative_dotdot_detected() {
+        assert!(path_contains_parent_dir("../outside"));
+    }
+
+    #[test]
+    fn path_traversal_single_dot_allowed() {
+        assert!(!path_contains_parent_dir("./current/dir"));
+    }
 
     #[test]
     fn list_output_applies_success_color_to_completed_status() {

@@ -23,167 +23,148 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-184: Phase Cost Bar Chart
+## F-187: Styled Cycle Transitions
 
 **Spec:** `specs/observability/runtime-output.md`
 
-**Summary:** Completion and cancellation summaries show a proportional bar chart of cost distribution across phases. The `render_bar_chart` function already exists in `display.rs` — verify it's used in all summary paths.
+**Summary:** Cycle boundaries show a horizontal rule with the cycle number and previous cycle cost embedded. The `format_cycle_boundary` function already exists — verify it uses the style system.
 
-### Task 1: Verify bar chart in all summary paths
+### Task 1: Verify styled cycle boundaries
 
 **Files:** `src/display.rs`
 
 **Steps:**
-- [x] Verify `render_bar_chart` is called in `print_completion`
-- [x] Verify `render_bar_chart` is called in `print_cancellation`
-- [x] Verify the bar chart renders correctly with 1 phase, 2 phases, and 5+ phases
-- [x] If already working in all paths, mark as COMPLETE
+- [x] Verify `format_cycle_boundary` uses `style::dim` for dashes, `style::bold` for cycle number, `style::accent` for cost
+- [x] Verify the output matches the spec format: `── Cycle N ──── $X.XX prev ──`
+- [x] If already working, mark as COMPLETE
 
 **Tests:**
-- [x] Completion summary includes phase bar chart
-- [x] Cancellation summary includes phase bar chart
-- [x] Single-phase workflow shows full bar
+- [x] Cycle boundary line contains styled cycle number and cost
+- [x] First cycle has no cost suffix
+- [x] `NO_COLOR=1` produces plain text
 - [x] `just validate` clean
 
 ---
 
-## F-185: Budget Gauge
+## F-189: Styled Dry Run Output
 
 **Spec:** `specs/observability/runtime-output.md`
 
-**Summary:** When a budget cap is configured, summaries show a visual gauge of budget consumption with color-coded thresholds. The `render_budget_gauge` function already exists — verify it's used.
+**Summary:** `rings run --dry-run` uses the same color system as live runs for visual consistency.
 
-### Task 1: Verify budget gauge in summaries
+### Task 1: Verify dry-run styling
 
-**Files:** `src/display.rs`
+**Files:** `src/main.rs` (dry-run output section)
 
 **Steps:**
-- [ ] Verify `render_budget_gauge` is called in `print_completion` when `budget_cap_usd` is set
-- [ ] Verify it's called in `print_cancellation` when budget cap is set
-- [ ] Verify color thresholds: green < 60%, yellow 60-85%, red > 85%
+- [ ] Verify dry-run output uses semantic colors: `style::bold` for headers, `style::accent` for cost estimates, `style::dim` for structural elements
+- [ ] Verify completion signal check results use `style::success` (✓) and `style::warn` (✗)
+- [ ] Verify `--no-color` disables styling in dry-run output
 - [ ] If already working, mark as COMPLETE
 
 **Tests:**
-- [ ] Summary with budget cap shows gauge
-- [ ] Summary without budget cap omits gauge
-- [ ] Gauge colors change at threshold boundaries
+- [ ] Dry-run output is styled with colors on TTY
+- [ ] `NO_COLOR=1` produces plain dry-run output
 - [ ] `just validate` clean
 
 ---
 
-## F-190: Cumulative Token Display
+## F-018: Data Flow Documentation in Inspect
 
-**Spec:** `specs/observability/runtime-output.md`
+**Spec:** `specs/workflow/phase-contracts.md`, `specs/cli/inspect-command.md`
 
-**Summary:** The status line and summaries show cumulative input/output token counts that update after each completed run.
+**Summary:** `rings inspect <RUN_ID> --show data-flow` shows declared vs. actual data flow for each phase. The `InspectView::DataFlow` variant already exists and has partial implementation.
 
-### Task 1: Verify token display
+### Task 1: Complete data-flow view
 
-**Files:** `src/display.rs`, `src/engine.rs`
+**Files:** `src/inspect.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Verify the status line includes token counts when available (already done in `format_status_line`)
-- [ ] Verify completion and cancellation summaries include token totals
-- [ ] Verify tokens are accumulated correctly across runs in `BudgetTracker`
-- [ ] If already working, mark as COMPLETE
+- [ ] Verify `InspectView::DataFlow` handler in `inspect_inner` loads declared flow from workflow consumes/produces
+- [ ] Add actual file attribution: which files were actually changed by each phase (from manifest diffs in costs.jsonl)
+- [ ] Display format per spec: declared flow diagram, then actual file attribution table
+- [ ] Support `--cycle N` and `--phase NAME` filters
+- [ ] In JSONL mode, emit structured data flow information
 
 **Tests:**
-- [ ] Status line shows `18.2k in · 4.1k out` when tokens are non-zero
-- [ ] Status line omits token segment when both are zero
-- [ ] Completion summary includes token totals
+- [ ] Data flow view shows declared consumes/produces for each phase
+- [ ] Actual file changes are attributed to correct phases
+- [ ] Missing contract declarations show "no contracts declared"
+- [ ] JSONL mode emits structured output
 - [ ] `just validate` clean
 
 ---
 
-## F-191: Model Name Display
+## F-057: Cross-Machine Resume Documentation
 
-**Spec:** `specs/observability/runtime-output.md`
+**Spec:** `specs/state/cancellation-resume.md`
 
-**Summary:** The startup header shows the detected model name or "(default)" so the user always knows which model is being used. The `RunHeaderParams.model` field already exists — verify it's populated correctly.
+**Summary:** Document that resume requires the workflow file at the same absolute path. When paths don't match, print a clear error suggesting `--parent-run` for cross-machine linking.
 
-### Task 1: Verify model name detection and display
+### Task 1: Add path mismatch check on resume
 
-**Files:** `src/display.rs`, `src/main.rs`, `src/workflow.rs`
+**Files:** `src/main.rs` (in `resume_inner`)
 
 **Steps:**
-- [ ] Verify `Workflow::detect_model_name()` extracts the model from executor args (scans for `--model` flag)
-- [ ] Verify the startup header displays the model name when detected
-- [ ] Verify "(default)" is shown when no model flag is found
-- [ ] If already working, mark as COMPLETE
+- [ ] On resume, compare the current workflow file's absolute path against the path stored in `run.toml`
+- [ ] If paths differ, print a warning (not error): `⚠  Workflow file path has changed:\n   Saved: {old_path}\n   Current: {new_path}\n   This may cause issues if the workflow structure has also changed.`
+- [ ] The phase fingerprint check (F-050) already catches structural changes — this is for path-only changes (e.g., moved repo)
+- [ ] If the path is different but fingerprint matches, proceed with warning only
 
 **Tests:**
-- [ ] Workflow with `args = ["--model", "claude-sonnet-4-6"]` shows "sonnet" or full model name in header
-- [ ] Workflow with no `--model` flag shows "(default)"
+- [ ] Resume with same path: no warning
+- [ ] Resume with different path but same fingerprint: warning but proceeds
 - [ ] `just validate` clean
 
 ---
 
-## F-186: Styled Startup Header
+## F-100: Inspect Data Flow View
 
-**Spec:** `specs/observability/runtime-output.md`
+**Spec:** `specs/cli/inspect-command.md` (--show data-flow section)
 
-**Summary:** The startup header shows workflow details in a clean, labeled layout with semantic coloring. The `print_run_header` function already exists — verify it uses the color system consistently.
+**Summary:** `rings inspect <RUN_ID> --show data-flow` shows declared vs. actual file inputs and outputs for each phase. Requires phase contracts (F-014/015) and file manifest (F-117).
 
-### Task 1: Verify styled header
+### Task 1: Implement data-flow view display
 
-**Files:** `src/display.rs`
+**Files:** `src/inspect.rs`
 
 **Steps:**
-- [ ] Verify the startup header uses `style::dim` for labels, `style::bold` for the version line, `style::accent` for budget
-- [ ] Verify the header includes: Workflow, Context, Phases, Model, Max, Budget (if set), Output
-- [ ] Verify `--no-color` and `NO_COLOR` disable all styling
-- [ ] If already working, mark as COMPLETE
+- [ ] The `InspectView::DataFlow` handler already has partial implementation loading declared flow
+- [ ] Add rendering of the actual file attribution from manifest diffs
+- [ ] Show which files each phase actually touched vs. what it declared it would touch
+- [ ] Highlight mismatches: files produced but not declared, files declared but not produced
+- [ ] Support `--phase NAME` filter
 
 **Tests:**
-- [ ] Header contains all expected labels and values
-- [ ] `NO_COLOR=1` produces plain text header with no ANSI
+- [ ] View shows both declared and actual data flow
+- [ ] Mismatches are highlighted
+- [ ] Phase filter works correctly
 - [ ] `just validate` clean
 
 ---
 
-## F-188: Styled List Table
+## F-122: Cycle Snapshots
 
-**Spec:** `specs/observability/runtime-output.md`
+**Spec:** `specs/observability/file-lineage.md`
 
-**Summary:** `rings list` output uses color-coded status, bold headers, and accent cost figures.
+**Summary:** Copy the entire `context_dir` at each cycle boundary so the user can roll back to any prior cycle. Opt-in via `snapshot_cycles = true` in workflow config.
 
-### Task 1: Verify styled list output
+### Task 1: Add cycle snapshot support
 
-**Files:** `src/main.rs` (list display section)
-
-**Steps:**
-- [ ] Verify `rings list` headers use `style::bold`
-- [ ] Verify status values are color-coded: green for completed, red for failed, yellow for canceled/running
-- [ ] Verify cost figures use `style::accent`
-- [ ] If already working, mark as COMPLETE
-
-**Tests:**
-- [ ] List output with color enabled shows styled headers and status
-- [ ] `NO_COLOR=1` produces plain text list
-- [ ] `just validate` clean
-
----
-
-## F-193/F-194/F-195: Context Dir Tracking and List Filtering
-
-**Spec:** `specs/cli/commands-and-flags.md` (rings list section)
-
-**Summary:** Store `context_dir` in `run.toml` metadata, add DIR column to `rings list`, and add `--dir` filter flag. Specs and inventory already updated — check if implementation was completed.
-
-### Task 1: Verify context_dir in list display
-
-**Files:** `src/state.rs`, `src/list.rs`, `src/main.rs`
+**Files:** `src/workflow.rs`, `src/engine.rs`
 
 **Steps:**
-- [ ] Verify `RunMeta.context_dir` field exists and is populated on run start
-- [ ] Verify `rings list` displays a DIR column
-- [ ] Verify `--dir` filter works as substring match on context_dir
-- [ ] If already working, mark as COMPLETE
+- [ ] Add `snapshot_cycles: bool` field (with `#[serde(default)]`) to workflow config
+- [ ] At each cycle boundary (after all phases in a cycle complete), if `snapshot_cycles = true`:
+  1. Create directory `{output_dir}/snapshots/cycle-{N}/`
+  2. Copy all files from `context_dir` to the snapshot directory (respecting manifest_ignore patterns)
+- [ ] Print snapshot info: `📸  Snapshot saved: {path} ({size})`
+- [ ] Skip credential files from snapshots (reuse F-120 exclusion patterns)
 
 **Tests:**
-- [ ] `rings list` output includes DIR column
-- [ ] `--dir /my/project` filters correctly
-- [ ] JSONL output includes `context_dir` field
+- [ ] `snapshot_cycles = true` creates snapshot directories at cycle boundaries
+- [ ] Snapshot contains all context_dir files except ignored/credential patterns
+- [ ] `snapshot_cycles = false` (default) creates no snapshots
 - [ ] `just validate` clean
 
 ---

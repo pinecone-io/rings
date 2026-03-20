@@ -1307,6 +1307,39 @@ mod tests {
     }
 
     #[test]
+    fn cycle_boundary_styled_contains_ansi_codes() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_color_enabled();
+        std::env::remove_var("NO_COLOR");
+        let s = format_cycle_boundary(2, Some(0.14));
+        assert!(
+            s.contains('\x1b'),
+            "cycle boundary should contain ANSI codes when color enabled: {s:?}"
+        );
+        // With ANSI codes, "Cycle " and the number are separated by escape sequences
+        assert!(s.contains("Cycle "), "missing 'Cycle ': {s:?}");
+        assert!(s.contains("$0.14"), "missing cost: {s:?}");
+        assert!(s.contains("prev"), "missing prev label: {s:?}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn cycle_boundary_no_color_env_var_produces_plain_text() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_color_enabled();
+        std::env::set_var("NO_COLOR", "1");
+        let s = format_cycle_boundary(2, Some(0.14));
+        assert!(
+            !s.contains('\x1b'),
+            "cycle boundary should have no ANSI codes when NO_COLOR=1: {s:?}"
+        );
+        assert!(s.contains("Cycle 2"), "missing cycle number: {s:?}");
+        assert!(s.contains("$0.14"), "missing cost: {s:?}");
+        std::env::remove_var("NO_COLOR");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
     fn bar_chart_full_single_phase_is_full_bar() {
         let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();

@@ -305,3 +305,110 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [x] `None` context_dir displays as `—` in human mode and `null` in JSONL
 
 ---
+
+## Verbose Streaming: Human-Friendly Output with Pinned Status Bar
+
+**Spec:** `specs/cli/commands-and-flags.md` (verbose mode), `specs/observability/runtime-output.md`
+
+**Summary:** Switch the default executor from `--output-format json` to `--output-format stream-json` so that verbose mode (`-v`) streams real-time events instead of dumping a blob at the end. Add a renderer that parses stream-json events into human-friendly output (assistant text, tool call summaries). Pin the rings status bar at the terminal bottom so it doesn't interleave with executor output.
+
+**stream-json event schema** (discovered against Claude Code v2.1.80):
+```
+{"type":"system","subtype":"init","cwd":"...","model":"...","tools":[...],...}
+{"type":"assistant","message":{"content":[{"type":"text","text":"..."}  or  {"type":"tool_use","name":"Read","input":{...}}],...}}
+{"type":"rate_limit_event","rate_limit_info":{...}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"..."}],...}}
+{"type":"result","subtype":"success","total_cost_usd":0.20,"result":"...","usage":{...}}
+```
+Note: `--output-format stream-json` requires `--verbose` flag when using `-p` (print mode).
+
+### Task 1: Switch default executor to `stream-json`
+
+**Files:** `src/executor.rs`, `tests/executor.rs`
+
+**Steps:**
+- [x] Change `ClaudeExecutor::build_args()` from `"json"` to `"stream-json"` and add `"--verbose"` to the arg list (required by Claude Code for stream-json in `-p` mode)
+- [x] Update `extract_response_text` to handle stream-json: scan lines for the last `{"type":"result",...}` event and extract its `result` field (instead of parsing the whole output as one JSON object)
+- [x] Update the security test in `tests/executor.rs` that asserts the exact arg list
+- [x] Verify cost parsing still works — `parse_cost_from_output` already scans line-by-line for `total_cost_usd`, which the final `result` event contains
+
+**Tests:**
+- [x] `extract_response_text` correctly extracts `result` from stream-json output (multiple lines, result in last event)
+- [x] `extract_response_text` still works with legacy single-JSON-object output (backwards compat for custom executors)
+- [x] Cost parsing tests pass without changes
+- [x] Security test updated and passing with new arg list
+
+---
+
+### Task 2: Stream-json event renderer
+
+**Files:** `src/verbose.rs` (new), `src/lib.rs`
+
+**Steps:**
+- [ ] Create `src/verbose.rs` with `format_stream_event(line: &str) -> Option<String>` function
+- [ ] Parse each line as JSON; extract the `type` field
+- [ ] Render known event types:
+  - `system` (subtype `init`) → return `None` (suppress — huge blob listing all tools/MCP servers)
+  - `assistant` with `content[].type == "text"` → return the text content
+  - `assistant` with `content[].type == "tool_use"` → return one-line summary: `  Tool: Read  file_path=...` (dimmed via `style::dim`)
+  - `user` (tool results) → return abbreviated summary: `  [tool result: N lines]` (dimmed)
+  - `rate_limit_event` → return `None` (suppress)
+  - `result` → return `None` (suppress — rings shows its own summary)
+- [ ] Handle mixed content: a single `assistant` event can contain both text and tool_use in its `content[]` array — iterate and render each block, return concatenated lines
+- [ ] Non-JSON or unknown event types → return `Some(line.to_string())` as-is (graceful fallback for custom executors)
+- [ ] Register `pub mod verbose;` in `src/lib.rs`
+
+**Tests:**
+- [ ] `system init` event returns `None`
+- [ ] `assistant` text event returns the text content
+- [ ] `assistant` tool_use event returns `Tool: <name>  <key>=<value>` summary
+- [ ] `assistant` event with both text and tool_use renders both
+- [ ] `user` tool_result returns abbreviated `[tool result: N lines]`
+- [ ] `rate_limit_event` returns `None`
+- [ ] `result` event returns `None`
+- [ ] Non-JSON input returns the line as-is
+- [ ] Unknown JSON event type returns the line as-is
+
+---
+
+### Task 3: Wire renderer into executor reader threads
+
+**Files:** `src/executor.rs`
+
+**Steps:**
+- [ ] In the stdout reader thread (line ~227-238), when `verbose == true`: call `verbose::format_stream_event(&line)` instead of printing raw line
+- [ ] If the formatter returns `Some(formatted)`, print `formatted` via `eprintln!`
+- [ ] If the formatter returns `None` (suppressed events), skip printing
+- [ ] Keep the stderr reader thread unchanged — stderr from Claude Code is already human-readable diagnostic output, print as-is when verbose
+- [ ] Raw output is still accumulated in the `Arc<Mutex<String>>` regardless of rendering (needed for cost parsing, log files)
+
+**Tests:**
+- [ ] Verbose mode with stream-json events: suppressed events (`system`, `result`) do not appear in stderr output
+- [ ] Verbose mode with non-JSON executor output: lines pass through unchanged
+- [ ] Non-verbose mode: no output to stderr from reader threads (unchanged behavior)
+
+---
+
+### Task 4: Pinned status bar for verbose mode
+
+**Files:** `src/display.rs`, `src/engine.rs`
+
+**Steps:**
+- [ ] Add `setup_scroll_region()` function to `display.rs`: detect terminal height, set ANSI scroll region `\x1b[1;{rows-2}r` to exclude bottom 2 lines
+- [ ] Add `teardown_scroll_region()` function: reset scroll region `\x1b[r` and clear the status bar area
+- [ ] Add `draw_pinned_status(line: &str)` function: save cursor `\x1b[s`, move to pinned row, clear line, draw status, restore cursor `\x1b[u`
+- [ ] In `engine.rs`: when `verbose == true && is_stderr_tty()`, call `setup_scroll_region()` before the first executor spawn
+- [ ] Modify `print_run_elapsed` to use `draw_pinned_status` when verbose+TTY instead of `\r\x1b[K` overwrite
+- [ ] On cycle boundaries and run completion: temporarily reset scroll region, print rings chrome (cycle dividers, summaries), re-establish scroll region
+- [ ] On all exit paths (normal completion, Ctrl+C, error, budget cap): call `teardown_scroll_region()` to leave terminal clean
+- [ ] Hook into the existing SIGINT handler in `src/cancel.rs` to ensure scroll region is reset on Ctrl+C
+- [ ] Non-TTY or non-verbose: behavior completely unchanged (current code path)
+
+**Tests:**
+- [ ] `setup_scroll_region` emits correct ANSI escape sequence
+- [ ] `teardown_scroll_region` emits reset sequence `\x1b[r`
+- [ ] `draw_pinned_status` saves/restores cursor and draws at the correct row
+- [ ] Non-TTY mode skips scroll region setup entirely
+- [ ] Non-verbose mode skips scroll region setup entirely
+
+---

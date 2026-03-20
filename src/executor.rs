@@ -275,21 +275,47 @@ impl ClaudeExecutor {
             "-p".to_string(),
             "-".to_string(), // read prompt from stdin
             "--output-format".to_string(),
-            "json".to_string(),
+            "stream-json".to_string(),
+            "--verbose".to_string(),
         ]
     }
 }
 
-/// Extract the plain-text response from claude JSON output.
-/// When `--output-format json` is used, claude emits a JSON object whose
-/// `result` field holds the actual text response. Falls back to the raw
-/// combined output if the output is not valid claude JSON.
+/// Extract the plain-text response from claude output.
+///
+/// When `--output-format stream-json` is used, claude emits one JSON object per line.
+/// The final `{"type":"result",...}` line contains the `result` field with the
+/// assistant's text response. We scan all lines and use the last result event found.
+///
+/// Falls back to legacy single-JSON-object parsing (for `--output-format json` and
+/// custom executors), and then to the raw output if neither parse succeeds.
 pub fn extract_response_text(output: &str) -> String {
+    // Try stream-json format: scan for the last {"type":"result",...} line.
+    let mut last_result: Option<String> = None;
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if v.get("type").and_then(|t| t.as_str()) == Some("result") {
+                if let Some(result) = v.get("result").and_then(|r| r.as_str()) {
+                    last_result = Some(result.to_string());
+                }
+            }
+        }
+    }
+    if let Some(result) = last_result {
+        return result;
+    }
+
+    // Legacy fallback: single JSON object (--output-format json or custom executors).
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(output.trim()) {
         if let Some(result) = v.get("result").and_then(|r| r.as_str()) {
             return result.to_string();
         }
     }
+
     output.to_string()
 }
 
@@ -481,6 +507,62 @@ impl Executor for MockExecutor {
             sigterm_called: Arc::new(AtomicBool::new(false)),
             sigkill_called: Arc::new(AtomicBool::new(false)),
         }))
+    }
+}
+
+#[cfg(test)]
+mod extract_tests {
+    use super::*;
+
+    #[test]
+    fn extract_response_text_stream_json_last_result_event() {
+        let output = concat!(
+            r#"{"type":"system","subtype":"init","cwd":"/tmp"}"#,
+            "\n",
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}"#,
+            "\n",
+            r#"{"type":"result","subtype":"success","total_cost_usd":0.01,"result":"The answer is 42","usage":{}}"#,
+            "\n"
+        );
+        assert_eq!(extract_response_text(output), "The answer is 42");
+    }
+
+    #[test]
+    fn extract_response_text_stream_json_uses_last_result() {
+        // Multiple result events: use the last one.
+        let output = concat!(
+            r#"{"type":"result","subtype":"success","total_cost_usd":0.01,"result":"first","usage":{}}"#,
+            "\n",
+            r#"{"type":"result","subtype":"success","total_cost_usd":0.02,"result":"second","usage":{}}"#,
+            "\n"
+        );
+        assert_eq!(extract_response_text(output), "second");
+    }
+
+    #[test]
+    fn extract_response_text_legacy_single_json_object() {
+        // Legacy --output-format json: single JSON blob.
+        let output = r#"{"result":"legacy answer","total_cost_usd":0.01}"#;
+        assert_eq!(extract_response_text(output), "legacy answer");
+    }
+
+    #[test]
+    fn extract_response_text_non_json_fallback() {
+        let output = "plain text output";
+        assert_eq!(extract_response_text(output), "plain text output");
+    }
+
+    #[test]
+    fn extract_response_text_stream_json_no_result_event_falls_back() {
+        // Stream-json lines but no "type":"result" — fall back to raw output.
+        let output = concat!(
+            r#"{"type":"system","subtype":"init"}"#,
+            "\n",
+            r#"{"type":"assistant","message":{}}"#,
+            "\n"
+        );
+        // No result event → legacy single-JSON fallback → also fails → raw output
+        assert_eq!(extract_response_text(output), output);
     }
 }
 

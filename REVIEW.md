@@ -1,6 +1,8 @@
 ## Decisions
 <!-- Architectural or design choices made during implementation. -->
-<!-- Format: `[YYYY-MM-MM / task name] description` -->
+<!-- Format: `[YYYY-MM-DD / task name] description` -->
+
+[2026-03-20 / F-018 Task 1: Complete data-flow view] Updated `render_data_flow_declared` and `render_data_flow_actual` signatures to accept `phase_filter`, `output_format`, and (for actual) `cycle_filter` parameters. Updated header text to match the spec exactly: "Declared data flow (from phase contracts):" and "Actual file attribution (this run):". Changed actual-file rendering to group by (path, phase) and show unique cycle numbers instead of individual run numbers — matching the spec format `path  phase  (cycles 1, 2)`. JSONL for declared emits one object per phase with `phase`, `consumes`, `produces`. JSONL for actual emits one object per (path, phase) group with `path`, `phase`, `cycles`. Updated the DataFlow handler in `inspect_inner` to pass cycle/phase filters and output_format. Updated integration tests in `tests/inspect.rs` to use new signatures and match updated header strings.
 
 [2026-03-20 / F-189 Task 1: Styled Dry Run Output] Dry-run output was already using `style::bold` for headers and `style::dim` for labels. The ✓ signal-found marker already used `style::success`. However, the ✗ signal-not-found marker was using `style::error` (red) instead of `style::warn` (yellow). Changed to `style::warn` because a missing completion signal is advisory (the user should add it) not a hard error. Updated test `dry_run_cross_mark_uses_error_styling` → `dry_run_cross_mark_uses_warn_styling` to match. No cost estimates are shown in dry-run output, so `style::accent` is not needed there.
 

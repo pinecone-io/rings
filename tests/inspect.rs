@@ -1,3 +1,4 @@
+use rings::cli::OutputFormat;
 use rings::inspect::{
     load_actual_changes, load_declared_flow, render_data_flow_actual, render_data_flow_declared,
     ActualFileChange, ChangeType, DeclaredFlow,
@@ -23,10 +24,14 @@ fn test_render_data_flow_declared_two_phases_matches_spec_format() {
         },
     ];
 
-    let output = render_data_flow_declared(&phases);
+    let output = render_data_flow_declared(&phases, None, OutputFormat::Human);
 
-    // Header present
-    assert!(output.starts_with("Data flow (declared):"));
+    // Header present (matches spec: "Declared data flow (from phase contracts):")
+    assert!(
+        output.contains("Declared data flow"),
+        "output should contain 'Declared data flow': {}",
+        output
+    );
 
     // All patterns and phase labels present
     assert!(output.contains("specs/**/*.md"));
@@ -39,21 +44,10 @@ fn test_render_data_flow_declared_two_phases_matches_spec_format() {
     // Arrows present
     assert!(output.contains('\u{2192}'), "output should contain → arrow");
 
-    // builder has 1 consume and 2 produces, so tests/**/*.rs should appear
-    // on a continuation line (not the same line as specs/**/*.md in builder section)
     let lines: Vec<&str> = output.lines().collect();
 
-    // Find the builder produce continuation: a line with tests/**/*.rs that has no ──→ before it,
-    // OR find that builder's section has 2 produce entries.
-    let builder_lines: Vec<&&str> = lines
-        .iter()
-        .filter(|l| {
-            l.contains("[builder]") || {
-                // continuation produces for builder: after [builder] row, before first [reviewer] row
-                false
-            }
-        })
-        .collect();
+    // builder label should appear
+    let builder_lines: Vec<&&str> = lines.iter().filter(|l| l.contains("[builder]")).collect();
     assert!(
         !builder_lines.is_empty(),
         "builder label should appear in output"
@@ -75,7 +69,7 @@ fn test_render_data_flow_declared_no_contracts() {
         produces: vec![],
     }];
 
-    let output = render_data_flow_declared(&phases);
+    let output = render_data_flow_declared(&phases, None, OutputFormat::Human);
     assert!(output.contains("[builder]"), "phase name should appear");
     // No arrows since no consumes or produces
     assert!(
@@ -92,7 +86,7 @@ fn test_render_data_flow_declared_consumes_only() {
         produces: vec![],
     }];
 
-    let output = render_data_flow_declared(&phases);
+    let output = render_data_flow_declared(&phases, None, OutputFormat::Human);
     assert!(output.contains("input.md"));
     assert!(output.contains("[reader]"));
 
@@ -129,28 +123,31 @@ fn test_render_data_flow_actual_correct_attribution() {
         },
     ];
 
-    let output = render_data_flow_actual(&changes);
+    let output = render_data_flow_actual(&changes, None, None, OutputFormat::Human);
 
-    assert!(output.starts_with("Data flow (actual):"));
+    // Header matches spec: "Actual file attribution (this run):"
+    assert!(
+        output.contains("Actual file attribution"),
+        "should show actual file attribution header: {}",
+        output
+    );
     assert!(output.contains("src/main.rs"));
-    assert!(output.contains("modified"));
     assert!(output.contains("builder"));
     assert!(output.contains("review-notes.md"));
-    assert!(output.contains("created"));
     assert!(output.contains("reviewer"));
-    assert!(output.contains("run 5"));
-    assert!(output.contains("run 6"));
+    // Shows cycle 1 for both
+    assert!(output.contains("cycle 1"), "should show cycle number");
 }
 
 #[test]
-fn test_render_data_flow_actual_aggregates_runs() {
-    // Same file modified in two runs by same phase
+fn test_render_data_flow_actual_aggregates_cycles() {
+    // Same file modified in two different cycles by same phase
     let changes = vec![
         ActualFileChange {
             path: "src/engine.rs".to_string(),
             phase: "builder".to_string(),
-            cycle: 2,
-            run: 6,
+            cycle: 1,
+            run: 3,
             iteration: 1,
             change_type: ChangeType::Modified,
         },
@@ -164,11 +161,11 @@ fn test_render_data_flow_actual_aggregates_runs() {
         },
     ];
 
-    let output = render_data_flow_actual(&changes);
-    // Aggregated: "runs 6, 7"
+    let output = render_data_flow_actual(&changes, None, None, OutputFormat::Human);
+    // Aggregated: "cycles 1, 2"
     assert!(
-        output.contains("runs 6, 7"),
-        "should aggregate multiple runs: got {}",
+        output.contains("cycles 1, 2"),
+        "should aggregate multiple cycles: got {}",
         output
     );
 }
@@ -204,11 +201,11 @@ fn test_inspect_data_flow_exits_0_produces_output() {
     assert_eq!(declared[0].consumes, vec!["specs/**/*.md"]);
     assert_eq!(declared[0].produces, vec!["src/**/*.rs"]);
 
-    // render_data_flow_declared should produce non-empty output containing "Data flow"
-    let rendered = render_data_flow_declared(&declared);
+    // render_data_flow_declared should produce non-empty output containing "data flow"
+    let rendered = render_data_flow_declared(&declared, None, OutputFormat::Human);
     assert!(
-        rendered.contains("Data flow"),
-        "output should contain 'Data flow': {}",
+        rendered.contains("data flow") || rendered.contains("Data flow"),
+        "output should contain 'data flow': {}",
         rendered
     );
     assert!(rendered.contains("[builder]"));

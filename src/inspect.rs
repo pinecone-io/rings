@@ -327,32 +327,77 @@ pub struct FileChangeEntry {
     pub iteration: u32,
 }
 
+/// JSONL record for a declared phase flow entry.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeclaredFlowEntry {
+    pub phase: String,
+    pub consumes: Vec<String>,
+    pub produces: Vec<String>,
+}
+
+/// JSONL record for an actual file attribution entry.
+#[derive(Debug, Clone, Serialize)]
+pub struct ActualFileEntry {
+    pub path: String,
+    pub phase: String,
+    pub cycles: Vec<u32>,
+}
+
 /// Render the declared data-flow graph from a list of `DeclaredFlow` entries.
 ///
-/// Output format:
+/// Supports optional `phase_filter` to restrict to one phase.
+/// In JSONL mode, emits one object per phase with `phase`, `consumes`, and `produces` fields.
+///
+/// Human output format:
 /// ```text
-/// Data flow (declared):
+/// Declared data flow (from phase contracts):
 ///   specs/**/*.md  ──→  [builder]  ──→  src/**/*.rs
 ///                                       tests/**/*.rs
 ///   src/**/*.rs   ──→  [reviewer] ──→  review-notes.md
 ///   tests/**/*.rs ──→  [reviewer]
 /// ```
-pub fn render_data_flow_declared(phases: &[DeclaredFlow]) -> String {
-    let mut lines = vec!["Data flow (declared):".to_string()];
+pub fn render_data_flow_declared(
+    phases: &[DeclaredFlow],
+    phase_filter: Option<&str>,
+    output_format: crate::cli::OutputFormat,
+) -> String {
+    let filtered: Vec<&DeclaredFlow> = phases
+        .iter()
+        .filter(|p| phase_filter.is_none_or(|f| p.phase == f))
+        .collect();
 
-    if phases.is_empty() {
+    if output_format == crate::cli::OutputFormat::Jsonl {
+        let mut out = String::new();
+        for phase in &filtered {
+            let entry = DeclaredFlowEntry {
+                phase: phase.phase.clone(),
+                consumes: phase.consumes.clone(),
+                produces: phase.produces.clone(),
+            };
+            if let Ok(json) = serde_json::to_string(&entry) {
+                out.push_str(&json);
+                out.push('\n');
+            }
+        }
+        return out;
+    }
+
+    let mut lines = vec!["Declared data flow (from phase contracts):".to_string()];
+
+    if filtered.is_empty() {
+        lines.push("  (no contracts declared)".to_string());
         return lines.join("\n") + "\n";
     }
 
     // Compute global column widths.
-    let left_width = phases
+    let left_width = filtered
         .iter()
         .flat_map(|p| p.consumes.iter().map(String::as_str))
         .map(str::len)
         .max()
         .unwrap_or(0);
 
-    for phase in phases {
+    for phase in filtered {
         let phase_label = format!("[{}]", phase.phase);
         let n = phase.consumes.len();
         let m = phase.produces.len();
@@ -410,57 +455,84 @@ pub fn render_data_flow_declared(phases: &[DeclaredFlow]) -> String {
 
 /// Render actual file attribution grouped by (path, phase) with cycle numbers.
 ///
-/// Output format:
+/// Supports `cycle_filter` and `phase_filter` to restrict the output.
+/// In JSONL mode, emits one object per (path, phase) group with `path`, `phase`, and `cycles` fields.
+///
+/// Human output format (per spec):
 /// ```text
-/// Data flow (actual):
-///   src/main.rs      modified by builder (run 5)
-///   src/engine.rs    modified by builder (runs 6, 7)
-///   review-notes.md  created by reviewer (run 8)
+/// Actual file attribution (this run):
+///   src/main.rs       builder  (cycles 1, 2)
+///   src/engine.rs     builder  (cycles 1, 2)
+///   review-notes.md   reviewer (cycle 1)
 /// ```
-pub fn render_data_flow_actual(changes: &[ActualFileChange]) -> String {
-    if changes.is_empty() {
-        return "Data flow (actual):\n  (no file changes recorded)\n".to_string();
-    }
+pub fn render_data_flow_actual(
+    changes: &[ActualFileChange],
+    cycle_filter: Option<u32>,
+    phase_filter: Option<&str>,
+    output_format: crate::cli::OutputFormat,
+) -> String {
+    let filtered: Vec<&ActualFileChange> = changes
+        .iter()
+        .filter(|c| {
+            cycle_filter.is_none_or(|cy| c.cycle == cy)
+                && phase_filter.is_none_or(|ph| c.phase == ph)
+        })
+        .collect();
 
-    let mut lines = vec!["Data flow (actual):".to_string()];
-
-    // Group by (path, phase, change_type) and collect run numbers.
-    // Use BTreeMap for deterministic ordering.
-    let mut grouped: BTreeMap<(String, String, String), Vec<u32>> = BTreeMap::new();
-
-    for change in changes {
-        let ct = match change.change_type {
-            ChangeType::Added => "created",
-            ChangeType::Modified => "modified",
-            ChangeType::Deleted => "deleted",
-        };
+    // Group by (path, phase) and collect unique cycle numbers.
+    let mut grouped: BTreeMap<(String, String), BTreeSet<u32>> = BTreeMap::new();
+    for change in &filtered {
         grouped
-            .entry((change.path.clone(), change.phase.clone(), ct.to_string()))
+            .entry((change.path.clone(), change.phase.clone()))
             .or_default()
-            .push(change.run);
+            .insert(change.cycle);
     }
 
-    let path_width = changes.iter().map(|c| c.path.len()).max().unwrap_or(0);
+    if output_format == crate::cli::OutputFormat::Jsonl {
+        let mut out = String::new();
+        for ((path, phase), cycles) in &grouped {
+            let entry = ActualFileEntry {
+                path: path.clone(),
+                phase: phase.clone(),
+                cycles: cycles.iter().copied().collect(),
+            };
+            if let Ok(json) = serde_json::to_string(&entry) {
+                out.push_str(&json);
+                out.push('\n');
+            }
+        }
+        return out;
+    }
 
-    for ((path, phase, ct), runs) in &grouped {
-        let mut runs_sorted = runs.clone();
-        runs_sorted.sort();
-        runs_sorted.dedup();
+    let header = "Actual file attribution (this run):";
 
-        let runs_str = if runs_sorted.len() == 1 {
-            format!("run {}", runs_sorted[0])
+    if grouped.is_empty() {
+        return format!("{}\n  (no file changes recorded)\n", header);
+    }
+
+    let path_width = grouped.keys().map(|(p, _)| p.len()).max().unwrap_or(0);
+    let phase_width = grouped.keys().map(|(_, ph)| ph.len()).max().unwrap_or(0);
+
+    let mut lines = vec![header.to_string()];
+
+    for ((path, phase), cycles) in &grouped {
+        let mut cycles_sorted: Vec<u32> = cycles.iter().copied().collect();
+        cycles_sorted.sort();
+
+        let cycles_str = if cycles_sorted.len() == 1 {
+            format!("cycle {}", cycles_sorted[0])
         } else {
-            let nums: Vec<String> = runs_sorted.iter().map(|r| r.to_string()).collect();
-            format!("runs {}", nums.join(", "))
+            let nums: Vec<String> = cycles_sorted.iter().map(|c| c.to_string()).collect();
+            format!("cycles {}", nums.join(", "))
         };
 
         lines.push(format!(
-            "  {:<pw$}  {} by {} ({})",
+            "  {:<pw$}  {:<phw$}  ({})",
             path,
-            ct,
             phase,
-            runs_str,
-            pw = path_width
+            cycles_str,
+            pw = path_width,
+            phw = phase_width,
         ));
     }
 
@@ -1238,5 +1310,160 @@ mod tests {
             serde_json::from_str(lines[1]).expect("line 1 should be valid JSON");
         assert_eq!(obj1["change_type"], "created");
         assert_eq!(obj1["phase"], "reviewer");
+    }
+
+    // ── render_data_flow_declared tests ──────────────────────────────────────
+
+    fn make_declared_flow(phase: &str, consumes: &[&str], produces: &[&str]) -> DeclaredFlow {
+        DeclaredFlow {
+            phase: phase.to_string(),
+            consumes: consumes.iter().map(|s| s.to_string()).collect(),
+            produces: produces.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn render_data_flow_declared_shows_consumes_and_produces() {
+        let phases = vec![
+            make_declared_flow("builder", &["specs/**/*.md"], &["src/**/*.rs"]),
+            make_declared_flow("reviewer", &["src/**/*.rs"], &["review-notes.md"]),
+        ];
+        let output = render_data_flow_declared(&phases, None, OutputFormat::Human);
+        assert!(
+            output.contains("Declared data flow"),
+            "should show declared header"
+        );
+        assert!(output.contains("builder"), "should show builder phase");
+        assert!(output.contains("reviewer"), "should show reviewer phase");
+        assert!(output.contains("specs/**/*.md"), "should show consumes");
+        assert!(
+            output.contains("src/**/*.rs"),
+            "should show produces/consumes"
+        );
+        assert!(
+            output.contains("review-notes.md"),
+            "should show reviewer produces"
+        );
+    }
+
+    #[test]
+    fn render_data_flow_declared_empty_shows_no_contracts() {
+        let output = render_data_flow_declared(&[], None, OutputFormat::Human);
+        assert!(
+            output.contains("no contracts declared"),
+            "should show no contracts message"
+        );
+    }
+
+    #[test]
+    fn render_data_flow_declared_phase_filter_shows_only_matching_phase() {
+        let phases = vec![
+            make_declared_flow("builder", &["specs/**/*.md"], &["src/**/*.rs"]),
+            make_declared_flow("reviewer", &["src/**/*.rs"], &["review-notes.md"]),
+        ];
+        let output = render_data_flow_declared(&phases, Some("builder"), OutputFormat::Human);
+        assert!(output.contains("builder"), "should show builder");
+        assert!(!output.contains("reviewer"), "should not show reviewer");
+    }
+
+    #[test]
+    fn render_data_flow_declared_jsonl_mode_emits_one_object_per_phase() {
+        let phases = vec![
+            make_declared_flow("builder", &["specs/**/*.md"], &["src/**/*.rs"]),
+            make_declared_flow("reviewer", &["src/**/*.rs"], &["review-notes.md"]),
+        ];
+        let output = render_data_flow_declared(&phases, None, OutputFormat::Jsonl);
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 2, "should emit one line per phase");
+        let obj0: serde_json::Value =
+            serde_json::from_str(lines[0]).expect("line 0 should be valid JSON");
+        assert_eq!(obj0["phase"], "builder");
+        assert!(obj0["consumes"].is_array(), "should have consumes array");
+        assert!(obj0["produces"].is_array(), "should have produces array");
+    }
+
+    // ── render_data_flow_actual tests ────────────────────────────────────────
+
+    #[test]
+    fn render_data_flow_actual_shows_files_with_cycles() {
+        let changes = vec![
+            make_file_change("src/main.rs", 1, 1, "builder", 1, ChangeType::Modified),
+            make_file_change("src/main.rs", 5, 2, "builder", 1, ChangeType::Modified),
+            make_file_change("review.md", 4, 1, "reviewer", 1, ChangeType::Added),
+        ];
+        let output = render_data_flow_actual(&changes, None, None, OutputFormat::Human);
+        assert!(
+            output.contains("Actual file attribution"),
+            "should show actual header"
+        );
+        assert!(output.contains("src/main.rs"), "should show main.rs");
+        assert!(output.contains("builder"), "should show builder phase");
+        assert!(
+            output.contains("cycles 1, 2"),
+            "should show cycles for repeated file"
+        );
+        assert!(output.contains("review.md"), "should show review.md");
+    }
+
+    #[test]
+    fn render_data_flow_actual_empty_shows_no_changes() {
+        let output = render_data_flow_actual(&[], None, None, OutputFormat::Human);
+        assert!(
+            output.contains("no file changes recorded"),
+            "should show no changes message"
+        );
+    }
+
+    #[test]
+    fn render_data_flow_actual_cycle_filter_shows_only_matching_cycle() {
+        let changes = vec![
+            make_file_change("src/a.rs", 1, 1, "builder", 1, ChangeType::Modified),
+            make_file_change("src/b.rs", 3, 2, "builder", 1, ChangeType::Modified),
+        ];
+        let output = render_data_flow_actual(&changes, Some(1), None, OutputFormat::Human);
+        assert!(output.contains("src/a.rs"), "should show cycle 1 file");
+        assert!(!output.contains("src/b.rs"), "should not show cycle 2 file");
+    }
+
+    #[test]
+    fn render_data_flow_actual_phase_filter_shows_only_matching_phase() {
+        let changes = vec![
+            make_file_change("src/main.rs", 1, 1, "builder", 1, ChangeType::Modified),
+            make_file_change("review.md", 2, 1, "reviewer", 1, ChangeType::Added),
+        ];
+        let output = render_data_flow_actual(&changes, None, Some("builder"), OutputFormat::Human);
+        assert!(output.contains("src/main.rs"), "should show builder file");
+        assert!(
+            !output.contains("review.md"),
+            "should not show reviewer file"
+        );
+    }
+
+    #[test]
+    fn render_data_flow_actual_jsonl_mode_emits_grouped_by_path_and_phase() {
+        let changes = vec![
+            make_file_change("src/main.rs", 1, 1, "builder", 1, ChangeType::Modified),
+            make_file_change("src/main.rs", 5, 2, "builder", 1, ChangeType::Modified),
+            make_file_change("review.md", 4, 1, "reviewer", 1, ChangeType::Added),
+        ];
+        let output = render_data_flow_actual(&changes, None, None, OutputFormat::Jsonl);
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(
+            lines.len(),
+            2,
+            "should emit one line per (path, phase) group"
+        );
+        // Lines are sorted by (path, phase), so src/main.rs before review.md
+        let obj0: serde_json::Value =
+            serde_json::from_str(lines[0]).expect("line 0 should be valid JSON");
+        assert_eq!(obj0["path"], "review.md");
+        assert_eq!(obj0["phase"], "reviewer");
+        assert!(obj0["cycles"].is_array(), "should have cycles array");
+        let obj1: serde_json::Value =
+            serde_json::from_str(lines[1]).expect("line 1 should be valid JSON");
+        assert_eq!(obj1["path"], "src/main.rs");
+        assert_eq!(obj1["phase"], "builder");
+        let cycles = obj1["cycles"].as_array().unwrap();
+        assert_eq!(cycles.len(), 2, "should have 2 unique cycles");
     }
 }

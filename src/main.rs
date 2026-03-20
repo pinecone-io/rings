@@ -1424,15 +1424,25 @@ fn inspect_inner(
             }
             cli::InspectView::DataFlow => {
                 let declared = rings::inspect::load_declared_flow(&run_dir)?;
-                print!("{}", rings::inspect::render_data_flow_declared(&declared));
+                print!(
+                    "{}",
+                    rings::inspect::render_data_flow_declared(
+                        &declared,
+                        args.phase.as_deref(),
+                        output_format
+                    )
+                );
 
                 let actual_changes = rings::inspect::load_actual_changes(&run_dir)?;
-                if !actual_changes.is_empty() {
-                    print!(
-                        "{}",
-                        rings::inspect::render_data_flow_actual(&actual_changes)
-                    );
-                }
+                print!(
+                    "{}",
+                    rings::inspect::render_data_flow_actual(
+                        &actual_changes,
+                        args.cycle,
+                        args.phase.as_deref(),
+                        output_format
+                    )
+                );
             }
             cli::InspectView::ClaudeOutput => {
                 render_claude_output(&run_dir, args.cycle, args.phase.as_deref(), output_format)?;

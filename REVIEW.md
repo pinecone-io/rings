@@ -232,6 +232,8 @@
 <!-- Ambiguities, spec gaps, or missing specs that need human review. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-20 / F-147 Task 1: Disk space check] Added `available_disk_space_bytes(path)` using `nix::sys::statvfs` (required adding `"fs"` feature to the nix dependency). Added `DiskSpaceLevel` enum and `classify_disk_space(bytes) -> DiskSpaceLevel` to separate I/O from threshold logic for testability. Advisory check placed among the other startup advisory checks in `cmd_run`, after the output_dir inside-git-repo check. Fatal (< 10 MB) aborts in all output modes; warning (< 100 MB) is shown only in Human mode, consistent with the "always shown / no suppression flag" spec entry and the task's note about JSONL quietness. Also fixed two pre-existing flaky test races: (1) config tests using `std::env::set_current_dir` in parallel now hold a per-module `CWD_LOCK: Mutex<()>`; (2) style tests and main.rs tests that touch `COLOR_ENABLED` atomic or `NO_COLOR` env var now hold a `COLOR_TEST_LOCK: Mutex<()>` exported from `style.rs` under `#[cfg(any(test, feature = "testing"))]`.
+
 [2026-03-20 / F-073 Task 1: rings lineage — wall time gap] The spec shows "Total wall time" in chain totals, but neither `run.toml` nor `state.json` stores an `ended_at` timestamp. Wall time is not computable from available data. This should be addressed in a future spec update that adds `ended_at` to `RunMeta` or `StateFile`.
 
 [2026-03-20 / F-073 Task 1: rings lineage — --descendants flag] `LineageArgs` has a `descendants: bool` field defined in `cli.rs`, but no spec exists for descendants-only traversal and the task steps don't require it. The flag is accepted but silently ignored in the current implementation.

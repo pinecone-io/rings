@@ -86,9 +86,15 @@ impl RingsConfig {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::TempDir;
 
+    // Serializes all tests that mutate the process-wide cwd or env vars to
+    // prevent races when the test harness runs tests on multiple threads.
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
+
     fn with_cwd<F: FnOnce()>(dir: &std::path::Path, f: F) {
+        let _guard = CWD_LOCK.lock().unwrap();
         let orig = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir).unwrap();
         f();

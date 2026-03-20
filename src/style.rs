@@ -23,10 +23,16 @@ pub fn set_no_color() {
 }
 
 /// Re-enable color output. Used in tests to reset global state.
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 pub fn set_color_enabled() {
     COLOR_ENABLED.store(true, Ordering::Relaxed);
 }
+
+/// Mutex to serialize tests that mutate global color state.
+/// All tests that call `set_no_color()`, `set_color_enabled()`, or set/remove `NO_COLOR`
+/// must hold this lock for the duration of the test to prevent interference.
+#[cfg(any(test, feature = "testing"))]
+pub static COLOR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Returns the spinner frame for the given tick counter.
 pub fn spinner_frame(tick: usize) -> &'static str {
@@ -102,6 +108,7 @@ mod tests {
 
     #[test]
     fn color_enabled_respects_atomic_toggle() {
+        let _guard = COLOR_TEST_LOCK.lock().unwrap();
         // Ensure we start with a known state
         set_color_enabled();
         std::env::remove_var("NO_COLOR");
@@ -119,6 +126,7 @@ mod tests {
 
     #[test]
     fn color_enabled_respects_no_color_env_var() {
+        let _guard = COLOR_TEST_LOCK.lock().unwrap();
         set_color_enabled();
         std::env::remove_var("NO_COLOR");
 
@@ -130,6 +138,7 @@ mod tests {
         );
 
         std::env::remove_var("NO_COLOR");
+        set_color_enabled();
     }
 
     #[test]
@@ -144,6 +153,7 @@ mod tests {
 
     #[test]
     fn helpers_return_unstyled_when_color_disabled() {
+        let _guard = COLOR_TEST_LOCK.lock().unwrap();
         set_color_enabled();
         std::env::remove_var("NO_COLOR");
         set_no_color();

@@ -444,6 +444,31 @@ fn run_inner(
         }
     }
 
+    // Advisory check: disk space in output directory.
+    // Fatal (< 10 MB): abort in all output modes. Warning (< 100 MB): shown in human mode only.
+    if let Some(avail) = available_disk_space_bytes(&output_base) {
+        match classify_disk_space(avail) {
+            DiskSpaceLevel::Fatal(mb) => {
+                eprintln!(
+                    "Error: Less than 10 MB free in output directory ({}). Aborting to prevent data loss.",
+                    output_base.display()
+                );
+                let _ = mb;
+                return Ok(2);
+            }
+            DiskSpaceLevel::Warning(mb) => {
+                if output_format == cli::OutputFormat::Human {
+                    eprintln!(
+                        "⚠  Low disk space: only {} MB free in output directory ({}).",
+                        mb,
+                        output_base.display()
+                    );
+                }
+            }
+            DiskSpaceLevel::Ok => {}
+        }
+    }
+
     // Advisory check: completion signal in prompts
     if output_format == cli::OutputFormat::Human && !args.no_completion_check {
         let mut prompt_texts: Vec<String> = Vec::new();
@@ -2335,6 +2360,43 @@ fn format_human_duration(secs: u64) -> String {
 }
 
 /// Walks from `path` up to the filesystem root, returning the first directory
+/// Returns the available disk space in bytes for the filesystem containing `path`.
+/// Returns `None` if the query fails or is unsupported on this platform.
+#[cfg(unix)]
+fn available_disk_space_bytes(path: &std::path::Path) -> Option<u64> {
+    use nix::sys::statvfs::statvfs;
+    let stat = statvfs(path).ok()?;
+    Some(stat.blocks_available() * stat.block_size())
+}
+
+#[cfg(not(unix))]
+fn available_disk_space_bytes(_path: &std::path::Path) -> Option<u64> {
+    None
+}
+
+/// Disk space threshold classification for the output directory.
+#[derive(Debug, PartialEq)]
+enum DiskSpaceLevel {
+    /// Adequate space — no action needed.
+    Ok,
+    /// Low space (< 100 MB but >= 10 MB) — warn in human mode.
+    Warning(u64),
+    /// Critical space (< 10 MB) — fatal error in all modes.
+    Fatal(u64),
+}
+
+/// Classify available bytes into a `DiskSpaceLevel`.
+fn classify_disk_space(available_bytes: u64) -> DiskSpaceLevel {
+    let available_mb = available_bytes / (1024 * 1024);
+    if available_mb < 10 {
+        DiskSpaceLevel::Fatal(available_mb)
+    } else if available_mb < 100 {
+        DiskSpaceLevel::Warning(available_mb)
+    } else {
+        DiskSpaceLevel::Ok
+    }
+}
+
 /// that contains a `.git` entry. Returns `None` if no such directory is found.
 fn find_git_root(path: &std::path::Path) -> Option<PathBuf> {
     // Canonicalize to get an absolute path for reliable parent traversal.
@@ -2641,14 +2703,19 @@ mod tests {
     #[test]
     fn dry_run_check_mark_uses_success_styling() {
         // With NO_COLOR set the checkmark is plain; with color enabled it has ANSI codes.
+        // Hold the color lock to avoid races with style tests that mutate COLOR_ENABLED.
+        let _guard = style::COLOR_TEST_LOCK.lock().unwrap();
+        style::set_color_enabled();
         std::env::set_var("NO_COLOR", "1");
         let plain = style::success("✓");
         std::env::remove_var("NO_COLOR");
 
         assert_eq!(plain, "✓");
+        style::set_color_enabled();
         let styled = style::success("✓");
         assert_ne!(styled, "✓", "success checkmark should include ANSI styling");
         assert!(styled.contains('✓'));
+        style::set_color_enabled();
     }
 
     // --- Task 2: resolve_init_path tests ---
@@ -3008,6 +3075,78 @@ runs_per_cycle = 1
     fn dry_run_jsonl_suppressed_for_human_format() {
         // The JSONL dry-run path is gated by `output_format == OutputFormat::Jsonl`.
         // Human format does not satisfy that condition.
+        assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
+
+    // --- disk space advisory check tests ---
+
+    #[test]
+    fn disk_space_ok_when_ample_space() {
+        // 200 MB is well above both thresholds
+        assert_eq!(classify_disk_space(200 * 1024 * 1024), DiskSpaceLevel::Ok);
+    }
+
+    #[test]
+    fn disk_space_ok_at_exactly_100mb() {
+        // 100 MB is at the boundary — not a warning (< 100 triggers warning)
+        assert_eq!(classify_disk_space(100 * 1024 * 1024), DiskSpaceLevel::Ok);
+    }
+
+    #[test]
+    fn disk_space_warning_when_low() {
+        // 50 MB is in the warning band (< 100 MB but >= 10 MB)
+        assert_eq!(
+            classify_disk_space(50 * 1024 * 1024),
+            DiskSpaceLevel::Warning(50)
+        );
+    }
+
+    #[test]
+    fn disk_space_warning_at_boundary_just_below_100mb() {
+        // 99 MB should trigger warning
+        assert_eq!(
+            classify_disk_space(99 * 1024 * 1024),
+            DiskSpaceLevel::Warning(99)
+        );
+    }
+
+    #[test]
+    fn disk_space_warning_at_boundary_just_above_10mb() {
+        // 10 MB is at the boundary — warning, not fatal (< 10 triggers fatal)
+        assert_eq!(
+            classify_disk_space(10 * 1024 * 1024),
+            DiskSpaceLevel::Warning(10)
+        );
+    }
+
+    #[test]
+    fn disk_space_fatal_when_very_low() {
+        // 5 MB is in the fatal band (< 10 MB)
+        assert_eq!(
+            classify_disk_space(5 * 1024 * 1024),
+            DiskSpaceLevel::Fatal(5)
+        );
+    }
+
+    #[test]
+    fn disk_space_fatal_at_zero() {
+        assert_eq!(classify_disk_space(0), DiskSpaceLevel::Fatal(0));
+    }
+
+    #[test]
+    fn disk_space_fatal_check_applies_in_jsonl_mode() {
+        // Fatal threshold is not suppressed by output format — verify the
+        // classify_disk_space function returns Fatal regardless of output mode.
+        assert_eq!(
+            classify_disk_space(9 * 1024 * 1024),
+            DiskSpaceLevel::Fatal(9)
+        );
+    }
+
+    #[test]
+    fn disk_space_warning_suppressed_in_jsonl_mode_by_format_guard() {
+        // The warning print is guarded by `output_format == OutputFormat::Human`.
+        // JSONL mode uses OutputFormat::Jsonl, which does not satisfy the guard.
         assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
     }
 }

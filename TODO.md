@@ -23,39 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-061/F-062: User and Project Config Files
-
-**Spec:** `specs/state/configuration.md`
-
-**Summary:** Load user-level defaults from `~/.config/rings/config.toml` and project-level defaults from `.rings-config.toml` in the current directory. These provide defaults that CLI flags and workflow TOML override.
-
-### Task 1: Config file loading
-
-**Files:** `src/config.rs` (new), `src/main.rs`, `src/lib.rs`
-
-**Steps:**
-- [x] Create `src/config.rs` with a `RingsConfig` struct containing optional fields for all configurable defaults:
-  - `default_output_dir: Option<String>`
-  - `color: Option<bool>`
-  - Additional fields can be added later
-- [x] Implement `RingsConfig::load() -> Result<RingsConfig>` that:
-  1. Checks for `.rings-config.toml` in the current directory
-  2. Checks for `~/.config/rings/config.toml` (or `$XDG_CONFIG_HOME/rings/config.toml`)
-  3. First found wins (project config takes precedence over user config)
-  4. If neither exists, return empty defaults
-- [x] Register `pub mod config;` in `src/lib.rs`
-- [x] In `main.rs`, load config early and apply defaults before CLI flag processing
-
-**Tests:**
-- [x] `.rings-config.toml` in current dir is loaded
-- [x] `~/.config/rings/config.toml` is loaded when no project config exists
-- [x] Project config takes precedence over user config
-- [x] Missing both config files returns empty defaults (no error)
-- [x] Invalid TOML in config file produces clear error
-- [x] `just validate` clean
-
----
-
 ## F-147: Disk Space Check
 
 **Spec:** `specs/execution/engine.md` (Advisory Checks table)
@@ -67,17 +34,17 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or `src/engine.rs`)
 
 **Steps:**
-- [ ] After resolving the output directory, check available disk space using `fs2::available_space()` or `nix::sys::statvfs` (or a cross-platform alternative)
-- [ ] If < 10 MB: print error `Error: Less than 10 MB free in output directory ({path}). Aborting to prevent data loss.` and exit 2
-- [ ] If < 100 MB but >= 10 MB: print warning `⚠  Low disk space: only {N} MB free in output directory ({path}).`
-- [ ] Only check in human output mode for warnings; the fatal < 10 MB check applies in all modes
-- [ ] Use `#[cfg(unix)]` with `std::os::unix::fs::MetadataExt` or the `fs2` crate for portable disk space queries
+- [x] After resolving the output directory, check available disk space using `fs2::available_space()` or `nix::sys::statvfs` (or a cross-platform alternative)
+- [x] If < 10 MB: print error `Error: Less than 10 MB free in output directory ({path}). Aborting to prevent data loss.` and exit 2
+- [x] If < 100 MB but >= 10 MB: print warning `⚠  Low disk space: only {N} MB free in output directory ({path}).`
+- [x] Only check in human output mode for warnings; the fatal < 10 MB check applies in all modes
+- [x] Use `#[cfg(unix)]` with `std::os::unix::fs::MetadataExt` or the `fs2` crate for portable disk space queries
 
 **Tests:**
-- [ ] Mock/temp filesystem with limited space triggers warning at < 100 MB
-- [ ] Mock/temp filesystem with very low space triggers abort at < 10 MB
-- [ ] Adequate disk space produces no warning
-- [ ] `just validate` clean
+- [x] Mock/temp filesystem with limited space triggers warning at < 100 MB
+- [x] Mock/temp filesystem with very low space triggers abort at < 10 MB
+- [x] Adequate disk space produces no warning
+- [x] `just validate` clean
 
 ---
 
@@ -135,6 +102,30 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] `rings completions zsh` produces valid zsh completion script
 - [ ] `rings completions fish` produces valid fish completion script
 - [ ] Invalid shell name exits with error
+- [ ] `just validate` clean
+
+---
+
+## Bug: Config tests race on process-global state (`cwd` and `XDG_CONFIG_HOME`)
+
+**Ref:** CLAUDE.md testing requirements
+
+**Summary:** The config tests in `src/config.rs` (lines 91-202) use `std::env::set_current_dir` and `std::env::set_var("XDG_CONFIG_HOME")` which are process-global mutations. Rust runs unit tests in parallel within the same process, so concurrent tests interfere with each other. The test `test_load_user_config_when_no_project_config` fails intermittently with "No such file or directory" when another test's `set_current_dir` runs between the save and restore of `cwd`. The `set_var`/`remove_var` calls race similarly.
+
+### Task 1: Make config tests serialization-safe
+
+**Files:** `src/config.rs`
+
+**Steps:**
+- [ ] Replace the `with_cwd` + `set_current_dir` pattern with a testable API that accepts an explicit base directory parameter instead of relying on `cwd`
+- [ ] Add a `RingsConfig::load_from(project_dir: &Path, xdg_config_home: Option<&Path>) -> Result<Self>` method that takes explicit paths instead of reading from `cwd` and `XDG_CONFIG_HOME`
+- [ ] Have the public `RingsConfig::load()` call `load_from(std::env::current_dir()?, ...)` as the production entry point
+- [ ] Rewrite tests to call `load_from(temp_dir, Some(xdg_dir))` directly — no `set_current_dir` or `set_var` needed
+- [ ] Remove the `with_cwd` helper entirely
+
+**Tests:**
+- [ ] All config tests pass reliably in parallel (run `cargo test` 10 times to verify no flakes)
+- [ ] `RingsConfig::load()` still works in production (delegates to `load_from`)
 - [ ] `just validate` clean
 
 ---

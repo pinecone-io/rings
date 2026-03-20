@@ -30,7 +30,7 @@ hex = "0.4"
 owo-colors = "4"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process"] }
+nix = { version = "0.29", features = ["signal", "process", "fs"] }
 libc = "0.2"
 
 [features]

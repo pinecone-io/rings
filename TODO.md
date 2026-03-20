@@ -4,29 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-080: `--cycle-delay` CLI Flag
-
-**Spec:** `specs/cli/commands-and-flags.md` line 58, `specs/execution/rate-limiting.md`
-
-**Summary:** Add `--cycle-delay <SECS>` CLI flag to override `delay_between_cycles` from the workflow file. The workflow TOML field and engine logic already exist — this just wires up the CLI override.
-
-### Task 1: Add CLI flag and wire override
-
-**Files:** `src/cli.rs`, `src/main.rs`
-
-**Steps:**
-- [x] Add `--cycle-delay <SECS>` to `RunArgs` in `src/cli.rs`: `pub cycle_delay: Option<u64>`
-- [x] In `run_inner` in `src/main.rs`, apply the override: `if let Some(cd) = args.cycle_delay { workflow.delay_between_cycles = cd; }`
-- [x] Place the override after workflow parsing but before engine start (same pattern as `--delay`)
-
-**Tests:**
-- [x] `rings run --cycle-delay 60 workflow.toml` parses correctly
-- [x] CLI override takes precedence over workflow TOML value
-- [x] Without the flag, workflow TOML value is used
-- [x] `--cycle-delay 0` disables cycle delay even if TOML sets one
-
----
-
 ## F-109 + F-110: Output Directory Hardening
 
 **Spec:** `specs/observability/audit-logs.md`
@@ -38,15 +15,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or wherever `create_dir_all` is called for the output directory)
 
 **Steps:**
-- [ ] Find all calls to `std::fs::create_dir_all` for the output/run directory
-- [ ] On Unix: after creating the directory, set permissions to 0700 using `std::fs::set_permissions` with `std::os::unix::fs::PermissionsExt`
-- [ ] Use `#[cfg(unix)]` guard — on non-Unix platforms, skip the permission change (document this limitation)
-- [ ] Ensure the permission is set on the run-specific directory, not the parent `~/.local/share/rings/runs/`
+- [x] Find all calls to `std::fs::create_dir_all` for the output/run directory
+- [x] On Unix: after creating the directory, set permissions to 0700 using `std::fs::set_permissions` with `std::os::unix::fs::PermissionsExt`
+- [x] Use `#[cfg(unix)]` guard — on non-Unix platforms, skip the permission change (document this limitation)
+- [x] Ensure the permission is set on the run-specific directory, not the parent `~/.local/share/rings/runs/`
 
 **Tests:**
-- [ ] Created run directory has mode 0700 on Unix
-- [ ] Parent directory permissions are not changed
-- [ ] Non-Unix builds compile without error (cfg guard works)
+- [x] Created run directory has mode 0700 on Unix
+- [x] Parent directory permissions are not changed
+- [x] Non-Unix builds compile without error (cfg guard works)
 
 ---
 

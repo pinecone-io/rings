@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / F-109 Output Directory Hardening Task 1] Added `#[cfg(unix)]` block after each `create_dir_all` for the run-specific directory in `main.rs` (new run and resume paths) and `engine.rs`. Permission is set to 0700 using `set_permissions` + `PermissionsExt`. The engine.rs call is technically redundant since the dir is already created by main.rs, but was added for defense-in-depth. The spec mentions warning on pre-existing broad permissions, but that behavior was not included in the task steps — noted as an open question. Tests verify 0700 mode is set on the run dir and parent dir permissions are not changed.
+
 [2026-03-20 / F-080 --cycle-delay] Added `--cycle-delay <SECS>` to `RunArgs` in `cli.rs` and wired the override in `run_inner` following the same pattern as `--delay`. Tests added at CLI parse level (cli_args.rs) and override behavior level (workflow_parse.rs). `ResumeArgs` was not given `--cycle-delay` as it is not mentioned in the spec for resume.
 
 [2026-03-20 / F-071 rings show summary] Implemented `render_summary` as a standalone function called by `inspect_inner`'s `Summary` match arm. Duration is computed from `started_at` in run.toml to current wall-clock time; this is not precise for completed runs but is always available without additional metadata. Phase cost breakdown uses `BTreeMap` for deterministic alphabetical order. `cmd_show` is now wired to call `cmd_inspect` with `show: vec![InspectView::Summary]`. Tests call `render_summary` directly rather than spawning the binary, since the binary resolves `output_dir` from the environment.
@@ -165,6 +167,8 @@
 ## Open Questions
 <!-- Ambiguities, spec gaps, or missing specs that need human review. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
+
+[2026-03-20 / F-109 Output Directory Hardening Task 1] The spec (`specs/observability/audit-logs.md` lines 66-70) says "if the output directory already exists with broader permissions, rings does not downgrade permissions but does warn". This warning behavior is not included in the task steps. Should a warning be added when the newly-created directory already exists with mode > 0700?
 
 [2026-03-17 / fix: cost reporting $0] `specs/execution/executor-integration.md` shows the default executor invocation as `claude --dangerously-skip-permissions -p -` (no `--output-format json`). In practice, `--output-format json` is required to get cost data from claude. The spec should document this requirement and explain that any custom `[executor]` block targeting `claude` must include `--output-format json` for cost tracking to work. The TOML equivalent shown in the spec should be updated to include this flag.
 

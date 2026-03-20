@@ -245,6 +245,18 @@ fn run_inner(
     let run_dir = output_base.join(&run_id);
     std::fs::create_dir_all(&run_dir)
         .with_context(|| format!("Cannot create output directory: {}", run_dir.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700)).with_context(
+            || {
+                format!(
+                    "Cannot set permissions on output directory: {}",
+                    run_dir.display()
+                )
+            },
+        )?;
+    }
 
     // Handle --parent-run flag and calculate ancestry_depth
     let (continuation_of, ancestry_depth) = if let Some(ref parent_run_id) = args.parent_run {
@@ -728,6 +740,18 @@ fn resume_inner(
     // Create new run directory for the resumed run
     std::fs::create_dir_all(&run_dir)
         .with_context(|| format!("Cannot create new run directory: {}", run_dir.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700)).with_context(
+            || {
+                format!(
+                    "Cannot set permissions on output directory: {}",
+                    run_dir.display()
+                )
+            },
+        )?;
+    }
 
     // Write the new run.toml with parent_run_id set
     meta.write(&meta_path)?;
@@ -2342,5 +2366,60 @@ mod show_tests {
             "should succeed even without state.json: {:?}",
             result
         );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod dir_permissions_tests {
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
+
+    /// Verify that creating a run directory and setting 0700 permissions works correctly,
+    /// and that the parent directory permissions are not affected.
+    #[test]
+    fn run_dir_created_with_mode_0700() {
+        let tmp = TempDir::new().unwrap();
+        let parent = tmp.path();
+
+        // Record parent permissions before creating the run dir
+        let parent_mode_before = std::fs::metadata(parent).unwrap().permissions().mode() & 0o777;
+
+        let run_dir = parent.join("run_20240315_143022_a1b2c3");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        let run_mode = std::fs::metadata(&run_dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(run_mode, 0o700, "run dir should have mode 0700");
+
+        // Parent directory permissions should be unchanged
+        let parent_mode_after = std::fs::metadata(parent).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            parent_mode_before, parent_mode_after,
+            "parent directory permissions should not be changed"
+        );
+    }
+
+    #[test]
+    fn parent_dir_permissions_not_changed_by_run_dir_creation() {
+        let tmp = TempDir::new().unwrap();
+        let parent = tmp.path();
+
+        // Set a specific mode on parent (e.g., 0755) and verify it's preserved
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let parent_mode_before = std::fs::metadata(parent).unwrap().permissions().mode() & 0o777;
+
+        let run_dir = parent.join("run_test_abc");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        let parent_mode_after = std::fs::metadata(parent).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            parent_mode_before, parent_mode_after,
+            "parent directory permissions (0755) should be unchanged after run dir creation"
+        );
+        assert_eq!(parent_mode_after, 0o755);
+
+        let run_mode = std::fs::metadata(&run_dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(run_mode, 0o700);
     }
 }

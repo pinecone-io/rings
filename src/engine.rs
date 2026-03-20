@@ -18,7 +18,7 @@ use crate::template::{render_prompt, TemplateVars};
 use crate::workflow::CompletionSignalMode;
 use crate::workflow::PhaseConfig;
 use crate::workflow::Workflow;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -566,6 +566,17 @@ pub fn run_workflow(
     let events_path = config.output_dir.join("events.jsonl");
 
     std::fs::create_dir_all(&config.output_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&config.output_dir, std::fs::Permissions::from_mode(0o700))
+            .with_context(|| {
+                format!(
+                    "Cannot set permissions on output directory: {}",
+                    config.output_dir.display()
+                )
+            })?;
+    }
 
     let workflow_start = std::time::Instant::now();
 

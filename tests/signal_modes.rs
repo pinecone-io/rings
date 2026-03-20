@@ -102,6 +102,7 @@ fn make_workflow_regex(signal: &str) -> (Workflow, tempfile::TempDir) {
             consumes: vec![],
             produces: vec![],
             produces_required: false,
+            executor: None,
         }],
     };
     (workflow, dir)
@@ -178,6 +179,7 @@ fn continue_signal_uses_substring_not_regex() {
                 consumes: vec![],
                 produces: vec![],
                 produces_required: false,
+                executor: None,
             },
             PhaseConfig {
                 name: "reviewer".to_string(),
@@ -189,6 +191,7 @@ fn continue_signal_uses_substring_not_regex() {
                 consumes: vec![],
                 produces: vec![],
                 produces_required: false,
+                executor: None,
             },
         ],
     };

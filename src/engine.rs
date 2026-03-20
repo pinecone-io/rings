@@ -11,7 +11,9 @@ use crate::contracts::{
     check_consumes_at_startup, check_consumes_pre_run, check_produces_after_run,
 };
 use crate::cost::parse_cost_from_output;
-use crate::executor::{extract_response_text, Executor, Invocation};
+use crate::executor::{
+    extract_response_text, ClaudeExecutor, ConfigurableExecutor, Executor, Invocation,
+};
 use crate::manifest::{compute_manifest, diff_manifests, read_manifest_gz, write_manifest_gz};
 use crate::state::{FailureReason, StateFile};
 use crate::template::{render_prompt, TemplateVars};
@@ -1072,7 +1074,23 @@ pub fn run_workflow(
             }
 
             // Spawn the subprocess and implement wait loop with timeout/cancellation.
-            let mut handle = executor.spawn(&invocation, config.verbose)?;
+            // If the current phase has effective extra_args, build a per-phase executor
+            // that appends them to the base args.
+            let extra_args = workflow.effective_extra_args(run_spec.phase_index);
+            let mut handle = if extra_args.is_empty() {
+                executor.spawn(&invocation, config.verbose)?
+            } else {
+                let (binary, mut effective_args) = match workflow.executor.as_ref() {
+                    Some(ec) => (ec.binary.clone(), ec.args.clone()),
+                    None => ("claude".to_string(), ClaudeExecutor::build_args()),
+                };
+                effective_args.extend_from_slice(extra_args);
+                let phase_executor = ConfigurableExecutor {
+                    binary,
+                    args: effective_args,
+                };
+                phase_executor.spawn(&invocation, config.verbose)?
+            };
             let timeout_deadline =
                 timeout_secs.map(|secs| attempt_start + std::time::Duration::from_secs(secs));
 

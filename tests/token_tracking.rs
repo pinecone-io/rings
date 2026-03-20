@@ -45,6 +45,7 @@ fn make_workflow(signal: &str) -> Workflow {
             consumes: vec![],
             produces: vec![],
             produces_required: false,
+            executor: None,
         }],
     }
 }

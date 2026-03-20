@@ -45,6 +45,7 @@ fn two_phase_workflow(completion_signal_phases: Vec<String>, max_cycles: u32) ->
                 consumes: vec![],
                 produces: vec![],
                 produces_required: false,
+                executor: None,
             },
             PhaseConfig {
                 name: "reviewer".to_string(),
@@ -56,6 +57,7 @@ fn two_phase_workflow(completion_signal_phases: Vec<String>, max_cycles: u32) ->
                 consumes: vec![],
                 produces: vec![],
                 produces_required: false,
+                executor: None,
             },
         ],
     }

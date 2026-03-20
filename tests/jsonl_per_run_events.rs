@@ -65,6 +65,7 @@ fn make_workflow_with_profile(
                 consumes: vec![],
                 produces: vec![],
                 produces_required: false,
+                executor: None,
             })
             .collect(),
     }

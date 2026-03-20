@@ -103,7 +103,17 @@ pub struct ExecutorConfig {
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
+    pub extra_args: Vec<String>,
+    #[serde(default)]
     pub error_profile: Option<ErrorProfile>,
+}
+
+/// Phase-level executor override. Currently only `extra_args` is supported at the phase level.
+/// Other executor fields (binary, cost_parser, error_profile) are inherited from `[executor]`.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PhaseExecutorConfig {
+    #[serde(default)]
+    pub extra_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -126,6 +136,9 @@ pub struct PhaseConfig {
     /// If true, failure to satisfy any produces pattern causes a hard exit.
     #[serde(default)]
     pub produces_required: bool,
+    /// Per-phase executor override (currently only extra_args is supported).
+    #[serde(default)]
+    pub executor: Option<PhaseExecutorConfig>,
 }
 
 fn default_runs_per_cycle() -> u32 {
@@ -201,6 +214,22 @@ pub enum WorkflowError {
     ProducesRequiredWithoutManifest(String),
     #[error("output_dir contains path traversal ('..') which is not allowed")]
     OutputDirContainsParentDir,
+    #[error(
+        "phase '{0}': --model appears in both executor.args and executor.extra_args; remove it from one"
+    )]
+    ConflictingModelFlags(String),
+}
+
+/// Returns true if the args slice contains a `--model` flag (either `--model VALUE` or `--model=VALUE`).
+fn args_contain_model(args: &[String]) -> bool {
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--model" || args[i].starts_with("--model=") {
+            return true;
+        }
+        i += 1;
+    }
+    false
 }
 
 /// Compile an error profile into regex patterns.
@@ -292,6 +321,22 @@ impl Workflow {
     /// Return the structural fingerprint: phase names in declaration order.
     pub fn structural_fingerprint(&self) -> Vec<String> {
         self.phases.iter().map(|p| p.name.clone()).collect()
+    }
+
+    /// Return the effective extra_args for a phase at `phase_index`.
+    ///
+    /// Phase-level `extra_args` overrides (replaces) workflow-level `extra_args`.
+    /// Returns an empty slice when neither the phase nor the workflow defines extra_args.
+    pub fn effective_extra_args(&self, phase_index: usize) -> &[String] {
+        if let Some(phase_exec) = self.phases[phase_index].executor.as_ref() {
+            if !phase_exec.extra_args.is_empty() {
+                return &phase_exec.extra_args;
+            }
+        }
+        if let Some(exec) = self.executor.as_ref() {
+            return &exec.extra_args;
+        }
+        &[]
     }
 
     /// Detect the model name from executor args.
@@ -420,6 +465,21 @@ impl Workflow {
                 return Err(WorkflowError::ProducesRequiredWithoutManifest(
                     phase.name.clone(),
                 ));
+            }
+            // Validate that --model does not appear in both effective args and extra_args.
+            let effective_args = file
+                .executor
+                .as_ref()
+                .map(|e| e.args.as_slice())
+                .unwrap_or(&[]);
+            let effective_extra_args = phase
+                .executor
+                .as_ref()
+                .map(|pe| pe.extra_args.as_slice())
+                .or_else(|| file.executor.as_ref().map(|e| e.extra_args.as_slice()))
+                .unwrap_or(&[]);
+            if args_contain_model(effective_args) && args_contain_model(effective_extra_args) {
+                return Err(WorkflowError::ConflictingModelFlags(phase.name.clone()));
             }
         }
 
@@ -800,5 +860,151 @@ budget_cap_usd = nan
         );
         let wf = Workflow::from_str(&toml).unwrap();
         assert_eq!(wf.delay_between_cycles, 3600);
+    }
+
+    // ─── F-181: extra_args tests ─────────────────────────────────────────────
+
+    #[test]
+    fn phase_extra_args_produces_effective_args_appended() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+executor.extra_args = ["--model", "claude-haiku-4-5"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let extra = wf.effective_extra_args(0);
+        assert_eq!(extra, &["--model", "claude-haiku-4-5"]);
+        // Effective args should be base + extra
+        let base = wf.executor.as_ref().unwrap().args.clone();
+        let mut effective = base;
+        effective.extend_from_slice(extra);
+        assert_eq!(
+            effective,
+            vec![
+                "--dangerously-skip-permissions",
+                "-p",
+                "-",
+                "--model",
+                "claude-haiku-4-5"
+            ]
+        );
+    }
+
+    #[test]
+    fn phase_without_extra_args_inherits_workflow_level_extra_args() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+extra_args = ["--model", "claude-haiku-4-5"]
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let extra = wf.effective_extra_args(0);
+        assert_eq!(extra, &["--model", "claude-haiku-4-5"]);
+    }
+
+    #[test]
+    fn phase_extra_args_replaces_workflow_level_extra_args() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "-p", "-"]
+extra_args = ["--model", "claude-haiku-4-5"]
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+executor.extra_args = ["--model", "claude-opus-4-6"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        // Phase-level extra_args replaces workflow-level, not appends
+        let extra = wf.effective_extra_args(0);
+        assert_eq!(extra, &["--model", "claude-opus-4-6"]);
+    }
+
+    #[test]
+    fn conflicting_model_flags_in_args_and_extra_args_errors() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+args = ["--model", "claude-haiku-4-5", "--dangerously-skip-permissions", "-p", "-"]
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+executor.extra_args = ["--model", "claude-opus-4-6"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::ConflictingModelFlags(ref name) if name == "builder"));
+    }
+
+    #[test]
+    fn conflicting_model_flags_with_workflow_level_extra_args_errors() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+args = ["--model", "claude-haiku-4-5", "--dangerously-skip-permissions", "-p", "-"]
+extra_args = ["--model", "claude-opus-4-6"]
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::ConflictingModelFlags(ref name) if name == "builder"));
     }
 }

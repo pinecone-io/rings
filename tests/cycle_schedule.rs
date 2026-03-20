@@ -15,6 +15,7 @@ fn phases(specs: &[(&str, u32)]) -> Vec<PhaseConfig> {
             consumes: vec![],
             produces: vec![],
             produces_required: false,
+            executor: None,
         })
         .collect()
 }

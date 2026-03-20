@@ -46,6 +46,7 @@ fn make_workflow() -> Workflow {
             consumes: vec![],
             produces: vec![],
             produces_required: false,
+            executor: None,
         }],
     }
 }

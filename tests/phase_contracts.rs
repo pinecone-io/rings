@@ -52,6 +52,7 @@ fn make_workflow_with_contracts(
             consumes: vec![],
             produces,
             produces_required,
+            executor: None,
         }],
     }
 }

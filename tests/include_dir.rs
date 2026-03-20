@@ -210,6 +210,7 @@ fn engine_prepends_preamble_when_include_dirs_set() {
             consumes: vec![],
             produces: vec![],
             produces_required: false,
+            executor: None,
         }],
     };
 

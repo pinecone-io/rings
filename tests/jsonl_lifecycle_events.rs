@@ -49,6 +49,7 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
                 consumes: vec![],
                 produces: vec![],
                 produces_required: false,
+                executor: None,
             })
             .collect(),
     }

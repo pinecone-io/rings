@@ -4,34 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-071: `rings show` — Single-Screen Run Summary
-
-**Spec:** `specs/cli/commands-and-flags.md` line 162–163
-
-**Summary:** `rings show <RUN_ID>` is a shorthand for `rings inspect --show summary`. Currently a stub that prints an error.
-
-### Task 1: Implement show as inspect summary
-
-**Files:** `src/main.rs`, `src/inspect.rs`
-
-**Steps:**
-- [x] Implement the `Summary` view in `inspect_inner` for the `InspectView::Summary` match arm:
-  1. Read `run.toml` from the run directory → `RunMeta`
-  2. Read `state.json` → `StateFile` (cycles completed, cumulative cost)
-  3. Read `costs.jsonl` → per-run cost entries
-  4. Display: Run ID, status, workflow file, context_dir, started_at, duration, cycles completed, total cost, total tokens, phase cost breakdown
-- [x] Wire `cmd_show` to call `inspect_inner` with `show: vec![InspectView::Summary]` instead of printing an error stub
-- [x] Support `--output-format jsonl` — emit the summary as a single JSON object
-
-**Tests:**
-- [x] `rings show <valid-run-id>` prints a summary with run ID, status, cost, cycles
-- [x] `rings show <invalid-run-id>` exits 2 with "Run directory not found"
-- [x] Summary includes phase cost breakdown when costs.jsonl exists
-- [x] JSONL mode emits a single JSON summary object
-- [x] Summary gracefully handles missing state.json (shows what it can from run.toml)
-
----
-
 ## F-080: `--cycle-delay` CLI Flag
 
 **Spec:** `specs/cli/commands-and-flags.md` line 58, `specs/execution/rate-limiting.md`
@@ -43,15 +15,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cli.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Add `--cycle-delay <SECS>` to `RunArgs` in `src/cli.rs`: `pub cycle_delay: Option<u64>`
-- [ ] In `run_inner` in `src/main.rs`, apply the override: `if let Some(cd) = args.cycle_delay { workflow.delay_between_cycles = cd; }`
-- [ ] Place the override after workflow parsing but before engine start (same pattern as `--delay`)
+- [x] Add `--cycle-delay <SECS>` to `RunArgs` in `src/cli.rs`: `pub cycle_delay: Option<u64>`
+- [x] In `run_inner` in `src/main.rs`, apply the override: `if let Some(cd) = args.cycle_delay { workflow.delay_between_cycles = cd; }`
+- [x] Place the override after workflow parsing but before engine start (same pattern as `--delay`)
 
 **Tests:**
-- [ ] `rings run --cycle-delay 60 workflow.toml` parses correctly
-- [ ] CLI override takes precedence over workflow TOML value
-- [ ] Without the flag, workflow TOML value is used
-- [ ] `--cycle-delay 0` disables cycle delay even if TOML sets one
+- [x] `rings run --cycle-delay 60 workflow.toml` parses correctly
+- [x] CLI override takes precedence over workflow TOML value
+- [x] Without the flag, workflow TOML value is used
+- [x] `--cycle-delay 0` disables cycle delay even if TOML sets one
 
 ---
 

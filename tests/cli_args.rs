@@ -88,6 +88,40 @@ fn parses_init_with_force_flag() {
 }
 
 #[test]
+fn parses_run_with_cycle_delay() {
+    let cli =
+        Cli::try_parse_from(["rings", "run", "workflow.toml", "--cycle-delay", "60"]).unwrap();
+    match cli.command {
+        Command::Run(args) => {
+            assert_eq!(args.cycle_delay, Some(60));
+        }
+        _ => panic!("expected Run"),
+    }
+}
+
+#[test]
+fn parses_run_cycle_delay_zero() {
+    let cli = Cli::try_parse_from(["rings", "run", "workflow.toml", "--cycle-delay", "0"]).unwrap();
+    match cli.command {
+        Command::Run(args) => {
+            assert_eq!(args.cycle_delay, Some(0));
+        }
+        _ => panic!("expected Run"),
+    }
+}
+
+#[test]
+fn parses_run_without_cycle_delay_uses_none() {
+    let cli = Cli::try_parse_from(["rings", "run", "workflow.toml"]).unwrap();
+    match cli.command {
+        Command::Run(args) => {
+            assert!(args.cycle_delay.is_none());
+        }
+        _ => panic!("expected Run"),
+    }
+}
+
+#[test]
 fn parses_update_command() {
     let cli = Cli::try_parse_from(["rings", "update"]).unwrap();
     match cli.command {

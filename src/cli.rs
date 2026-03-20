@@ -106,6 +106,10 @@ pub struct RunArgs {
     #[arg(long)]
     pub delay: Option<u64>,
 
+    /// Override delay_between_cycles (seconds)
+    #[arg(long)]
+    pub cycle_delay: Option<u64>,
+
     /// Stream executor output live to terminal
     #[arg(long, short)]
     pub verbose: bool,

@@ -114,6 +114,9 @@ fn run_inner(
     if let Some(delay) = args.delay {
         workflow.delay_between_runs = delay;
     }
+    if let Some(cd) = args.cycle_delay {
+        workflow.delay_between_cycles = cd;
+    }
     if let Some(cap) = args.budget_cap {
         if cap <= 0.0 {
             bail!("--budget-cap must be greater than zero");

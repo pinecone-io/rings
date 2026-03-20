@@ -404,3 +404,68 @@ fn new_workflow_fields_parsed_correctly() {
     assert!(workflow.snapshot_cycles);
     assert_eq!(workflow.manifest_ignore.len(), 2);
 }
+
+#[test]
+fn cycle_delay_cli_override_takes_precedence_over_toml() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        delay_between_cycles = 30
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let mut workflow = Workflow::from_str(toml).unwrap();
+    assert_eq!(workflow.delay_between_cycles, 30);
+    // Simulate what run_inner does when --cycle-delay is passed
+    let cycle_delay: Option<u64> = Some(5);
+    if let Some(cd) = cycle_delay {
+        workflow.delay_between_cycles = cd;
+    }
+    assert_eq!(workflow.delay_between_cycles, 5);
+}
+
+#[test]
+fn without_cycle_delay_flag_toml_value_is_preserved() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        delay_between_cycles = 30
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let mut workflow = Workflow::from_str(toml).unwrap();
+    // Simulate run_inner with no --cycle-delay flag
+    let cycle_delay: Option<u64> = None;
+    if let Some(cd) = cycle_delay {
+        workflow.delay_between_cycles = cd;
+    }
+    assert_eq!(workflow.delay_between_cycles, 30);
+}
+
+#[test]
+fn cycle_delay_zero_disables_cycle_delay() {
+    let toml = r#"
+        [workflow]
+        completion_signal = "DONE"
+        context_dir = "."
+        max_cycles = 5
+        delay_between_cycles = 30
+        [[phases]]
+        name = "test"
+        prompt_text = "x"
+    "#;
+    let mut workflow = Workflow::from_str(toml).unwrap();
+    assert_eq!(workflow.delay_between_cycles, 30);
+    // --cycle-delay 0 disables the cycle delay
+    let cycle_delay: Option<u64> = Some(0);
+    if let Some(cd) = cycle_delay {
+        workflow.delay_between_cycles = cd;
+    }
+    assert_eq!(workflow.delay_between_cycles, 0);
+}

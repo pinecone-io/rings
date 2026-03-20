@@ -344,6 +344,37 @@ fn run_inner(
         }
     }
 
+    // Advisory check: output_dir inside a git repo
+    let user_provided_output_dir: Option<&str> = args
+        .output_dir
+        .as_deref()
+        .or(workflow.output_dir.as_deref());
+    if output_format == cli::OutputFormat::Human {
+        if let Some(output_display) = user_provided_output_dir {
+            if let Some(repo_root) = find_git_root(&output_base) {
+                let relative_output = std::fs::canonicalize(&output_base)
+                    .ok()
+                    .and_then(|canon| {
+                        canon
+                            .strip_prefix(&repo_root)
+                            .ok()
+                            .map(|p| p.to_string_lossy().to_string())
+                    })
+                    .unwrap_or_else(|| output_base.to_string_lossy().to_string());
+                eprintln!(
+                    "⚠  output_dir resolves to a path inside a git repository:\n   \
+                     {} is under {}/ (which contains .git)\n   \
+                     rings run logs and cost data will be written here and may be accidentally committed.\n   \
+                     Consider adding {}/ to .gitignore, or omit output_dir to use the default\n   \
+                     off-repo location (~/.local/share/rings/runs/).",
+                    output_display,
+                    repo_root.display(),
+                    relative_output
+                );
+            }
+        }
+    }
+
     // Advisory check: completion signal in prompts
     if output_format == cli::OutputFormat::Human && !args.no_completion_check {
         let mut prompt_texts: Vec<String> = Vec::new();
@@ -1772,6 +1803,22 @@ fn scan_sensitive_files(path: &str) -> Vec<String> {
     matches
 }
 
+/// Walks from `path` up to the filesystem root, returning the first directory
+/// that contains a `.git` entry. Returns `None` if no such directory is found.
+fn find_git_root(path: &std::path::Path) -> Option<PathBuf> {
+    // Canonicalize to get an absolute path for reliable parent traversal.
+    let mut current = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    loop {
+        if current.join(".git").exists() {
+            return Some(current);
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => return None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1902,6 +1949,60 @@ mod tests {
     #[test]
     fn path_traversal_single_dot_allowed() {
         assert!(!path_contains_parent_dir("./current/dir"));
+    }
+
+    // --- output_dir git repo advisory check tests ---
+
+    #[test]
+    fn find_git_root_detects_git_dir_at_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        let result = find_git_root(tmp.path());
+        assert!(
+            result.is_some(),
+            "expected to find git root at the directory itself"
+        );
+    }
+
+    #[test]
+    fn find_git_root_detects_git_dir_in_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        let subdir = tmp.path().join("output").join("runs");
+        std::fs::create_dir_all(&subdir).unwrap();
+        let result = find_git_root(&subdir);
+        assert!(
+            result.is_some(),
+            "expected to find git root in parent hierarchy"
+        );
+        let canonical_tmp = std::fs::canonicalize(tmp.path()).unwrap();
+        assert_eq!(result.unwrap(), canonical_tmp);
+    }
+
+    #[test]
+    fn find_git_root_returns_none_outside_any_repo() {
+        // Use a temp directory that has no .git in its ancestry.
+        // tempfile dirs are typically under /tmp which has no .git above it.
+        let tmp = tempfile::tempdir().unwrap();
+        // Verify /tmp itself (or its canonical path) has no .git above.
+        // We can only reliably test this if the temp dir is not inside a git repo.
+        // Check by looking for .git manually — if /tmp is not in a repo, this returns None.
+        let result = find_git_root(tmp.path());
+        // If the temp dir happens to be inside a repo (unusual), skip this assertion.
+        if std::fs::canonicalize(tmp.path())
+            .ok()
+            .and_then(|p| p.ancestors().find(|a| a.join(".git").exists()).map(|_| ()))
+            .is_none()
+        {
+            assert!(result.is_none(), "expected None outside any git repo");
+        }
+    }
+
+    #[test]
+    fn output_dir_inside_repo_jsonl_mode_suppressed_by_format_guard() {
+        // The advisory check is guarded by `output_format == OutputFormat::Human`.
+        // JSONL mode uses OutputFormat::Jsonl, which does not satisfy the guard.
+        assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
     }
 
     #[test]

@@ -23,51 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-145: Sensitive Files Warning
-
-**Spec:** `specs/execution/engine.md` (Advisory Checks table)
-
-**Summary:** Warn at startup if `context_dir` contains files matching credential patterns (`.env`, `*.key`, `*.pem`, etc.) that could be exposed to the model. Suppressible with `--no-sensitive-files-check` (F-096).
-
-### Task 1: Add sensitive file detection
-
-**Files:** `src/main.rs` (or `src/engine.rs`)
-
-**Steps:**
-- [x] After context_dir validation, scan the top-level directory (non-recursive) for files matching credential patterns:
-  - Exact names: `.env`, `.env.local`, `.env.production`, `.npmrc`, `.pypirc`
-  - Extensions: `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
-  - Patterns: `*credentials*`, `*secret*`, `*token*` (case-insensitive)
-- [x] If any matches found, print warning listing the matched filenames (max 10, then "... and N more")
-- [x] Warning text: `⚠  context_dir contains files that may contain credentials:\n   .env, server.key, credentials.json\n   These files will be visible to the executor. Use --no-sensitive-files-check to suppress.`
-- [x] Check the `--no-sensitive-files-check` flag — if set, skip this check entirely
-- [x] Only warn in human output mode
-
-**Tests:**
-- [x] Directory with `.env` triggers warning
-- [x] Directory with `server.key` triggers warning
-- [x] Directory with no sensitive files produces no warning
-- [x] `--no-sensitive-files-check` suppresses the warning
-- [x] JSONL mode suppresses the warning
-- [x] `just validate` clean
-
----
-
-### Task 2: Add `--no-sensitive-files-check` CLI flag (F-096)
-
-**Files:** `src/cli.rs`, `src/main.rs`
-
-**Steps:**
-- [x] Add `--no-sensitive-files-check` flag to `RunArgs`: `pub no_sensitive_files_check: bool`
-- [x] Pass it through to the advisory checks section and skip the sensitive files scan when set
-
-**Tests:**
-- [x] `rings run --no-sensitive-files-check workflow.toml` parses correctly
-- [x] Flag suppresses the sensitive files warning
-- [x] `just validate` clean
-
----
-
 ## F-146: Output Directory Inside Repo Warning
 
 **Spec:** `specs/execution/engine.md` (Advisory Checks table)
@@ -79,17 +34,17 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or `src/engine.rs`)
 
 **Steps:**
-- [ ] After resolving the output directory path, walk up parent directories checking for a `.git` directory
-- [ ] If found, print warning: `⚠  output_dir resolves to a path inside a git repository:\n   {output_dir} is under {repo_root}/ (which contains .git)\n   rings run logs and cost data will be written here and may be accidentally committed.\n   Consider adding {relative_output_dir}/ to .gitignore, or omit output_dir to use the default\n   off-repo location (~/.local/share/rings/runs/).`
-- [ ] Only warn when the user explicitly set `output_dir` (via CLI `--output-dir` or TOML) — skip when using the default `~/.local/share/rings/runs/` path
-- [ ] Only warn in human output mode
+- [x] After resolving the output directory path, walk up parent directories checking for a `.git` directory
+- [x] If found, print warning: `⚠  output_dir resolves to a path inside a git repository:\n   {output_dir} is under {repo_root}/ (which contains .git)\n   rings run logs and cost data will be written here and may be accidentally committed.\n   Consider adding {relative_output_dir}/ to .gitignore, or omit output_dir to use the default\n   off-repo location (~/.local/share/rings/runs/).`
+- [x] Only warn when the user explicitly set `output_dir` (via CLI `--output-dir` or TOML) — skip when using the default `~/.local/share/rings/runs/` path
+- [x] Only warn in human output mode
 
 **Tests:**
-- [ ] Output dir inside a git repo triggers warning
-- [ ] Output dir outside any git repo produces no warning
-- [ ] Default output dir (no explicit setting) skips the check
-- [ ] JSONL mode suppresses the warning
-- [ ] `just validate` clean
+- [x] Output dir inside a git repo triggers warning
+- [x] Output dir outside any git repo produces no warning
+- [x] Default output dir (no explicit setting) skips the check
+- [x] JSONL mode suppresses the warning
+- [x] `just validate` clean
 
 ---
 

@@ -1288,3 +1288,87 @@ fn step_summary_shows_cost_and_signal_status() {
     // Cost was tracked correctly.
     assert!(result.total_cost_usd > 0.0, "expected non-zero cost");
 }
+
+#[test]
+fn manifest_diff_data_appears_in_costs_jsonl() {
+    let context_dir = tempdir().unwrap();
+    let output_dir = tempdir().unwrap();
+
+    // Create an existing file so the before-manifest has something.
+    std::fs::write(context_dir.path().join("existing.txt"), "old content").unwrap();
+
+    let ctx_path = context_dir.path().to_path_buf();
+    let executor = MockExecutor::with_side_effect(
+        vec![ExecutorOutput {
+            combined: "RINGS_DONE".to_string(),
+            exit_code: 0,
+        }],
+        move |_| {
+            // Modify existing file and add a new one — simulates claude code changes.
+            std::fs::write(ctx_path.join("existing.txt"), "modified content").unwrap();
+            std::fs::write(ctx_path.join("new_file.rs"), "fn main() {}").unwrap();
+        },
+    );
+
+    let workflow = Workflow {
+        completion_signal: "RINGS_DONE".to_string(),
+        continue_signal: None,
+        completion_signal_phases: vec![],
+        completion_signal_mode: CompletionSignalMode::Substring,
+        context_dir: context_dir.path().to_str().unwrap().to_string(),
+        max_cycles: 1,
+        output_dir: None,
+        delay_between_runs: 0,
+        delay_between_cycles: 0,
+        executor: None,
+        budget_cap_usd: None,
+        timeout_per_run_secs: None,
+        compiled_error_profile: default_compiled_error_profile(),
+        quota_backoff: false,
+        quota_backoff_delay: 0,
+        quota_backoff_max_retries: 0,
+        manifest_enabled: true,
+        manifest_ignore: vec![],
+        manifest_mtime_optimization: false,
+        snapshot_cycles: false,
+        compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        phases: vec![PhaseConfig {
+            name: "builder".to_string(),
+            prompt: None,
+            prompt_text: Some("build stuff".to_string()),
+            runs_per_cycle: 1,
+            budget_cap_usd: None,
+            timeout_per_run_secs: None,
+            consumes: vec![],
+            produces: vec![],
+            produces_required: false,
+            executor: None,
+        }],
+    };
+
+    let config = EngineConfig {
+        output_dir: output_dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-diff".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0);
+
+    let costs_path = output_dir.path().join("costs.jsonl");
+    let content = std::fs::read_to_string(&costs_path).unwrap();
+    let entry: CostEntry = serde_json::from_str(content.trim()).unwrap();
+
+    // 1 modified (existing.txt) + 1 added (new_file.rs) = 2 changed
+    assert_eq!(entry.files_modified, 1, "existing.txt should be modified");
+    assert_eq!(entry.files_added, 1, "new_file.rs should be added");
+    assert_eq!(entry.files_deleted, 0, "no files deleted");
+    assert_eq!(entry.files_changed, 2, "total files changed should be 2");
+}

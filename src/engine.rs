@@ -1480,6 +1480,10 @@ pub fn run_workflow(
                     vec![],
                     format!("{:?}", cost.confidence).to_lowercase(),
                     run_spec.phase_total_iterations as u64,
+                    vec![],
+                    vec![],
+                    vec![],
+                    0,
                 ));
             }
             append_cost_entry(
@@ -1543,6 +1547,10 @@ pub fn run_workflow(
                     vec![],
                     format!("{:?}", cost.confidence).to_lowercase(),
                     run_spec.phase_total_iterations as u64,
+                    vec![],
+                    vec![],
+                    vec![],
+                    0,
                 ));
             }
             append_cost_entry(
@@ -1633,6 +1641,10 @@ pub fn run_workflow(
                     vec![],
                     format!("{:?}", cost.confidence).to_lowercase(),
                     run_spec.phase_total_iterations as u64,
+                    vec![],
+                    vec![],
+                    vec![],
+                    0,
                 ));
                 crate::events::emit_jsonl(&crate::events::ExecutorErrorEvent::new(
                     &config.run_id,
@@ -1704,34 +1716,12 @@ pub fn run_workflow(
         state.claude_resume_commands = resume_commands.clone();
         state.write_atomic(&state_path)?;
 
-        // Append cost entry immediately after state write to close the crash window.
-        // File counts are not yet available (manifest computation happens below), so they
-        // are recorded as 0 here. File-level diff data is still present in JSONL run_end
-        // events for consumers that need it.
-        append_cost_entry(
-            &costs_path,
-            &CostEntry {
-                run: run_spec.global_run_number,
-                cycle: run_spec.cycle,
-                phase: run_spec.phase_name.clone(),
-                iteration: run_spec.phase_iteration,
-                cost_usd: cost.cost_usd,
-                input_tokens: cost.input_tokens,
-                output_tokens: cost.output_tokens,
-                cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
-                files_added: 0,
-                files_modified: 0,
-                files_deleted: 0,
-                files_changed: 0,
-                event: None,
-                produces_violations: vec![],
-            },
-        )?;
-
         // Compute after-manifest and diff if manifests are enabled.
-        // Retain diff paths for produces contract check.
+        // Diff is computed before costs.jsonl so file counts can be recorded accurately.
         let mut diff_added_paths: Vec<String> = vec![];
         let mut diff_modified_paths: Vec<String> = vec![];
+        let mut diff_deleted_paths: Vec<String> = vec![];
+        let mut run_files_changed: u32 = 0;
 
         if workflow.manifest_enabled {
             let after_manifest_path =
@@ -1750,9 +1740,10 @@ pub fn run_workflow(
                 // Diff with previous manifest if it exists
                 if let Some(ref prev_manifest) = current_manifest {
                     let diff = diff_manifests(prev_manifest, &after_manifest);
-                    // Retain paths for produces contract check.
+                    run_files_changed = diff.files_changed;
                     diff_added_paths = diff.added;
                     diff_modified_paths = diff.modified;
+                    diff_deleted_paths = diff.deleted;
                 }
 
                 // Write the after-manifest
@@ -1764,6 +1755,27 @@ pub fn run_workflow(
                 }
             }
         }
+
+        // Append cost entry with file diff data.
+        append_cost_entry(
+            &costs_path,
+            &CostEntry {
+                run: run_spec.global_run_number,
+                cycle: run_spec.cycle,
+                phase: run_spec.phase_name.clone(),
+                iteration: run_spec.phase_iteration,
+                cost_usd: cost.cost_usd,
+                input_tokens: cost.input_tokens,
+                output_tokens: cost.output_tokens,
+                cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                files_added: diff_added_paths.len() as u32,
+                files_modified: diff_modified_paths.len() as u32,
+                files_deleted: diff_deleted_paths.len() as u32,
+                files_changed: run_files_changed,
+                event: None,
+                produces_violations: vec![],
+            },
+        )?;
 
         // Post-run produces contract check.
         let phase_produces = &workflow.phases[run_spec.phase_index].produces;
@@ -1828,6 +1840,10 @@ pub fn run_workflow(
                 produces_violations.clone(),
                 format!("{:?}", cost.confidence).to_lowercase(),
                 run_spec.phase_total_iterations as u64,
+                diff_added_paths.clone(),
+                diff_modified_paths.clone(),
+                diff_deleted_paths.clone(),
+                run_files_changed,
             ));
         }
 

@@ -120,6 +120,10 @@ pub struct RunEndEvent {
     pub produces_violations: Vec<String>,
     pub cost_confidence: String,
     pub total_iterations: u64,
+    pub files_added: Vec<String>,
+    pub files_modified: Vec<String>,
+    pub files_deleted: Vec<String>,
+    pub files_changed: u32,
     pub timestamp: String,
 }
 
@@ -138,6 +142,10 @@ impl RunEndEvent {
         produces_violations: Vec<String>,
         cost_confidence: impl Into<String>,
         total_iterations: u64,
+        files_added: Vec<String>,
+        files_modified: Vec<String>,
+        files_deleted: Vec<String>,
+        files_changed: u32,
     ) -> Self {
         Self {
             event: "run_end",
@@ -153,6 +161,10 @@ impl RunEndEvent {
             produces_violations,
             cost_confidence: cost_confidence.into(),
             total_iterations,
+            files_added,
+            files_modified,
+            files_deleted,
+            files_changed,
             timestamp: now_iso8601(),
         }
     }
@@ -472,11 +484,26 @@ mod tests {
             vec![],
             "full",
             3,
+            vec!["src/new.rs".to_string()],
+            vec!["src/main.rs".to_string()],
+            vec![],
+            2,
         );
         let json = serde_json::to_string(&ev).unwrap();
         assert_eq!(event_field(&json, "event"), "run_end");
         assert_eq!(event_field(&json, "run_id"), "run_123");
         assert!(event_field(&json, "timestamp").as_str().is_some());
+        assert_eq!(event_field(&json, "files_changed"), 2u32);
+        let files_added = serde_json::from_str::<serde_json::Value>(&json).unwrap();
+        assert_eq!(
+            files_added["files_added"],
+            serde_json::json!(["src/new.rs"])
+        );
+        assert_eq!(
+            files_added["files_modified"],
+            serde_json::json!(["src/main.rs"])
+        );
+        assert_eq!(files_added["files_deleted"], serde_json::json!([]));
     }
 
     #[test]

@@ -37,6 +37,8 @@ pub struct FileDiff {
     pub added: Vec<String>,
     pub modified: Vec<String>,
     pub deleted: Vec<String>,
+    /// Total number of files added + modified + deleted.
+    pub files_changed: u32,
 }
 
 /// Hardcoded credential file patterns that are never included in manifests.
@@ -268,6 +270,8 @@ pub fn diff_manifests(before: &FileManifest, after: &FileManifest) -> FileDiff {
     diff.modified.sort();
     diff.deleted.sort();
 
+    diff.files_changed = (diff.added.len() + diff.modified.len() + diff.deleted.len()) as u32;
+
     diff
 }
 
@@ -422,6 +426,66 @@ mod tests {
         assert_eq!(diff.modified, vec!["a.txt"]);
         assert_eq!(diff.added, vec!["d.txt"]);
         assert_eq!(diff.deleted, vec!["c.txt"]);
+        // 1 modified + 1 added + 1 deleted = 3 total
+        assert_eq!(diff.files_changed, 3);
+    }
+
+    #[test]
+    fn test_diff_unchanged_files_not_included() {
+        // b.txt appears in both with the same hash — must not appear in diff
+        let before = FileManifest {
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            run: 1,
+            cycle: 1,
+            phase: "test".to_string(),
+            iteration: 1,
+            root: ".".to_string(),
+            files: vec![
+                FileEntry {
+                    path: "a.txt".to_string(),
+                    sha256: "hash1".to_string(),
+                    size_bytes: 10,
+                    modified: "2024-01-01T00:00:00Z".to_string(),
+                },
+                FileEntry {
+                    path: "b.txt".to_string(),
+                    sha256: "unchanged".to_string(),
+                    size_bytes: 20,
+                    modified: "2024-01-01T00:00:00Z".to_string(),
+                },
+            ],
+        };
+
+        let after = FileManifest {
+            timestamp: "2024-01-01T00:01:00Z".to_string(),
+            run: 2,
+            cycle: 1,
+            phase: "test".to_string(),
+            iteration: 2,
+            root: ".".to_string(),
+            files: vec![
+                FileEntry {
+                    path: "a.txt".to_string(),
+                    sha256: "hash1_changed".to_string(),
+                    size_bytes: 10,
+                    modified: "2024-01-01T00:01:00Z".to_string(),
+                },
+                FileEntry {
+                    path: "b.txt".to_string(),
+                    sha256: "unchanged".to_string(),
+                    size_bytes: 20,
+                    modified: "2024-01-01T00:00:00Z".to_string(),
+                },
+            ],
+        };
+
+        let diff = diff_manifests(&before, &after);
+
+        // Only a.txt was changed; b.txt must not appear anywhere
+        assert_eq!(diff.modified, vec!["a.txt"]);
+        assert!(diff.added.is_empty());
+        assert!(diff.deleted.is_empty());
+        assert_eq!(diff.files_changed, 1);
     }
 
     #[test]

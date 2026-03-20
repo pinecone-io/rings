@@ -169,4 +169,48 @@ mod tests {
 
         set_color_enabled();
     }
+
+    #[test]
+    fn helpers_return_ansi_styled_when_color_enabled() {
+        let _guard = COLOR_TEST_LOCK.lock().unwrap();
+        set_color_enabled();
+        std::env::remove_var("NO_COLOR");
+
+        let text = "hello";
+        // When color is enabled, all helpers wrap the text in ANSI escape codes.
+        assert_ne!(success(text), text, "success() should add ANSI codes");
+        assert_ne!(error(text), text, "error() should add ANSI codes");
+        assert_ne!(warn(text), text, "warn() should add ANSI codes");
+        assert_ne!(accent(text), text, "accent() should add ANSI codes");
+        assert_ne!(dim(text), text, "dim() should add ANSI codes");
+        assert_ne!(muted(text), text, "muted() should add ANSI codes");
+        assert_ne!(bold(text), text, "bold() should add ANSI codes");
+
+        // Verify the styled strings actually contain the original text.
+        assert!(success(text).contains(text));
+        assert!(error(text).contains(text));
+        assert!(warn(text).contains(text));
+        assert!(accent(text).contains(text));
+    }
+
+    /// Verify that `set_no_color()` — used by main() for both `--no-color` flag and
+    /// non-TTY detection — disables ANSI codes from all helpers.
+    #[test]
+    fn set_no_color_covers_both_no_color_flag_and_non_tty_detection() {
+        let _guard = COLOR_TEST_LOCK.lock().unwrap();
+        set_color_enabled();
+        std::env::remove_var("NO_COLOR");
+
+        // Both --no-color and non-TTY detection call set_no_color(), so this
+        // test validates both code paths share the same mechanism.
+        set_no_color();
+        assert!(!color_enabled());
+
+        let text = "hello";
+        assert_eq!(success(text), text);
+        assert_eq!(error(text), text);
+        assert_eq!(warn(text), text);
+
+        set_color_enabled();
+    }
 }

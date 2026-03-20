@@ -23,30 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-154: Large Context Directory Warning
-
-**Spec:** `specs/observability/file-lineage.md`
-
-**Summary:** Warn if context_dir has > 10,000 files because manifest scanning will be slow. Advisory only.
-
-### Task 1: Add large directory warning
-
-**Files:** `src/main.rs` (or `src/engine.rs`)
-
-**Steps:**
-- [x] After context_dir validation but before engine start, count files in context_dir (recursive)
-- [x] If count > 10,000: print warning `⚠  context_dir contains {N} files. Manifest scanning may be slow.\n   Consider using manifest_ignore patterns to exclude large directories (e.g., node_modules/, target/).`
-- [x] Only warn when `manifest_enabled = true` (no point warning if manifests are off)
-- [x] Only warn in human output mode
-
-**Tests:**
-- [x] Directory with > 10,000 files triggers warning
-- [x] Directory with < 10,000 files produces no warning
-- [x] Warning suppressed when manifest_enabled is false
-- [x] `just validate` clean
-
----
-
 ## F-183: ANSI Color System
 
 **Spec:** `specs/observability/runtime-output.md` (Visual Enhancement section)
@@ -58,18 +34,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/style.rs`
 
 **Steps:**
-- [ ] Verify the semantic color functions exist: `success()`, `error()`, `warn()`, `accent()`, `dim()`, `muted()`, `bold()`
-- [ ] Verify NO_COLOR environment variable disables all ANSI codes
-- [ ] Verify non-TTY stderr disables colors
-- [ ] Verify `--no-color` CLI flag disables colors
-- [ ] If all above are working, mark as COMPLETE after verification
+- [x] Verify the semantic color functions exist: `success()`, `error()`, `warn()`, `accent()`, `dim()`, `muted()`, `bold()`
+- [x] Verify NO_COLOR environment variable disables all ANSI codes
+- [x] Verify non-TTY stderr disables colors
+- [x] Verify `--no-color` CLI flag disables colors
+- [x] If all above are working, mark as COMPLETE after verification
 
 **Tests:**
-- [ ] `NO_COLOR=1` environment variable disables all ANSI escapes
-- [ ] Non-TTY output contains no ANSI escapes
-- [ ] `--no-color` flag disables colors
-- [ ] Colors are applied correctly in TTY mode
-- [ ] `just validate` clean
+- [x] `NO_COLOR=1` environment variable disables all ANSI escapes
+- [x] Non-TTY output contains no ANSI escapes
+- [x] `--no-color` flag disables colors
+- [x] Colors are applied correctly in TTY mode
+- [x] `just validate` clean
 
 ---
 

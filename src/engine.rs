@@ -10,7 +10,7 @@ use crate::completion::{
 use crate::contracts::{
     check_consumes_at_startup, check_consumes_pre_run, check_produces_after_run,
 };
-use crate::cost::parse_cost_from_output;
+use crate::cost::parse_cost_from_output_with_profile;
 use crate::executor::{
     extract_response_text, ClaudeExecutor, ConfigurableExecutor, Executor, Invocation,
 };
@@ -1364,7 +1364,8 @@ pub fn run_workflow(
         let response_text = extract_response_text(&output.combined);
 
         // Record cost
-        let cost = parse_cost_from_output(&output.combined);
+        let cost =
+            parse_cost_from_output_with_profile(&output.combined, &workflow.compiled_cost_parser);
         ctx.budget.cumulative_cost += cost.cost_usd.unwrap_or(0.0);
         if let Some(t) = cost.input_tokens {
             ctx.budget.cumulative_input_tokens += t;

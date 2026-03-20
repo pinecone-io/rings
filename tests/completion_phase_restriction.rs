@@ -34,6 +34,7 @@ fn two_phase_workflow(completion_signal_phases: Vec<String>, max_cycles: u32) ->
         manifest_ignore: vec![],
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
+        compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         phases: vec![
             PhaseConfig {
                 name: "builder".to_string(),

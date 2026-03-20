@@ -1,3 +1,4 @@
+use crate::cost::CompiledCostParser;
 use crate::duration::DurationField;
 use regex::Regex;
 use serde::Deserialize;
@@ -15,6 +16,23 @@ pub enum CompletionSignalMode {
     Line,
     /// Signal is a compiled regex matched against the full output.
     Regex(Regex),
+}
+
+/// Named cost parser profile.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CostParserName {
+    ClaudeCode,
+    None,
+}
+
+/// Cost parser configuration as written in a workflow TOML file.
+/// Either a named profile (`"claude-code"` or `"none"`) or a custom pattern table.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum CostParserConfig {
+    Named(CostParserName),
+    Custom { pattern: String },
 }
 
 /// Named error profile.
@@ -106,6 +124,8 @@ pub struct ExecutorConfig {
     pub extra_args: Vec<String>,
     #[serde(default)]
     pub error_profile: Option<ErrorProfile>,
+    #[serde(default)]
+    pub cost_parser: Option<CostParserConfig>,
 }
 
 /// Phase-level executor override. Currently only `extra_args` is supported at the phase level.
@@ -176,6 +196,8 @@ pub struct Workflow {
     pub manifest_ignore: Vec<String>,
     pub manifest_mtime_optimization: bool,
     pub snapshot_cycles: bool,
+    /// Compiled cost parser for this workflow.
+    pub compiled_cost_parser: CompiledCostParser,
 }
 
 #[derive(Debug, Error)]
@@ -204,6 +226,8 @@ pub enum WorkflowError {
     ParseError(#[from] toml::de::Error),
     #[error("invalid regex pattern in error profile: {0}")]
     InvalidRegexPattern(String),
+    #[error("invalid regex pattern in cost_parser: {0}")]
+    InvalidCostParserPattern(String),
     #[error("invalid completion_signal_mode: '{0}'; expected 'substring', 'line', or 'regex'")]
     InvalidCompletionSignalMode(String),
     #[error("invalid regex in completion_signal: {0}")]
@@ -411,6 +435,20 @@ impl Workflow {
                 .and_then(|e| e.error_profile.as_ref()),
         )?;
 
+        // Compile cost parser from executor config or default to ClaudeCode.
+        let compiled_cost_parser = match file.executor.as_ref().and_then(|e| e.cost_parser.as_ref())
+        {
+            None | Some(CostParserConfig::Named(CostParserName::ClaudeCode)) => {
+                CompiledCostParser::ClaudeCode
+            }
+            Some(CostParserConfig::Named(CostParserName::None)) => CompiledCostParser::None,
+            Some(CostParserConfig::Custom { pattern }) => {
+                let re = Regex::new(pattern)
+                    .map_err(|e| WorkflowError::InvalidCostParserPattern(e.to_string()))?;
+                CompiledCostParser::Custom(re)
+            }
+        };
+
         // Parse and compile completion_signal_mode.
         let completion_signal_mode = match file
             .workflow
@@ -529,6 +567,7 @@ impl Workflow {
             manifest_ignore: file.workflow.manifest_ignore,
             manifest_mtime_optimization: file.workflow.manifest_mtime_optimization,
             snapshot_cycles: file.workflow.snapshot_cycles,
+            compiled_cost_parser,
         })
     }
 }
@@ -1006,5 +1045,123 @@ prompt_text = "Do work."
         );
         let err = Workflow::from_str(&toml).unwrap_err();
         assert!(matches!(err, WorkflowError::ConflictingModelFlags(ref name) if name == "builder"));
+    }
+
+    // ─── F-031: cost_parser tests ──────────────────────────────────────────────
+
+    #[test]
+    fn cost_parser_none_is_accepted() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+cost_parser = "none"
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(matches!(
+            wf.compiled_cost_parser,
+            crate::cost::CompiledCostParser::None
+        ));
+    }
+
+    #[test]
+    fn cost_parser_claude_code_is_accepted() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+cost_parser = "claude-code"
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(matches!(
+            wf.compiled_cost_parser,
+            crate::cost::CompiledCostParser::ClaudeCode
+        ));
+    }
+
+    #[test]
+    fn cost_parser_absent_defaults_to_claude_code() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(matches!(
+            wf.compiled_cost_parser,
+            crate::cost::CompiledCostParser::ClaudeCode
+        ));
+    }
+
+    #[test]
+    fn cost_parser_custom_pattern_compiles() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+cost_parser = {{ pattern = 'Total: \$(?P<cost_usd>[\d.]+)' }}
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(matches!(
+            wf.compiled_cost_parser,
+            crate::cost::CompiledCostParser::Custom(_)
+        ));
+    }
+
+    #[test]
+    fn cost_parser_invalid_regex_exits_with_error() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[executor]
+binary = "claude"
+cost_parser = {{ pattern = '[invalid' }}
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidCostParserPattern(_)));
     }
 }

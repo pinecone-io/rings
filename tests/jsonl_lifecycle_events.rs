@@ -37,6 +37,7 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
         manifest_ignore: vec![],
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
+        compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {

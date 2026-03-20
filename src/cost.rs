@@ -1,6 +1,18 @@
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
+/// Compiled cost parser profile — the resolved, ready-to-use form stored on `Workflow`.
+#[derive(Debug, Clone)]
+pub enum CompiledCostParser {
+    /// Use the built-in claude-code cascade of patterns (default).
+    ClaudeCode,
+    /// Skip cost extraction entirely; all fields are null.
+    None,
+    /// Use a custom regex with named captures: `cost_usd` (required),
+    /// `input_tokens` and `output_tokens` (optional).
+    Custom(regex::Regex),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ParseConfidence {
@@ -208,6 +220,61 @@ pub fn parse_cost_from_output(output: &str) -> RunCost {
     }
 }
 
+/// Parse cost from executor output using the specified `CompiledCostParser`.
+///
+/// - `ClaudeCode` → delegates to the built-in cascade (`parse_cost_from_output`)
+/// - `None` → returns a zero/null `RunCost` without any parsing or warnings
+/// - `Custom(re)` → tries the regex once; named captures `cost_usd` (required),
+///   `input_tokens` and `output_tokens` (optional). No fallthrough to built-in patterns.
+pub fn parse_cost_from_output_with_profile(output: &str, parser: &CompiledCostParser) -> RunCost {
+    match parser {
+        CompiledCostParser::ClaudeCode => parse_cost_from_output(output),
+        CompiledCostParser::None => RunCost::default(),
+        CompiledCostParser::Custom(re) => {
+            let parse_tokens = |s: &str| -> Option<u64> { s.replace(',', "").parse().ok() };
+
+            if let Some(caps) = re.captures(output) {
+                let cost_usd: Option<f64> =
+                    caps.name("cost_usd").and_then(|m| m.as_str().parse().ok());
+                let input_tokens = caps
+                    .name("input_tokens")
+                    .and_then(|m| parse_tokens(m.as_str()));
+                let output_tokens = caps
+                    .name("output_tokens")
+                    .and_then(|m| parse_tokens(m.as_str()));
+                let raw_match = caps.get(0).map(|m| m.as_str().to_string());
+
+                if cost_usd.is_none() {
+                    return RunCost {
+                        cost_usd: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        confidence: ParseConfidence::None,
+                        raw_match,
+                    };
+                }
+
+                let confidence = if input_tokens.is_some() && output_tokens.is_some() {
+                    ParseConfidence::Full
+                } else {
+                    ParseConfidence::Partial
+                };
+
+                RunCost {
+                    cost_usd,
+                    input_tokens,
+                    output_tokens,
+                    confidence,
+                    raw_match,
+                }
+            } else {
+                // No match at all
+                RunCost::default()
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +345,81 @@ mod tests {
         assert_eq!(result.confidence, ParseConfidence::Full);
         assert_eq!(result.input_tokens, Some(200));
         assert_eq!(result.output_tokens, Some(100));
+    }
+
+    // ─── Custom cost parser tests ──────────────────────────────────────────────
+
+    #[test]
+    fn custom_parser_extracts_cost_usd_only() {
+        let re = regex::Regex::new(r"Total: \$(?P<cost_usd>[\d.]+)").unwrap();
+        let parser = CompiledCostParser::Custom(re);
+        let result = parse_cost_from_output_with_profile("Total: $1.23", &parser);
+        assert_eq!(result.cost_usd, Some(1.23));
+        assert_eq!(result.confidence, ParseConfidence::Partial);
+        assert_eq!(result.input_tokens, None);
+        assert_eq!(result.output_tokens, None);
+    }
+
+    #[test]
+    fn custom_parser_extracts_all_named_groups() {
+        let re = regex::Regex::new(
+            r"Cost: \$(?P<cost_usd>[\d.]+) \((?P<input_tokens>[\d,]+) input, (?P<output_tokens>[\d,]+) output\)",
+        )
+        .unwrap();
+        let parser = CompiledCostParser::Custom(re);
+        let result =
+            parse_cost_from_output_with_profile("Cost: $2.50 (1,000 input, 500 output)", &parser);
+        assert_eq!(result.cost_usd, Some(2.50));
+        assert_eq!(result.input_tokens, Some(1000));
+        assert_eq!(result.output_tokens, Some(500));
+        assert_eq!(result.confidence, ParseConfidence::Full);
+    }
+
+    #[test]
+    fn custom_parser_no_match_returns_none() {
+        let re = regex::Regex::new(r"Total: \$(?P<cost_usd>[\d.]+)").unwrap();
+        let parser = CompiledCostParser::Custom(re);
+        let result = parse_cost_from_output_with_profile("No cost info here.", &parser);
+        assert_eq!(result.cost_usd, None);
+        assert_eq!(result.confidence, ParseConfidence::None);
+    }
+
+    #[test]
+    fn none_parser_returns_zero_cost_no_parsing() {
+        let parser = CompiledCostParser::None;
+        // Even if built-in patterns would match, None skips parsing
+        let result = parse_cost_from_output_with_profile(
+            "Cost: $1.23 (100 input tokens, 50 output tokens)",
+            &parser,
+        );
+        assert_eq!(result.cost_usd, None);
+        assert_eq!(result.input_tokens, None);
+        assert_eq!(result.output_tokens, None);
+        assert_eq!(result.confidence, ParseConfidence::None);
+    }
+
+    #[test]
+    fn claude_code_parser_uses_builtin_cascade() {
+        let parser = CompiledCostParser::ClaudeCode;
+        let result = parse_cost_from_output_with_profile(
+            "Cost: $0.75 (200 input tokens, 100 output tokens)",
+            &parser,
+        );
+        assert_eq!(result.cost_usd, Some(0.75));
+        assert_eq!(result.confidence, ParseConfidence::Full);
+    }
+
+    #[test]
+    fn custom_parser_no_match_does_not_fall_through_to_builtin() {
+        // The custom pattern does NOT match, but the built-in pattern would.
+        // Per spec: no fallthrough — result must be None.
+        let re = regex::Regex::new(r"CUSTOM: \$(?P<cost_usd>[\d.]+)").unwrap();
+        let parser = CompiledCostParser::Custom(re);
+        let result = parse_cost_from_output_with_profile(
+            "Cost: $1.23 (100 input tokens, 50 output tokens)",
+            &parser,
+        );
+        assert_eq!(result.cost_usd, None);
+        assert_eq!(result.confidence, ParseConfidence::None);
     }
 }

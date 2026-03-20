@@ -53,6 +53,7 @@ fn make_workflow_with_profile(
         manifest_ignore: vec![],
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
+        compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {

@@ -23,27 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-026: Environment Variable Pass-Through
-
-**Spec:** `specs/execution/executor-integration.md` (Environment Variables section)
-
-**Summary:** Ensure the executor subprocess inherits the current shell environment. This is already the default behavior of `std::process::Command`, but should be explicitly tested and documented to prevent future regressions.
-
-### Task 1: Verify and test env pass-through
-
-**Files:** `src/executor.rs`, tests
-
-**Steps:**
-- [x] Verify that `Command::new(binary)` in `spawn_child` does NOT call `.env_clear()` — the default behavior inherits the parent environment
-- [x] Add an explicit test that sets an env var, runs the executor, and verifies the var is visible in the subprocess
-- [x] Document in code comment that env pass-through is intentional (not accidental default)
-
-**Tests:**
-- [x] Set `RINGS_TEST_ENV=1` in the test, verify it appears in the mock executor's environment
-- [x] `just validate` clean
-
----
-
 ## F-035/F-036: Parse Warning Summary and Deduplication
 
 **Spec:** `specs/execution/output-parsing.md`
@@ -55,14 +34,14 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/display.rs`, `src/engine.rs`
 
 **Steps:**
-- [ ] The `print_parse_warnings` function in `display.rs` already exists and shows up to 10 warnings — verify it's called at the appropriate place in the engine (end of run, after all phases complete)
-- [ ] Ensure each warning includes: run number, cycle, phase, confidence level, and a raw output snippet (first 100 chars of the matched text or "no match")
-- [ ] If already fully implemented, mark this as COMPLETE after verification
+- [x] The `print_parse_warnings` function in `display.rs` already exists and shows up to 10 warnings — verify it's called at the appropriate place in the engine (end of run, after all phases complete)
+- [x] Ensure each warning includes: run number, cycle, phase, confidence level, and a raw output snippet (first 100 chars of the matched text or "no match")
+- [x] If already fully implemented, mark this as COMPLETE after verification
 
 **Tests:**
-- [ ] Multiple low-confidence runs produce a single consolidated summary at run end
-- [ ] Summary shows at most 10 individual warnings, then "... and N more"
-- [ ] `just validate` clean
+- [x] Multiple low-confidence runs produce a single consolidated summary at run end
+- [x] Summary shows at most 10 individual warnings, then "... and N more"
+- [x] `just validate` clean
 
 ---
 

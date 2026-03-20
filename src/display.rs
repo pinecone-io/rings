@@ -812,40 +812,57 @@ pub fn print_budget_cap_reached(cap_usd: f64, spent_usd: f64) {
     eprintln!("   rings is stopping. Resume is available.");
 }
 
-/// Print low-confidence cost parse warnings (up to 10, then summary).
-pub fn print_parse_warnings(warnings: &[crate::cost::ParseWarning]) {
+/// Format low-confidence cost parse warnings into a string (up to 10, then overflow summary).
+///
+/// Returns an empty string if `warnings` is empty.
+pub fn format_parse_warnings(warnings: &[crate::cost::ParseWarning]) -> String {
     if warnings.is_empty() {
-        return;
+        return String::new();
     }
 
-    eprintln!();
+    let mut out = String::new();
+    let run_word = if warnings.len() == 1 { "run" } else { "runs" };
+    out.push_str(&format!(
+        "\n{}  Parse warnings ({} {} affected):\n",
+        style::warn("⚠"),
+        warnings.len(),
+        run_word,
+    ));
+
     let display_count = std::cmp::min(warnings.len(), 10);
     for w in warnings.iter().take(display_count) {
-        if w.confidence == crate::cost::ParseConfidence::None {
-            eprintln!(
-                "{}  Low-confidence cost parse: Run {} (cycle {}, phase {}): cost could not be parsed",
-                style::warn("⚠"),
-                w.run_number, w.cycle, w.phase
-            );
-        } else if let Some(ref snippet) = w.raw_match {
-            eprintln!(
-                "{}  Low-confidence cost parse: Run {} (cycle {}, phase {}): {}",
-                style::warn("⚠"),
-                w.run_number,
-                w.cycle,
-                w.phase,
-                snippet
-            );
-        }
+        let confidence_desc = match w.confidence {
+            crate::cost::ParseConfidence::None => "no match found",
+            crate::cost::ParseConfidence::Low => "low-confidence match",
+            crate::cost::ParseConfidence::Partial => "partial match (tokens not found)",
+            crate::cost::ParseConfidence::Full => "full match",
+        };
+        let snippet = match &w.raw_match {
+            Some(s) => {
+                let truncated = if s.len() > 100 { &s[..100] } else { s.as_str() };
+                format!("\"{}\"", truncated)
+            }
+            None => "no match".to_string(),
+        };
+        out.push_str(&format!(
+            "   Run {}: Cost parsing: {} (cycle {}, phase {}). Raw: {}\n",
+            w.run_number, confidence_desc, w.cycle, w.phase, snippet,
+        ));
     }
 
     if warnings.len() > 10 {
         let remaining = warnings.len() - 10;
-        eprintln!(
-            "{}  ... and {} more low-confidence cost parse warnings.",
-            style::warn("⚠"),
-            remaining
-        );
+        out.push_str(&format!("   ... and {} more.\n", remaining));
+    }
+
+    out
+}
+
+/// Print low-confidence cost parse warnings (up to 10, then summary).
+pub fn print_parse_warnings(warnings: &[crate::cost::ParseWarning]) {
+    let s = format_parse_warnings(warnings);
+    if !s.is_empty() {
+        eprint!("{}", s);
     }
 }
 
@@ -1473,5 +1490,123 @@ mod tests {
         assert_eq!(format_number_with_commas(1000), "1,000");
         assert_eq!(format_number_with_commas(18204), "18,204");
         assert_eq!(format_number_with_commas(1_100_000), "1,100,000");
+    }
+
+    fn make_parse_warning(
+        run_number: u32,
+        confidence: crate::cost::ParseConfidence,
+        raw_match: Option<&str>,
+    ) -> crate::cost::ParseWarning {
+        crate::cost::ParseWarning {
+            run_number,
+            cycle: 1,
+            phase: "builder".to_string(),
+            confidence,
+            raw_match: raw_match.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn parse_warnings_empty_returns_empty_string() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        assert_eq!(format_parse_warnings(&[]), "");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn parse_warnings_single_includes_header_and_run_info() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let warnings = vec![make_parse_warning(
+            5,
+            crate::cost::ParseConfidence::Low,
+            Some("total: $0.041 spent"),
+        )];
+        let s = format_parse_warnings(&warnings);
+        assert!(s.contains("1 run affected"), "header missing: {s}");
+        assert!(s.contains("Run 5:"), "run number missing: {s}");
+        assert!(
+            s.contains("low-confidence match"),
+            "confidence missing: {s}"
+        );
+        assert!(s.contains("cycle 1"), "cycle missing: {s}");
+        assert!(s.contains("builder"), "phase missing: {s}");
+        assert!(s.contains("total: $0.041 spent"), "snippet missing: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn parse_warnings_none_confidence_shows_no_match() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let warnings = vec![make_parse_warning(
+            12,
+            crate::cost::ParseConfidence::None,
+            None,
+        )];
+        let s = format_parse_warnings(&warnings);
+        assert!(s.contains("no match found"), "confidence desc missing: {s}");
+        assert!(s.contains("no match"), "snippet fallback missing: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn parse_warnings_multiple_single_consolidated_summary() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let warnings: Vec<_> = (1..=5u32)
+            .map(|i| make_parse_warning(i, crate::cost::ParseConfidence::Low, Some("$0.01")))
+            .collect();
+        let s = format_parse_warnings(&warnings);
+        // Should produce exactly one header block
+        let header_count = s.matches("runs affected").count();
+        assert_eq!(header_count, 1, "should have exactly one header: {s}");
+        // All 5 runs should appear
+        for i in 1..=5u32 {
+            assert!(s.contains(&format!("Run {i}:")), "run {i} missing: {s}");
+        }
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn parse_warnings_at_most_10_shown_then_overflow() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let warnings: Vec<_> = (1..=15u32)
+            .map(|i| make_parse_warning(i, crate::cost::ParseConfidence::Low, Some("$0.01")))
+            .collect();
+        let s = format_parse_warnings(&warnings);
+        // Runs 1–10 should appear
+        for i in 1..=10u32 {
+            assert!(s.contains(&format!("Run {i}:")), "run {i} missing: {s}");
+        }
+        // Runs 11–15 should NOT appear as individual lines
+        for i in 11..=15u32 {
+            assert!(
+                !s.contains(&format!("Run {i}:")),
+                "run {i} should be in overflow: {s}"
+            );
+        }
+        // Overflow line should mention 5 more
+        assert!(s.contains("5 more"), "overflow line missing: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn parse_warnings_raw_snippet_truncated_to_100_chars() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let long_raw = "x".repeat(200);
+        let warnings = vec![make_parse_warning(
+            1,
+            crate::cost::ParseConfidence::Low,
+            Some(&long_raw),
+        )];
+        let s = format_parse_warnings(&warnings);
+        // The snippet in the output should be exactly 100 x's
+        let expected_snippet = format!("\"{}\"", "x".repeat(100));
+        assert!(s.contains(&expected_snippet), "snippet not truncated: {s}");
+        crate::style::set_color_enabled();
     }
 }

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, Write};
 use std::path::Path;
 
 lazy_static! {
@@ -72,15 +72,62 @@ pub fn recover_last_run_from_costs(path: &Path) -> Result<Option<u32>> {
 }
 
 /// Append one line to costs.jsonl (creates file if absent).
+///
+/// Before writing, recovers from partial writes: if the file does not end with `\n`
+/// (e.g., due to a crash mid-write), the incomplete last line is truncated so only
+/// fully-written entries remain. The new entry is then written as a single `write_all`
+/// call (JSON + newline) and flushed to disk with `sync_data`.
 pub fn append_cost_entry(costs_path: &Path, entry: &CostEntry) -> Result<()> {
     let mut file = std::fs::OpenOptions::new()
         .create(true)
-        .append(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
         .open(costs_path)
         .with_context(|| format!("Failed to open costs.jsonl: {}", costs_path.display()))?;
+
+    // Recovery: if the file has a partial last line (no trailing '\n'), truncate it.
+    let len = file
+        .metadata()
+        .with_context(|| format!("Failed to stat costs.jsonl: {}", costs_path.display()))?
+        .len();
+    if len > 0 {
+        file.seek(std::io::SeekFrom::End(-1))
+            .with_context(|| "Failed to seek costs.jsonl")?;
+        let mut last_byte = [0u8; 1];
+        file.read_exact(&mut last_byte)
+            .with_context(|| "Failed to read last byte of costs.jsonl")?;
+        if last_byte[0] != b'\n' {
+            // Read the tail of the file (up to 8 KiB) to locate the last clean newline.
+            let read_start = len.saturating_sub(8192);
+            file.seek(std::io::SeekFrom::Start(read_start))
+                .with_context(|| "Failed to seek costs.jsonl for recovery")?;
+            let mut tail = Vec::new();
+            file.read_to_end(&mut tail)
+                .with_context(|| "Failed to read tail of costs.jsonl for recovery")?;
+            let truncate_to = tail
+                .iter()
+                .rposition(|&b| b == b'\n')
+                .map(|pos| read_start + pos as u64 + 1)
+                .unwrap_or(0);
+            file.set_len(truncate_to)
+                .with_context(|| "Failed to truncate costs.jsonl during recovery")?;
+        }
+    }
+
+    // Seek to end for append.
+    file.seek(std::io::SeekFrom::End(0))
+        .with_context(|| "Failed to seek to end of costs.jsonl")?;
+
+    // Write the full line (JSON + newline) atomically in one write_all call.
     let line = serde_json::to_string(entry).context("Failed to serialize cost entry")?;
-    writeln!(file, "{line}")
-        .with_context(|| format!("Failed to write to costs.jsonl: {}", costs_path.display()))
+    let line_with_newline = format!("{line}\n");
+    file.write_all(line_with_newline.as_bytes())
+        .with_context(|| format!("Failed to write to costs.jsonl: {}", costs_path.display()))?;
+
+    // Flush to disk before returning.
+    file.sync_data()
+        .with_context(|| format!("Failed to sync costs.jsonl: {}", costs_path.display()))
 }
 
 #[derive(Debug, Serialize)]
@@ -215,6 +262,107 @@ mod tests {
         let json = r#"{"run":1,"cycle":1,"phase":"builder","iteration":1,"cost_usd":0.05,"input_tokens":100,"output_tokens":20,"cost_confidence":"full","files_added":0,"files_modified":0,"files_deleted":0,"files_changed":0}"#;
         let entry: CostEntry = serde_json::from_str(json).unwrap();
         assert!(entry.produces_violations.is_empty());
+    }
+
+    fn make_entry(run: u32) -> CostEntry {
+        CostEntry {
+            run,
+            cycle: 1,
+            phase: "builder".to_string(),
+            iteration: 1,
+            cost_usd: Some(0.01),
+            input_tokens: Some(100),
+            output_tokens: Some(20),
+            cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
+            produces_violations: vec![],
+        }
+    }
+
+    #[test]
+    fn append_cost_entry_recovers_truncated_last_line() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("costs.jsonl");
+
+        // Write one valid entry followed by a partial line (no trailing newline).
+        let valid_entry = make_entry(1);
+        let valid_json = serde_json::to_string(&valid_entry).unwrap();
+        let partial = format!("{valid_json}\n{{\"run\":2,\"partial");
+        std::fs::write(&path, partial).unwrap();
+
+        // Appending a new entry should truncate the partial line and write cleanly.
+        let new_entry = make_entry(3);
+        append_cost_entry(&path, &new_entry).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 2, "Should have 2 lines after recovery");
+
+        let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(first["run"], 1);
+
+        let second: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(second["run"], 3);
+    }
+
+    #[test]
+    fn append_cost_entry_handles_file_with_no_newline_at_all() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("costs.jsonl");
+
+        // Write only a partial line with no newline anywhere.
+        std::fs::write(&path, b"{\"run\":1,\"partial").unwrap();
+
+        let entry = make_entry(2);
+        append_cost_entry(&path, &entry).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 1);
+        let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(parsed["run"], 2);
+    }
+
+    #[test]
+    fn append_cost_entry_clean_file_unchanged() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("costs.jsonl");
+
+        // Write two valid entries.
+        append_cost_entry(&path, &make_entry(1)).unwrap();
+        append_cost_entry(&path, &make_entry(2)).unwrap();
+        append_cost_entry(&path, &make_entry(3)).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 3);
+        for (i, line) in lines.iter().enumerate() {
+            let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert_eq!(parsed["run"], (i + 1) as u64);
+        }
+    }
+
+    #[test]
+    fn truncated_last_line_skipped_by_stream_cost_entries() {
+        // Verify that stream_cost_entries gracefully skips a malformed last line
+        // (e.g., no truncation has happened yet and someone reads the file directly).
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("costs.jsonl");
+
+        let valid_json = serde_json::to_string(&make_entry(1)).unwrap();
+        let content = format!("{valid_json}\n{{\"run\":2,\"partial");
+        std::fs::write(&path, content).unwrap();
+
+        let max_run = recover_last_run_from_costs(&path).unwrap();
+        assert_eq!(
+            max_run,
+            Some(1),
+            "Partial line should be skipped during recovery"
+        );
     }
 
     #[test]

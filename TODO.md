@@ -4,40 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Tech Debt: Remove `unwrap()`/`expect()` from Production Code
-
-**Ref:** CLAUDE.md rule — "No `unwrap()` or `expect()` in production code — all errors propagate via `?` and `anyhow`"
-
-**Summary:** Audit found two `unwrap()`/`expect()` calls in production code paths that could cause hard panics instead of graceful errors.
-
-### Task 1: Replace `.expect()` in Ctrl+C handler setup
-
-**Files:** `src/main.rs`
-
-**Steps:**
-- [x] Replace `.expect("Failed to install Ctrl+C handler")` on line 43 with proper error handling
-- [x] Since `main()` currently returns `()`, either: (a) convert main to return `Result<()>` via `process::exit` wrapper, or (b) use an `if let Err(e)` block that prints the error to stderr and exits with code 2
-- [x] Verify that failure to install the handler produces a clear user-facing error message, not a panic backtrace
-
-**Tests:**
-- [x] Existing tests continue to pass (`just validate`)
-
----
-
-### Task 2: Replace `.unwrap()` in dry-run phase position lookup
-
-**Files:** `src/main.rs`
-
-**Steps:**
-- [x] Replace `.unwrap()` on line 170 (phase position lookup in dry-run output) with `.unwrap_or(0)` or a safe fallback that cannot panic
-- [x] The current code iterates `plan.phases` and looks up each phase's index by name within the same collection — logically infallible, but should still be defended
-
-**Tests:**
-- [x] Existing dry-run tests continue to pass
-- [x] `just validate` clean
-
----
-
 ## Tech Debt: Harden `costs.jsonl` Append Against Partial Writes
 
 **Ref:** `specs/observability/audit-logs.md`
@@ -49,15 +15,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/audit.rs`
 
 **Steps:**
-- [ ] Serialize the full line (JSON + newline) to a `String` first (already done)
-- [ ] Write the entire serialized bytes in a single `write_all()` call instead of `writeln!()` (which may split the write into data + newline)
-- [ ] Call `file.sync_data()` after the write to flush to disk before returning
-- [ ] Add a recovery safeguard: when reading `costs.jsonl` for resume, if the last line does not end with `\n`, truncate the file to remove the partial line before appending
+- [x] Serialize the full line (JSON + newline) to a `String` first (already done)
+- [x] Write the entire serialized bytes in a single `write_all()` call instead of `writeln!()` (which may split the write into data + newline)
+- [x] Call `file.sync_data()` after the write to flush to disk before returning
+- [x] Add a recovery safeguard: when reading `costs.jsonl` for resume, if the last line does not end with `\n`, truncate the file to remove the partial line before appending
 
 **Tests:**
-- [ ] Existing cost parsing and state recovery tests continue to pass
-- [ ] Test that a costs.jsonl with a truncated last line (no trailing newline) is handled gracefully on read
-- [ ] `just validate` clean
+- [x] Existing cost parsing and state recovery tests continue to pass
+- [x] Test that a costs.jsonl with a truncated last line (no trailing newline) is handled gracefully on read
+- [x] `just validate` clean
 
 ---
 

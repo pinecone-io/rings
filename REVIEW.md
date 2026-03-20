@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / Tech Debt: Harden costs.jsonl append] Switched `append_cost_entry` from `OpenOptions::append(true)` to `read(true).write(true).truncate(false)` to allow both recovery-truncation and append in one file handle. On open, if the file's last byte is not `\n`, reads up to the last 8 KiB to find the last clean newline and calls `set_len` to truncate the partial line before appending. Writes the full JSON+newline as a single `write_all` call and calls `sync_data` to flush. The 8 KiB tail window is larger than any realistic cost entry line (~300–600 bytes).
+
 [2026-03-20 / Tech Debt: Remove unwrap/expect] Used `if let Err(e)` block for Ctrl+C handler failure (option b), printing to stderr and exiting with code 2, to avoid converting `main()` return type. Used `.unwrap_or(0)` for the dry-run phase position lookup — logically infallible since both iterators reference the same `plan.phases` slice, but defended against future refactors.
 
 [2026-03-20 / F-089 --strict-parsing Task 1] Added `strict_parsing: bool` to `EngineConfig` (not `ResumeArgs` since the resume command doesn't expose it). The halt check is placed immediately after the parse-warning accumulation block, using `ExitReason::BudgetCap` for state snapshot (no new ExitReason variant needed; strict_parsing halt is functionally equivalent to a budget cap in terms of state saving). `FatalErrorEvent` is used for JSONL mode. All 14 integration test files that construct `EngineConfig` were updated to include `strict_parsing: false`.

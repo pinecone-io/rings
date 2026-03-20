@@ -23,31 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-147: Disk Space Check
-
-**Spec:** `specs/execution/engine.md` (Advisory Checks table)
-
-**Summary:** At startup, check available disk space in the output directory. Warn at < 100 MB free, abort with exit 2 at < 10 MB. Prevents silently losing run data mid-execution.
-
-### Task 1: Add disk space check at startup
-
-**Files:** `src/main.rs` (or `src/engine.rs`)
-
-**Steps:**
-- [x] After resolving the output directory, check available disk space using `fs2::available_space()` or `nix::sys::statvfs` (or a cross-platform alternative)
-- [x] If < 10 MB: print error `Error: Less than 10 MB free in output directory ({path}). Aborting to prevent data loss.` and exit 2
-- [x] If < 100 MB but >= 10 MB: print warning `⚠  Low disk space: only {N} MB free in output directory ({path}).`
-- [x] Only check in human output mode for warnings; the fatal < 10 MB check applies in all modes
-- [x] Use `#[cfg(unix)]` with `std::os::unix::fs::MetadataExt` or the `fs2` crate for portable disk space queries
-
-**Tests:**
-- [x] Mock/temp filesystem with limited space triggers warning at < 100 MB
-- [x] Mock/temp filesystem with very low space triggers abort at < 10 MB
-- [x] Adequate disk space produces no warning
-- [x] `just validate` clean
-
----
-
 ## F-108: Auto-Generate summary.md
 
 **Spec:** `specs/observability/audit-logs.md`
@@ -59,8 +34,8 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/audit.rs` (or new function), `src/engine.rs`
 
 **Steps:**
-- [ ] Create a `generate_summary_md(run_dir: &Path, meta: &RunMeta, state: &StateFile, costs: &[CostEntry], phase_costs: &[(String, f64, u32)]) -> Result<()>` function
-- [ ] Generate markdown content including:
+- [x] Create a `generate_summary_md(run_dir: &Path, meta: &RunMeta, state: &StateFile, costs: &[CostEntry], phase_costs: &[(String, f64, u32)]) -> Result<()>` function
+- [x] Generate markdown content including:
   - Run ID, workflow file, status, started_at
   - Context dir, output dir
   - Cycles completed, total runs, total cost
@@ -68,15 +43,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
   - Token totals (if available)
   - If canceled: resume command
   - If completed: which run/cycle triggered completion
-- [ ] Write to `{run_dir}/summary.md`
-- [ ] Call this function from all engine exit paths: completion, max_cycles, cancellation, budget_cap, executor_error
+- [x] Write to `{run_dir}/summary.md`
+- [x] Call this function from all engine exit paths: completion, max_cycles, cancellation, budget_cap, executor_error
 
 **Tests:**
-- [ ] Completed run produces `summary.md` with correct status and cost
-- [ ] Canceled run produces `summary.md` with resume command
-- [ ] `summary.md` contains phase cost breakdown
-- [ ] `summary.md` is valid markdown (no broken formatting)
-- [ ] `just validate` clean
+- [x] Completed run produces `summary.md` with correct status and cost
+- [x] Canceled run produces `summary.md` with resume command
+- [x] `summary.md` contains phase cost breakdown
+- [x] `summary.md` is valid markdown (no broken formatting)
+- [x] `just validate` clean
 
 ---
 
@@ -126,6 +101,33 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Tests:**
 - [ ] All config tests pass reliably in parallel (run `cargo test` 10 times to verify no flakes)
 - [ ] `RingsConfig::load()` still works in production (delegates to `load_from`)
+- [ ] `just validate` clean
+
+---
+
+## F-150: No-Files-Changed Streak Warning
+
+**Spec:** `specs/execution/engine.md` (Advisory Checks table)
+
+**Summary:** Warn after 3 consecutive runs where the executor produced no file changes in `context_dir`, suggesting the workflow may be stuck in a loop doing nothing productive.
+
+### Task 1: Add no-change streak detection
+
+**Files:** `src/engine.rs`
+
+**Steps:**
+- [ ] Track a counter of consecutive runs with no file changes (use git status or manifest diff if available, else skip this check)
+- [ ] After each run completes: if no files were changed, increment counter; otherwise reset to 0
+- [ ] If counter reaches 3, print warning: `⚠  3 consecutive runs produced no file changes.\n   The workflow may be stuck. Consider reviewing the prompt or canceling.`
+- [ ] Only warn once per streak (don't re-warn at 4, 5, etc. — only at 3)
+- [ ] Only warn in human output mode
+- [ ] If file manifest is not enabled, skip this check entirely (no data to compare)
+
+**Tests:**
+- [ ] 3 consecutive no-change runs triggers warning
+- [ ] 2 no-change runs followed by a change run: no warning
+- [ ] Warning fires only once at the 3rd run, not again at 4th
+- [ ] Manifest not enabled: check is skipped entirely
 - [ ] `just validate` clean
 
 ---

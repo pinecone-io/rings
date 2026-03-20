@@ -126,7 +126,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-069 | `rings resume` | I can resume an interrupted workflow from its last completed step with `rings resume <run-id>` (requires F-048) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-070 | `rings list` | I can see all recent runs with their status and total cost in a summary table | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-071 | `rings show` | I can get a single-screen summary of any past run by its ID | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-072 | `rings inspect` | I can deeply inspect any run with multiple views: summary, cycles, files, costs, and raw output | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
+| F-072 | `rings inspect` | I can deeply inspect any run with multiple views: summary, cycles, files, costs, and raw output | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 | F-073 | `rings lineage` | I can see the full chain of parent/child runs that led to any given run ID (requires F-058) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 | F-074 | `rings cleanup` | I can remove old run data to free disk space | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-075 | `rings completions` | I can generate shell completion scripts for bash, zsh, or fish with `rings completions <shell>` | PRIORITIZED | [completion-and-manpage.md](cli/completion-and-manpage.md) |
@@ -177,7 +177,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-105 | run.toml Metadata | rings writes a machine-readable record of my workflow path, start time, rings version, and final status for each run | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 | F-106 | Per-Run Log Files | rings captures the full stdout/stderr of every executor invocation to individual log files I can read later | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 | F-107 | costs.jsonl | rings appends a cost record for each run to a newline-delimited JSON file I can stream-process with standard tools | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
-| F-108 | summary.md | rings generates a human-readable markdown summary of the completed run automatically | PRIORITIZED | [audit-logs.md](observability/audit-logs.md) |
+| F-108 | summary.md | rings generates a human-readable markdown summary of the completed run automatically | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 | F-109 | Directory Permissions | rings creates my output directory with mode 0700 so only I can read run logs and cost data | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 | F-110 | Path Traversal Protection | rings rejects any output_dir value containing `..` so a malicious workflow can't write outside the intended directory | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 
@@ -236,7 +236,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-144 | Empty Context Directory Warning | rings warns me if context_dir has no files in case I pointed it at the wrong directory | COMPLETE | [engine.md](execution/engine.md) |
 | F-145 | Sensitive Files Warning | rings warns me if context_dir contains credentials (`.env`, `*.key`, `*.pem`) that could be exposed to the model | COMPLETE | [engine.md](execution/engine.md) |
 | F-146 | Output Directory Inside Repo Warning | rings warns me if my output_dir is inside a git repo and would get committed accidentally | COMPLETE | [engine.md](execution/engine.md) |
-| F-147 | Disk Space Check | rings warns at < 100 MB free and aborts at < 10 MB so I don't silently lose run data | PRIORITIZED | [engine.md](execution/engine.md) |
+| F-147 | Disk Space Check | rings warns at < 100 MB free and aborts at < 10 MB so I don't silently lose run data | COMPLETE | [engine.md](execution/engine.md) |
 | F-148 | Delay Sanity Warning | rings warns me if `delay_between_runs` exceeds 600 seconds, since that's likely a units mistake | COMPLETE | [engine.md](execution/engine.md) |
 | F-149 | Cost Spike Detection | rings warns me mid-run when a single run costs 5× more than the rolling 5-run average | PRIORITIZED | [engine.md](execution/engine.md) |
 | F-150 | No-Files-Changed Streak Warning | rings warns me after 3 consecutive runs where the declared produces files weren't changed, suggesting the workflow is stuck | PRIORITIZED | [engine.md](execution/engine.md) |

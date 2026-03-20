@@ -4,6 +4,156 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Seek, Write};
 use std::path::Path;
 
+/// Parameters for generating a human-readable summary.md at the end of a run.
+pub struct SummaryInfo<'a> {
+    pub run_id: &'a str,
+    pub workflow_file: &'a str,
+    /// Human-readable status string: "completed", "canceled", "max_cycles", "budget_cap",
+    /// "executor_error", etc.
+    pub status: &'a str,
+    pub started_at: &'a str,
+    pub context_dir: Option<&'a str>,
+    pub output_dir: &'a Path,
+    pub completed_cycles: u32,
+    pub total_runs: u32,
+    pub total_cost_usd: f64,
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    /// Per-phase cost and run count, in workflow declaration order.
+    pub phase_costs: &'a [(String, f64, u32)],
+    pub total_elapsed_secs: u64,
+    /// If the run completed via signal detection: (cycle, run, phase_name).
+    pub completion_info: Option<(u32, u32, String)>,
+    /// claude resume commands captured from executor output (for canceled runs).
+    pub claude_resume_commands: &'a [String],
+}
+
+/// Format total elapsed seconds as a human-readable duration string (e.g., "14m 32s").
+fn format_elapsed(secs: u64) -> String {
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+    let mut parts = Vec::new();
+    if h > 0 {
+        parts.push(format!("{h}h"));
+    }
+    if m > 0 {
+        parts.push(format!("{m}m"));
+    }
+    if h == 0 {
+        // Show seconds unless duration >= 1 hour
+        parts.push(format!("{s}s"));
+    }
+    if parts.is_empty() {
+        return "0s".to_string();
+    }
+    parts.join(" ")
+}
+
+/// Extract the basename of a workflow file path (without leading directories).
+fn workflow_basename(path: &str) -> &str {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+}
+
+/// Generate a human-readable summary.md in `run_dir`.
+///
+/// This file is written on all run exit paths and provides a persistent record
+/// of the run's status, cost, and output location.
+pub fn generate_summary_md(run_dir: &Path, info: &SummaryInfo<'_>) -> Result<()> {
+    let mut md = String::new();
+
+    // Title
+    md.push_str(&format!("# rings Run Summary: {}\n\n", info.run_id));
+
+    // Header fields
+    let status_display = match info.status {
+        "completed" => "Completed (signal detected)".to_string(),
+        "canceled" => "Canceled".to_string(),
+        "max_cycles" => "Stopped (max cycles reached)".to_string(),
+        "budget_cap" => "Stopped (budget cap reached)".to_string(),
+        "executor_error" => "Failed (executor error)".to_string(),
+        other => {
+            let mut s = other[..1].to_uppercase();
+            s.push_str(&other[1..]);
+            s
+        }
+    };
+    md.push_str(&format!("**Status:** {}\n", status_display));
+    md.push_str(&format!(
+        "**Workflow:** {}\n",
+        workflow_basename(info.workflow_file)
+    ));
+    md.push_str(&format!("**Started:** {}\n", info.started_at));
+    md.push_str(&format!(
+        "**Duration:** {}\n",
+        format_elapsed(info.total_elapsed_secs)
+    ));
+    if let Some(ctx) = info.context_dir {
+        md.push_str(&format!("**Context directory:** {}\n", ctx));
+    }
+    md.push_str(&format!(
+        "**Output directory:** {}\n",
+        info.output_dir.display()
+    ));
+    md.push('\n');
+
+    // Execution summary
+    md.push_str("## Execution\n\n");
+    md.push_str(&format!("Cycles completed: {}\n", info.completed_cycles));
+    md.push_str(&format!("Total runs: {}\n", info.total_runs));
+    if let Some((cycle, run, ref phase)) = info.completion_info {
+        md.push_str(&format!(
+            "\nCompleted on cycle {cycle}, run {run}, phase {phase}.\n"
+        ));
+    }
+    md.push('\n');
+
+    // Cost breakdown table
+    md.push_str("## Cost\n\n");
+    if !info.phase_costs.is_empty() {
+        md.push_str("| Phase | Runs | Cost |\n");
+        md.push_str("|-------|------|------|\n");
+        for (phase, cost, runs) in info.phase_costs {
+            md.push_str(&format!("| {} | {} | ${:.3} |\n", phase, runs, cost));
+        }
+        md.push_str(&format!(
+            "| **Total** | **{}** | **${:.3}** |\n",
+            info.total_runs, info.total_cost_usd
+        ));
+    } else {
+        md.push_str(&format!("Total: ${:.3}\n", info.total_cost_usd));
+    }
+    md.push('\n');
+
+    // Token totals (if any data was captured)
+    if info.total_input_tokens > 0 || info.total_output_tokens > 0 {
+        md.push_str(&format!(
+            "Tokens: {} input / {} output\n\n",
+            info.total_input_tokens, info.total_output_tokens
+        ));
+    }
+
+    // Resume commands (for canceled runs)
+    if !info.claude_resume_commands.is_empty() {
+        md.push_str("## Resume\n\n");
+        md.push_str("To continue partial work from the last Claude session:\n\n");
+        for cmd in info.claude_resume_commands {
+            md.push_str(&format!("```\n{cmd}\n```\n\n"));
+        }
+    }
+
+    // Output location
+    md.push_str("## Output Location\n\n");
+    md.push_str(&format!("Audit logs: {}\n", info.output_dir.display()));
+
+    let summary_path = run_dir.join("summary.md");
+    std::fs::write(&summary_path, &md)
+        .with_context(|| format!("Failed to write summary.md: {}", summary_path.display()))
+}
+
 lazy_static! {
     // Pattern to extract resume commands from executor output
     static ref RE_RESUME: regex::Regex = regex::Regex::new(
@@ -388,5 +538,157 @@ mod tests {
         // Field must always be present, even when empty
         assert!(parsed.get("produces_violations").is_some());
         assert_eq!(parsed["produces_violations"], serde_json::json!([]));
+    }
+
+    fn make_summary_info<'a>(
+        run_dir: &'a std::path::Path,
+        phase_costs: &'a [(String, f64, u32)],
+        resume_cmds: &'a [String],
+        status: &'a str,
+        exit_code: i32,
+        completion_info: Option<(u32, u32, String)>,
+    ) -> SummaryInfo<'a> {
+        SummaryInfo {
+            run_id: "run_20240315_143022_a1b2c3",
+            workflow_file: "/home/user/my-task.rings.toml",
+            status,
+            started_at: "2024-03-15T14:30:22Z",
+            context_dir: Some("/home/user/project"),
+            output_dir: run_dir,
+            completed_cycles: 2,
+            total_runs: 6,
+            total_cost_usd: 1.10,
+            total_input_tokens: 1234,
+            total_output_tokens: 567,
+            phase_costs,
+            total_elapsed_secs: 872, // 14m 32s
+            completion_info,
+            claude_resume_commands: resume_cmds,
+        }
+    }
+
+    #[test]
+    fn completed_run_produces_summary_with_correct_status_and_cost() {
+        let dir = tempdir().unwrap();
+        let phase_costs = vec![
+            ("builder".to_string(), 0.89, 5u32),
+            ("reviewer".to_string(), 0.21, 1u32),
+        ];
+        let info = make_summary_info(
+            dir.path(),
+            &phase_costs,
+            &[],
+            "completed",
+            0,
+            Some((2, 6, "builder".to_string())),
+        );
+        generate_summary_md(dir.path(), &info).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("summary.md")).unwrap();
+        assert!(
+            content.contains("Completed (signal detected)"),
+            "Expected 'Completed (signal detected)' in summary"
+        );
+        assert!(content.contains("1.10"), "Expected total cost in summary");
+        assert!(
+            content.contains("builder"),
+            "Expected phase name in summary"
+        );
+        assert!(
+            content.contains("reviewer"),
+            "Expected phase name in summary"
+        );
+    }
+
+    #[test]
+    fn canceled_run_produces_summary_with_resume_command() {
+        let dir = tempdir().unwrap();
+        let phase_costs = vec![("builder".to_string(), 0.50, 3u32)];
+        let resume_cmds = vec!["claude resume abc-123-def".to_string()];
+        let info = make_summary_info(
+            dir.path(),
+            &phase_costs,
+            &resume_cmds,
+            "canceled",
+            130,
+            None,
+        );
+        generate_summary_md(dir.path(), &info).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("summary.md")).unwrap();
+        assert!(content.contains("Canceled"), "Expected 'Canceled' status");
+        assert!(
+            content.contains("claude resume abc-123-def"),
+            "Expected resume command in summary"
+        );
+    }
+
+    #[test]
+    fn summary_contains_phase_cost_breakdown() {
+        let dir = tempdir().unwrap();
+        let phase_costs = vec![
+            ("builder".to_string(), 0.89, 5u32),
+            ("reviewer".to_string(), 0.21, 1u32),
+        ];
+        let info = make_summary_info(
+            dir.path(),
+            &phase_costs,
+            &[],
+            "completed",
+            0,
+            Some((2, 6, "builder".to_string())),
+        );
+        generate_summary_md(dir.path(), &info).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("summary.md")).unwrap();
+        assert!(content.contains("## Cost"), "Expected Cost section");
+        assert!(
+            content.contains("builder"),
+            "Expected builder phase in cost table"
+        );
+        assert!(
+            content.contains("reviewer"),
+            "Expected reviewer phase in cost table"
+        );
+        assert!(
+            content.contains("0.89"),
+            "Expected builder cost in cost table"
+        );
+        assert!(
+            content.contains("0.21"),
+            "Expected reviewer cost in cost table"
+        );
+    }
+
+    #[test]
+    fn summary_md_is_valid_markdown_no_broken_formatting() {
+        let dir = tempdir().unwrap();
+        let phase_costs = vec![("builder".to_string(), 1.23, 4u32)];
+        let info = make_summary_info(dir.path(), &phase_costs, &[], "max_cycles", 1, None);
+        generate_summary_md(dir.path(), &info).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("summary.md")).unwrap();
+        // Must start with a heading
+        assert!(
+            content.starts_with("# rings Run Summary:"),
+            "Must start with heading"
+        );
+        // Must have section headers
+        assert!(
+            content.contains("## Execution"),
+            "Must have Execution section"
+        );
+        assert!(content.contains("## Cost"), "Must have Cost section");
+        assert!(
+            content.contains("## Output Location"),
+            "Must have Output Location section"
+        );
+        // No broken table rows (all rows must have proper pipe delimiters)
+        for line in content.lines() {
+            if line.starts_with('|') {
+                let pipes = line.chars().filter(|&c| c == '|').count();
+                assert!(pipes >= 2, "Table row must have at least 2 pipes: {line}");
+            }
+        }
     }
 }

@@ -712,6 +712,60 @@ fn run_inner(
         display::print_parse_warnings(&result.parse_warnings);
     }
 
+    // Generate summary.md in the run directory (all exit paths).
+    {
+        let status_str = match result.exit_code {
+            0 => "completed",
+            1 => "max_cycles",
+            3 => "executor_error",
+            4 => "budget_cap",
+            130 => "canceled",
+            _ => "failed",
+        };
+        let state_path = run_dir.join("state.json");
+        let loaded_state = state::StateFile::read(&state_path).ok();
+        let completion_info = if result.exit_code == 0 {
+            loaded_state.as_ref().map(|s| {
+                let phase = workflow.phases.get(s.last_completed_phase_index);
+                let phase_name = phase
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "unknown".to_string());
+                (s.last_completed_cycle, s.last_completed_run, phase_name)
+            })
+        } else {
+            None
+        };
+        let empty_cmds: Vec<String> = Vec::new();
+        let claude_resume_commands = if result.exit_code == 130 {
+            loaded_state
+                .as_ref()
+                .map(|s| s.claude_resume_commands.as_slice())
+                .unwrap_or(&[])
+        } else {
+            &empty_cmds
+        };
+        let summary_info = rings::audit::SummaryInfo {
+            run_id: &run_id,
+            workflow_file: &meta.workflow_file,
+            status: status_str,
+            started_at: &meta.started_at,
+            context_dir: meta.context_dir.as_deref(),
+            output_dir: &run_dir,
+            completed_cycles: result.completed_cycles,
+            total_runs: result.total_runs,
+            total_cost_usd: result.total_cost_usd,
+            total_input_tokens: result.total_input_tokens,
+            total_output_tokens: result.total_output_tokens,
+            phase_costs: &result.phase_costs,
+            total_elapsed_secs,
+            completion_info,
+            claude_resume_commands,
+        };
+        if let Err(e) = rings::audit::generate_summary_md(&run_dir, &summary_info) {
+            eprintln!("⚠  Failed to write summary.md: {e}");
+        }
+    }
+
     Ok(result.exit_code)
 }
 
@@ -1116,6 +1170,60 @@ fn resume_inner(
 
         // Print low-confidence cost parse warnings
         display::print_parse_warnings(&result.parse_warnings);
+    }
+
+    // Generate summary.md in the run directory (all exit paths).
+    {
+        let status_str = match result.exit_code {
+            0 => "completed",
+            1 => "max_cycles",
+            3 => "executor_error",
+            4 => "budget_cap",
+            130 => "canceled",
+            _ => "failed",
+        };
+        let state_path = run_dir.join("state.json");
+        let loaded_state = state::StateFile::read(&state_path).ok();
+        let completion_info = if result.exit_code == 0 {
+            loaded_state.as_ref().map(|s| {
+                let phase = workflow.phases.get(s.last_completed_phase_index);
+                let phase_name = phase
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "unknown".to_string());
+                (s.last_completed_cycle, s.last_completed_run, phase_name)
+            })
+        } else {
+            None
+        };
+        let empty_cmds: Vec<String> = Vec::new();
+        let claude_resume_commands = if result.exit_code == 130 {
+            loaded_state
+                .as_ref()
+                .map(|s| s.claude_resume_commands.as_slice())
+                .unwrap_or(&[])
+        } else {
+            &empty_cmds
+        };
+        let summary_info = rings::audit::SummaryInfo {
+            run_id: &new_run_id,
+            workflow_file: &meta.workflow_file,
+            status: status_str,
+            started_at: &meta.started_at,
+            context_dir: meta.context_dir.as_deref(),
+            output_dir: &run_dir,
+            completed_cycles: result.completed_cycles,
+            total_runs: result.total_runs,
+            total_cost_usd: result.total_cost_usd,
+            total_input_tokens: result.total_input_tokens,
+            total_output_tokens: result.total_output_tokens,
+            phase_costs: &result.phase_costs,
+            total_elapsed_secs,
+            completion_info,
+            claude_resume_commands,
+        };
+        if let Err(e) = rings::audit::generate_summary_md(&run_dir, &summary_info) {
+            eprintln!("⚠  Failed to write summary.md: {e}");
+        }
     }
 
     Ok(result.exit_code)

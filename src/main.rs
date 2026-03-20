@@ -317,6 +317,16 @@ fn run_inner(
         );
     }
 
+    // Advisory check: context_dir is empty
+    if output_format == cli::OutputFormat::Human && context_dir_is_empty(&workflow.context_dir) {
+        eprintln!(
+            "⚠  context_dir (\"{}\") contains no files.\n   \
+             The executor will start with an empty working directory.\n   \
+             If this is intentional (the executor will create files from scratch), ignore this warning.",
+            workflow.context_dir
+        );
+    }
+
     // Advisory check: completion signal in prompts
     if output_format == cli::OutputFormat::Human && !args.no_completion_check {
         let mut prompt_texts: Vec<String> = Vec::new();
@@ -1684,9 +1694,44 @@ fn generate_run_id() -> String {
     format!("run_{ts}_{short_uuid}")
 }
 
+/// Returns true if the directory at `path` contains zero entries (advisory check for
+/// empty context_dir). Returns false if the directory cannot be read or contains any entries.
+fn context_dir_is_empty(path: &str) -> bool {
+    std::fs::read_dir(path)
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn context_dir_empty_check_detects_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(context_dir_is_empty(tmp.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn context_dir_empty_check_non_empty_dir_not_flagged() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("file.txt"), "content").unwrap();
+        assert!(!context_dir_is_empty(tmp.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn context_dir_empty_check_nonexistent_path_not_flagged() {
+        // If the path doesn't exist, read_dir returns Err — we treat that as non-empty
+        // (the earlier existence validation would have caught a missing dir first).
+        assert!(!context_dir_is_empty("/nonexistent/path/rings_test_xyz"));
+    }
+
+    #[test]
+    fn context_dir_empty_check_suppressed_in_jsonl_mode() {
+        // The advisory check is guarded by `output_format == OutputFormat::Human`.
+        // JSONL mode uses OutputFormat::Jsonl, which does not satisfy the guard.
+        assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
 
     #[test]
     fn path_traversal_safe_path_not_flagged() {

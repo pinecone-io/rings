@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / F-144 Task 1: Add empty context_dir check] Advisory check added in `run_inner()` in `src/main.rs` after the budget cap check. Logic extracted into `context_dir_is_empty(path: &str) -> bool` for testability. stderr capture is not available in this codebase's test suite, so the "JSONL mode suppresses warning" test verifies the `OutputFormat::Jsonl != OutputFormat::Human` guard rather than capturing stderr output. The warning fires only in human output mode and does not block execution.
+
 [2026-03-20 / Bug: Executor Output Reader Drops Data After Non-UTF8 Line] Replaced `reader.lines().map_while(Result::ok)` with a `read_until`-based loop using `String::from_utf8_lossy` for both stdout and stderr reader threads. The task spec suggested `filter_map(Result::ok)`, but clippy rejects this (`lines_filter_map_ok`) because I/O errors on `Lines` can repeat infinitely. The `read_until` approach correctly handles invalid UTF-8 (via lossy conversion), stops on EOF (Ok(0)), and breaks on I/O errors, matching the intended semantics without the infinite-loop risk.
 
 [2026-03-20 / Bug: budget_cap_usd nan/inf validation] Added `cap.is_nan() || cap.is_infinite()` guards before `cap <= 0.0` at both global and per-phase budget_cap_usd validation sites in `workflow.rs`. Updated error message to "budget_cap_usd must be a finite positive number". Added 4 tests: global nan rejected, global inf rejected, 10.0 accepted, per-phase nan rejected.

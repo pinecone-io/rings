@@ -23,32 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-075: `rings completions` — Shell Completion Scripts
-
-**Spec:** `specs/cli/completion-and-manpage.md`
-
-**Summary:** `rings completions <SHELL>` generates shell completion scripts for bash, zsh, or fish. Uses clap's built-in completion generation.
-
-### Task 1: Implement completions command
-
-**Files:** `src/main.rs`, `src/cli.rs`
-
-**Steps:**
-- [x] Replace the stub in `cmd_completions` with actual implementation using `clap_complete`:
-  1. Add `clap_complete` to `Cargo.toml` dependencies
-  2. Match on the shell argument (bash, zsh, fish)
-  3. Call `clap_complete::generate()` with the CLI definition, writing to stdout
-- [x] The user pipes this to their shell config: `rings completions zsh > ~/.zfunc/_rings`
-
-**Tests:**
-- [x] `rings completions bash` produces valid bash completion script (output contains expected patterns)
-- [x] `rings completions zsh` produces valid zsh completion script
-- [x] `rings completions fish` produces valid fish completion script
-- [x] Invalid shell name exits with error
-- [x] `just validate` clean
-
----
-
 ## Bug: Config tests race on process-global state (`cwd` and `XDG_CONFIG_HOME`)
 
 **Ref:** CLAUDE.md testing requirements
@@ -60,16 +34,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/config.rs`
 
 **Steps:**
-- [ ] Replace the `with_cwd` + `set_current_dir` pattern with a testable API that accepts an explicit base directory parameter instead of relying on `cwd`
-- [ ] Add a `RingsConfig::load_from(project_dir: &Path, xdg_config_home: Option<&Path>) -> Result<Self>` method that takes explicit paths instead of reading from `cwd` and `XDG_CONFIG_HOME`
-- [ ] Have the public `RingsConfig::load()` call `load_from(std::env::current_dir()?, ...)` as the production entry point
-- [ ] Rewrite tests to call `load_from(temp_dir, Some(xdg_dir))` directly — no `set_current_dir` or `set_var` needed
-- [ ] Remove the `with_cwd` helper entirely
+- [x] Replace the `with_cwd` + `set_current_dir` pattern with a testable API that accepts an explicit base directory parameter instead of relying on `cwd`
+- [x] Add a `RingsConfig::load_from(project_dir: &Path, xdg_config_home: Option<&Path>) -> Result<Self>` method that takes explicit paths instead of reading from `cwd` and `XDG_CONFIG_HOME`
+- [x] Have the public `RingsConfig::load()` call `load_from(std::env::current_dir()?, ...)` as the production entry point
+- [x] Rewrite tests to call `load_from(temp_dir, Some(xdg_dir))` directly — no `set_current_dir` or `set_var` needed
+- [x] Remove the `with_cwd` helper entirely
 
 **Tests:**
-- [ ] All config tests pass reliably in parallel (run `cargo test` 10 times to verify no flakes)
-- [ ] `RingsConfig::load()` still works in production (delegates to `load_from`)
-- [ ] `just validate` clean
+- [x] All config tests pass reliably in parallel (run `cargo test` 10 times to verify no flakes)
+- [x] `RingsConfig::load()` still works in production (delegates to `load_from`)
+- [x] `just validate` clean
 
 ---
 

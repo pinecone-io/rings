@@ -27,8 +27,25 @@ impl RingsConfig {
     /// Returns `Ok(RingsConfig::default())` if no config file exists.
     /// Prints an info message to stderr when a local `.rings-config.toml` is loaded.
     pub fn load() -> Result<Self> {
-        // 1. Check for project-level config in current directory
-        let local_path = PathBuf::from(".rings-config.toml");
+        let project_dir = std::env::current_dir().context("Cannot determine current directory")?;
+        let xdg_config_home = std::env::var("XDG_CONFIG_HOME")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from);
+        Self::load_from(&project_dir, xdg_config_home.as_deref())
+    }
+
+    /// Load configuration given explicit paths instead of relying on process-global state.
+    ///
+    /// - `project_dir`: directory to search for `.rings-config.toml`
+    /// - `xdg_config_home`: if `Some`, used as the XDG config base; if `None`, falls back to
+    ///   `dirs::config_dir()`
+    pub fn load_from(
+        project_dir: &std::path::Path,
+        xdg_config_home: Option<&std::path::Path>,
+    ) -> Result<Self> {
+        // 1. Check for project-level config in project_dir
+        let local_path = project_dir.join(".rings-config.toml");
         if local_path.exists() {
             eprintln!("Loading local config from ./.rings-config.toml");
             let content =
@@ -38,8 +55,12 @@ impl RingsConfig {
             return Ok(config);
         }
 
-        // 2. Check for user-level config via XDG_CONFIG_HOME or ~/.config
-        let user_config_path = Self::user_config_path();
+        // 2. Check for user-level config via provided xdg_config_home or dirs::config_dir()
+        let user_config_path = if let Some(xdg) = xdg_config_home {
+            Some(xdg.join("rings").join("config.toml"))
+        } else {
+            dirs::config_dir().map(|d| d.join("rings").join("config.toml"))
+        };
         if let Some(path) = user_config_path {
             if path.exists() {
                 let content = std::fs::read_to_string(&path)
@@ -52,18 +73,6 @@ impl RingsConfig {
 
         // Neither config file found — use empty defaults
         Ok(RingsConfig::default())
-    }
-
-    /// Returns the path to the user-level config file, or `None` if the home directory
-    /// cannot be determined.
-    fn user_config_path() -> Option<PathBuf> {
-        // Prefer XDG_CONFIG_HOME env var, then fall back to dirs::config_dir()
-        if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-            if !xdg.is_empty() {
-                return Some(PathBuf::from(xdg).join("rings").join("config.toml"));
-            }
-        }
-        dirs::config_dir().map(|d| d.join("rings").join("config.toml"))
     }
 
     /// Expand `~` in a path string to the home directory.
@@ -86,20 +95,7 @@ impl RingsConfig {
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::sync::Mutex;
     use tempfile::TempDir;
-
-    // Serializes all tests that mutate the process-wide cwd or env vars to
-    // prevent races when the test harness runs tests on multiple threads.
-    static CWD_LOCK: Mutex<()> = Mutex::new(());
-
-    fn with_cwd<F: FnOnce()>(dir: &std::path::Path, f: F) {
-        let _guard = CWD_LOCK.lock().unwrap();
-        let orig = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir).unwrap();
-        f();
-        std::env::set_current_dir(orig).unwrap();
-    }
 
     #[test]
     fn test_load_project_config() {
@@ -109,11 +105,9 @@ mod tests {
         writeln!(f, r#"default_output_dir = "~/my-runs""#).unwrap();
         writeln!(f, "color = false").unwrap();
 
-        with_cwd(dir.path(), || {
-            let cfg = RingsConfig::load().unwrap();
-            assert_eq!(cfg.default_output_dir.as_deref(), Some("~/my-runs"));
-            assert_eq!(cfg.color, Some(false));
-        });
+        let cfg = RingsConfig::load_from(dir.path(), None).unwrap();
+        assert_eq!(cfg.default_output_dir.as_deref(), Some("~/my-runs"));
+        assert_eq!(cfg.color, Some(false));
     }
 
     #[test]
@@ -127,16 +121,11 @@ mod tests {
         let mut f = std::fs::File::create(&cfg_path).unwrap();
         writeln!(f, r#"default_output_dir = "~/.local/share/rings/runs""#).unwrap();
 
-        with_cwd(dir.path(), || {
-            // Set XDG_CONFIG_HOME so load() finds our config
-            std::env::set_var("XDG_CONFIG_HOME", xdg_dir.path());
-            let cfg = RingsConfig::load().unwrap();
-            std::env::remove_var("XDG_CONFIG_HOME");
-            assert_eq!(
-                cfg.default_output_dir.as_deref(),
-                Some("~/.local/share/rings/runs")
-            );
-        });
+        let cfg = RingsConfig::load_from(dir.path(), Some(xdg_dir.path())).unwrap();
+        assert_eq!(
+            cfg.default_output_dir.as_deref(),
+            Some("~/.local/share/rings/runs")
+        );
     }
 
     #[test]
@@ -153,13 +142,9 @@ mod tests {
         let mut uf = std::fs::File::create(rings_cfg_dir.join("config.toml")).unwrap();
         writeln!(uf, r#"default_output_dir = "/user/output""#).unwrap();
 
-        with_cwd(dir.path(), || {
-            std::env::set_var("XDG_CONFIG_HOME", xdg_dir.path());
-            let cfg = RingsConfig::load().unwrap();
-            std::env::remove_var("XDG_CONFIG_HOME");
-            // Project config wins
-            assert_eq!(cfg.default_output_dir.as_deref(), Some("/project/output"));
-        });
+        let cfg = RingsConfig::load_from(dir.path(), Some(xdg_dir.path())).unwrap();
+        // Project config wins
+        assert_eq!(cfg.default_output_dir.as_deref(), Some("/project/output"));
     }
 
     #[test]
@@ -167,13 +152,9 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let xdg_dir = TempDir::new().unwrap(); // No config.toml inside
 
-        with_cwd(dir.path(), || {
-            std::env::set_var("XDG_CONFIG_HOME", xdg_dir.path());
-            let cfg = RingsConfig::load().unwrap();
-            std::env::remove_var("XDG_CONFIG_HOME");
-            assert!(cfg.default_output_dir.is_none());
-            assert!(cfg.color.is_none());
-        });
+        let cfg = RingsConfig::load_from(dir.path(), Some(xdg_dir.path())).unwrap();
+        assert!(cfg.default_output_dir.is_none());
+        assert!(cfg.color.is_none());
     }
 
     #[test]
@@ -182,17 +163,15 @@ mod tests {
         let mut f = std::fs::File::create(dir.path().join(".rings-config.toml")).unwrap();
         writeln!(f, "this is not valid toml ===").unwrap();
 
-        with_cwd(dir.path(), || {
-            let result = RingsConfig::load();
-            assert!(result.is_err());
-            let msg = result.unwrap_err().to_string();
-            assert!(
-                msg.contains("TOML")
-                    || msg.contains("toml")
-                    || msg.contains("parse")
-                    || msg.contains("expected")
-            );
-        });
+        let result = RingsConfig::load_from(dir.path(), None);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("TOML")
+                || msg.contains("toml")
+                || msg.contains("parse")
+                || msg.contains("expected")
+        );
     }
 
     #[test]

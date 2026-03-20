@@ -820,38 +820,81 @@ pub fn format_parse_warnings(warnings: &[crate::cost::ParseWarning]) -> String {
         return String::new();
     }
 
+    // Group warnings by (confidence, truncated raw_match) preserving insertion order.
+    // This collapses repeated identical failures into a single line with a count.
+    type WarningGroup<'a> = ((String, Option<String>), Vec<&'a crate::cost::ParseWarning>);
+    let mut groups: Vec<WarningGroup<'_>> = Vec::new();
+    for w in warnings {
+        let conf_key = match w.confidence {
+            crate::cost::ParseConfidence::None => "none",
+            crate::cost::ParseConfidence::Low => "low",
+            crate::cost::ParseConfidence::Partial => "partial",
+            crate::cost::ParseConfidence::Full => "full",
+        }
+        .to_string();
+        let raw_key = w.raw_match.as_deref().map(|s| {
+            if s.len() > 100 {
+                s[..100].to_string()
+            } else {
+                s.to_string()
+            }
+        });
+        let key = (conf_key, raw_key);
+        if let Some((_, group)) = groups.iter_mut().find(|(k, _)| k == &key) {
+            group.push(w);
+        } else {
+            groups.push((key, vec![w]));
+        }
+    }
+
+    let total_runs = warnings.len();
+    let total_groups = groups.len();
+
     let mut out = String::new();
-    let run_word = if warnings.len() == 1 { "run" } else { "runs" };
+    let run_word = if total_runs == 1 { "run" } else { "runs" };
     out.push_str(&format!(
         "\n{}  Parse warnings ({} {} affected):\n",
         style::warn("⚠"),
-        warnings.len(),
+        total_runs,
         run_word,
     ));
 
-    let display_count = std::cmp::min(warnings.len(), 10);
-    for w in warnings.iter().take(display_count) {
-        let confidence_desc = match w.confidence {
+    let display_count = std::cmp::min(total_groups, 10);
+    for (_, group) in groups.iter().take(display_count) {
+        let first = group[0];
+        let count = group.len();
+        let confidence_desc = match first.confidence {
             crate::cost::ParseConfidence::None => "no match found",
             crate::cost::ParseConfidence::Low => "low-confidence match",
             crate::cost::ParseConfidence::Partial => "partial match (tokens not found)",
             crate::cost::ParseConfidence::Full => "full match",
         };
-        let snippet = match &w.raw_match {
+        let snippet = match &first.raw_match {
             Some(s) => {
                 let truncated = if s.len() > 100 { &s[..100] } else { s.as_str() };
                 format!("\"{}\"", truncated)
             }
             None => "no match".to_string(),
         };
-        out.push_str(&format!(
-            "   Run {}: Cost parsing: {} (cycle {}, phase {}). Raw: {}\n",
-            w.run_number, confidence_desc, w.cycle, w.phase, snippet,
-        ));
+        if count == 1 {
+            out.push_str(&format!(
+                "   Run {}: Cost parsing: {} (cycle {}, phase {}). Raw: {}\n",
+                first.run_number, confidence_desc, first.cycle, first.phase, snippet,
+            ));
+        } else {
+            let run_numbers: Vec<String> = group.iter().map(|w| w.run_number.to_string()).collect();
+            out.push_str(&format!(
+                "   Cost parsing: {} (×{}): Runs {}. Raw: {}\n",
+                confidence_desc,
+                count,
+                run_numbers.join(", "),
+                snippet,
+            ));
+        }
     }
 
-    if warnings.len() > 10 {
-        let remaining = warnings.len() - 10;
+    if total_groups > 10 {
+        let remaining = total_groups - 10;
         out.push_str(&format!("   ... and {} more.\n", remaining));
     }
 
@@ -1559,13 +1602,21 @@ mod tests {
             .map(|i| make_parse_warning(i, crate::cost::ParseConfidence::Low, Some("$0.01")))
             .collect();
         let s = format_parse_warnings(&warnings);
-        // Should produce exactly one header block
+        // Should produce exactly one header block showing total run count
         let header_count = s.matches("runs affected").count();
         assert_eq!(header_count, 1, "should have exactly one header: {s}");
-        // All 5 runs should appear
-        for i in 1..=5u32 {
-            assert!(s.contains(&format!("Run {i}:")), "run {i} missing: {s}");
-        }
+        assert!(
+            s.contains("5 runs affected"),
+            "total run count missing: {s}"
+        );
+        // All 5 runs should be collapsed into one deduplicated line
+        assert!(s.contains("×5"), "dedup count missing: {s}");
+        assert!(s.contains("Runs 1, 2, 3, 4, 5"), "run list missing: {s}");
+        // Should not produce 5 separate lines
+        assert!(
+            !s.contains("Run 1:"),
+            "should not have individual run lines: {s}"
+        );
         crate::style::set_color_enabled();
     }
 
@@ -1573,23 +1624,73 @@ mod tests {
     fn parse_warnings_at_most_10_shown_then_overflow() {
         let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
+        // 15 warnings with distinct raw_match values → 15 unique groups; limit is 10 groups
         let warnings: Vec<_> = (1..=15u32)
-            .map(|i| make_parse_warning(i, crate::cost::ParseConfidence::Low, Some("$0.01")))
+            .map(|i| {
+                make_parse_warning(
+                    i,
+                    crate::cost::ParseConfidence::Low,
+                    Some(&format!("pattern_{i}")),
+                )
+            })
             .collect();
         let s = format_parse_warnings(&warnings);
-        // Runs 1–10 should appear
+        // Groups 1–10 should appear (single-item groups show "Run N:")
         for i in 1..=10u32 {
             assert!(s.contains(&format!("Run {i}:")), "run {i} missing: {s}");
         }
-        // Runs 11–15 should NOT appear as individual lines
+        // Groups 11–15 should NOT appear
         for i in 11..=15u32 {
             assert!(
                 !s.contains(&format!("Run {i}:")),
                 "run {i} should be in overflow: {s}"
             );
         }
-        // Overflow line should mention 5 more
+        // Overflow line should mention 5 more groups
         assert!(s.contains("5 more"), "overflow line missing: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn parse_warnings_identical_pattern_deduped_with_count() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let warnings: Vec<_> = (1..=5u32)
+            .map(|i| make_parse_warning(i, crate::cost::ParseConfidence::Low, Some("$0.05")))
+            .collect();
+        let s = format_parse_warnings(&warnings);
+        // Should collapse to 1 line with ×5
+        assert!(s.contains("×5"), "dedup count missing: {s}");
+        // Should list all run numbers
+        assert!(s.contains("Runs 1, 2, 3, 4, 5"), "run list missing: {s}");
+        // Should NOT produce 5 separate lines
+        assert!(!s.contains("Run 1:"), "unexpected individual run line: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn parse_warnings_mixed_patterns_shown_separately() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        // 3 warnings with pattern A, 2 with pattern B
+        let mut warnings: Vec<_> = (1..=3u32)
+            .map(|i| make_parse_warning(i, crate::cost::ParseConfidence::Low, Some("pattern_a")))
+            .collect();
+        warnings.extend(
+            (4..=5u32).map(|i| {
+                make_parse_warning(i, crate::cost::ParseConfidence::None, Some("pattern_b"))
+            }),
+        );
+        let s = format_parse_warnings(&warnings);
+        // Pattern A group: 3 runs collapsed
+        assert!(s.contains("×3"), "group A dedup count missing: {s}");
+        assert!(s.contains("Runs 1, 2, 3"), "group A run list missing: {s}");
+        // Pattern B group: 2 runs collapsed
+        assert!(s.contains("×2"), "group B dedup count missing: {s}");
+        assert!(s.contains("Runs 4, 5"), "group B run list missing: {s}");
+        // Both groups present
+        assert!(s.contains("pattern_a"), "pattern A snippet missing: {s}");
+        assert!(s.contains("pattern_b"), "pattern B snippet missing: {s}");
         crate::style::set_color_enabled();
     }
 

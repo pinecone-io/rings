@@ -23,31 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Bug: `--dry-run --output-format jsonl` Emits Human Output Instead of JSONL
-
-**Ref:** `specs/cli/commands-and-flags.md` lines 38–40
-
-**Summary:** The spec says `--dry-run` is "compatible with `--output-format jsonl`: emits a `dry_run_plan` event containing the plan as structured JSON, suitable for CI workflow validation." However, `run_inner()` in `main.rs` (lines 148–231) always emits human-formatted output regardless of `output_format`. The `DryRunPlan` struct in `dry_run.rs` already derives `Serialize`, so the data is ready — only the JSONL emission path is missing.
-
-### Task 1: Add JSONL output path for dry-run
-
-**Files:** `src/main.rs`
-
-**Steps:**
-- [x] In the `if args.dry_run` block (line 148), check `output_format`:
-  - If `Jsonl`: serialize the `DryRunPlan` as a JSON event with `"event": "dry_run_plan"` and print to stdout, then return `Ok(0)`
-  - If `Human`: keep the existing human-formatted output (lines 152–228)
-- [x] The JSONL event should include all plan fields: phases, completion signal checks, unknown variables, max total runs
-- [x] Use `serde_json::to_string` on the existing `DryRunPlan` struct (already `Serialize`)
-
-**Tests:**
-- [x] `--dry-run --output-format jsonl` emits a single JSON line with `"event": "dry_run_plan"`
-- [x] The emitted JSON contains `phases`, `max_cycles`, `completion_signal`, and `max_total_runs`
-- [x] `--dry-run` without `--output-format jsonl` still emits human-readable output (regression)
-- [x] `just validate` clean
-
----
-
 ## F-029: Unknown Template Variable Startup Warning (User-Visible)
 
 **Spec:** `specs/execution/prompt-templating.md` (Unknown Variables section)
@@ -59,22 +34,22 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`
 
 **Steps:**
-- [ ] After loading all phase prompts (inline and file-based) but before entering the engine, scan each prompt for unknown variables using `template::find_unknown_variables(&prompt, template::KNOWN_VARS)`
-- [ ] Collect results as `(phase_name, prompt_source, Vec<String>)` tuples
-- [ ] If any unknowns found and `output_format == Human`, print warning to stderr:
+- [x] After loading all phase prompts (inline and file-based) but before entering the engine, scan each prompt for unknown variables using `template::find_unknown_variables(&prompt, template::KNOWN_VARS)`
+- [x] Collect results as `(phase_name, prompt_source, Vec<String>)` tuples
+- [x] If any unknowns found and `output_format == Human`, print warning to stderr:
   ```
   ⚠  Unknown template variable(s) in prompts:
      {{typo_var}} in phase "builder" (inline)
      {{custom}} in phase "reviewer" (prompts/review.md)
      Known variables: {{phase_name}}, {{cycle}}, {{max_cycles}}, {{iteration}}, {{run}}, {{cost_so_far_usd}}
   ```
-- [ ] This is advisory only — do not block execution
-- [ ] Reuse the existing `template::find_unknown_variables` function and `template::KNOWN_VARS` constant
+- [x] This is advisory only — do not block execution
+- [x] Reuse the existing `template::find_unknown_variables` function and `template::KNOWN_VARS` constant
 
 **Tests:**
-- [ ] Prompt with `{{unknown_var}}` triggers visible warning on stderr
-- [ ] Prompt with only known variables produces no warning
-- [ ] JSONL mode suppresses the stderr warning
-- [ ] `just validate` clean
+- [x] Prompt with `{{unknown_var}}` triggers visible warning on stderr
+- [x] Prompt with only known variables produces no warning
+- [x] JSONL mode suppresses the stderr warning
+- [x] `just validate` clean
 
 ---

@@ -20,6 +20,7 @@ use rings::list;
 use rings::lock::ContextLock;
 use rings::state;
 use rings::style;
+use rings::template;
 use rings::workflow;
 
 fn main() {
@@ -416,6 +417,28 @@ fn run_inner(
                  Use --no-completion-check to suppress this warning.",
                 workflow.completion_signal
             );
+        }
+    }
+
+    // Advisory check: unknown template variables in prompts (F-029)
+    if output_format == cli::OutputFormat::Human {
+        for phase in &workflow.phases {
+            let prompt_content = if let Some(ref file) = phase.prompt {
+                // Best-effort: skip file read failures (advisory only)
+                std::fs::read_to_string(file).ok()
+            } else {
+                phase.prompt_text.clone()
+            };
+            if let Some(content) = prompt_content {
+                let unknowns = template::find_unknown_variables(&content, template::KNOWN_VARS);
+                for var in &unknowns {
+                    eprintln!(
+                        "Warning: Unknown template variable '{{{{{}}}}}' in prompt for phase \"{}\".\n\
+                         It will be passed through as-is (not substituted).",
+                        var, phase.name
+                    );
+                }
+            }
         }
     }
 

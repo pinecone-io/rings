@@ -148,14 +148,14 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-086 | `--quota-backoff-delay` | I can set how long rings waits before retrying after a quota error (requires F-044) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-087 | `--quota-backoff-max-retries` | I can cap how many quota retries rings will attempt before giving up (requires F-044, F-045) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-088 | `--budget-cap` | I can set a spending limit for this run so rings stops and saves state if cost exceeds it (requires F-112) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-089 | `--strict-parsing` | I can make rings treat any cost parsing failure as a hard error that stops the run (requires F-033) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-089 | `--strict-parsing` | I can make rings treat any cost parsing failure as a hard error that stops the run (requires F-033) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-090 | `--parent-run` | I can explicitly link this run to a prior one for ancestry tracking without resuming its state (requires F-058) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-091 | `--force-lock` | I can override the context_dir lock check when I know the previous process is truly gone (requires F-055) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-092 | `--no-completion-check` | I can suppress the startup warning about missing completion signals in prompts (requires F-011) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-093 | `--no-contract-check` | I can suppress phase contract violation warnings for a run (requires F-014, F-015) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-094 | `--no-color` | I can disable colored terminal output | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-095 | `--output-format` | I can switch between human-readable and JSONL output for the same run | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-096 | `--no-sensitive-files-check` | I can suppress the warning about credential files in context_dir when I know they're intentionally there | PRIORITIZED | [engine.md](execution/engine.md) |
+| F-096 | `--no-sensitive-files-check` | I can suppress the warning about credential files in context_dir when I know they're intentionally there | COMPLETE | [engine.md](execution/engine.md) |
 
 ## Inspect Command Views
 
@@ -178,8 +178,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-106 | Per-Run Log Files | rings captures the full stdout/stderr of every executor invocation to individual log files I can read later | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 | F-107 | costs.jsonl | rings appends a cost record for each run to a newline-delimited JSON file I can stream-process with standard tools | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 | F-108 | summary.md | rings generates a human-readable markdown summary of the completed run automatically | PRIORITIZED | [audit-logs.md](observability/audit-logs.md) |
-| F-109 | Directory Permissions | rings creates my output directory with mode 0700 so only I can read run logs and cost data | PRIORITIZED | [audit-logs.md](observability/audit-logs.md) |
-| F-110 | Path Traversal Protection | rings rejects any output_dir value containing `..` so a malicious workflow can't write outside the intended directory | PRIORITIZED | [audit-logs.md](observability/audit-logs.md) |
+| F-109 | Directory Permissions | rings creates my output directory with mode 0700 so only I can read run logs and cost data | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
+| F-110 | Path Traversal Protection | rings rejects any output_dir value containing `..` so a malicious workflow can't write outside the intended directory | COMPLETE | [audit-logs.md](observability/audit-logs.md) |
 
 ## Cost Tracking
 
@@ -233,9 +233,9 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-141 | Startup Validation | rings validates my workflow file's syntax and required fields before making any Claude calls | COMPLETE | [engine.md](execution/engine.md) |
 | F-142 | Prompt File Existence Check | rings fails fast with a clear error if any referenced prompt file is missing or unreadable | COMPLETE | [engine.md](execution/engine.md) |
 | F-143 | Context Directory Validation | rings verifies my context_dir exists and is readable before starting | COMPLETE | [engine.md](execution/engine.md) |
-| F-144 | Empty Context Directory Warning | rings warns me if context_dir has no files in case I pointed it at the wrong directory | PRIORITIZED | [engine.md](execution/engine.md) |
-| F-145 | Sensitive Files Warning | rings warns me if context_dir contains credentials (`.env`, `*.key`, `*.pem`) that could be exposed to the model | PRIORITIZED | [engine.md](execution/engine.md) |
-| F-146 | Output Directory Inside Repo Warning | rings warns me if my output_dir is inside a git repo and would get committed accidentally | PRIORITIZED | [engine.md](execution/engine.md) |
+| F-144 | Empty Context Directory Warning | rings warns me if context_dir has no files in case I pointed it at the wrong directory | COMPLETE | [engine.md](execution/engine.md) |
+| F-145 | Sensitive Files Warning | rings warns me if context_dir contains credentials (`.env`, `*.key`, `*.pem`) that could be exposed to the model | COMPLETE | [engine.md](execution/engine.md) |
+| F-146 | Output Directory Inside Repo Warning | rings warns me if my output_dir is inside a git repo and would get committed accidentally | COMPLETE | [engine.md](execution/engine.md) |
 | F-147 | Disk Space Check | rings warns at < 100 MB free and aborts at < 10 MB so I don't silently lose run data | PRIORITIZED | [engine.md](execution/engine.md) |
 | F-148 | Delay Sanity Warning | rings warns me if `delay_between_runs` exceeds 600 seconds, since that's likely a units mistake | PRIORITIZED | [engine.md](execution/engine.md) |
 | F-149 | Cost Spike Detection | rings warns me mid-run when a single run costs 5× more than the rolling 5-run average | PRIORITIZED | [engine.md](execution/engine.md) |

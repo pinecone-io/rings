@@ -181,7 +181,7 @@ pub enum WorkflowError {
     MissingPrompt(String),
     #[error("max_cycles is required in MVP; unlimited mode not yet supported")]
     MissingMaxCycles,
-    #[error("budget_cap_usd must be greater than zero")]
+    #[error("budget_cap_usd must be a finite positive number")]
     InvalidBudgetCap,
     #[error("invalid duration for {field}: {message}")]
     InvalidDuration { field: String, message: String },
@@ -345,7 +345,7 @@ impl Workflow {
 
         // Validate and resolve global budget_cap_usd.
         if let Some(cap) = file.workflow.budget_cap_usd {
-            if cap <= 0.0 {
+            if cap.is_nan() || cap.is_infinite() || cap <= 0.0 {
                 return Err(WorkflowError::InvalidBudgetCap);
             }
         }
@@ -404,7 +404,7 @@ impl Workflow {
             }
             // Validate per-phase budget_cap_usd.
             if let Some(cap) = phase.budget_cap_usd {
-                if cap <= 0.0 {
+                if cap.is_nan() || cap.is_infinite() || cap <= 0.0 {
                     return Err(WorkflowError::InvalidBudgetCap);
                 }
             }
@@ -672,5 +672,50 @@ args = ["--output-format", "stream-json"]
         let toml = make_toml(dir.path().to_str().unwrap(), "");
         let wf = Workflow::from_str(&toml).unwrap();
         assert_eq!(wf.detect_model_name(), None);
+    }
+
+    #[test]
+    fn global_budget_cap_nan_is_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "budget_cap_usd = nan");
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidBudgetCap));
+    }
+
+    #[test]
+    fn global_budget_cap_inf_is_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "budget_cap_usd = inf");
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidBudgetCap));
+    }
+
+    #[test]
+    fn global_budget_cap_positive_finite_is_accepted() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "budget_cap_usd = 10.0");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.budget_cap_usd, Some(10.0));
+    }
+
+    #[test]
+    fn phase_budget_cap_nan_is_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+budget_cap_usd = nan
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidBudgetCap));
     }
 }

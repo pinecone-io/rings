@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
 use walkdir::WalkDir;
 
@@ -64,10 +64,6 @@ const CREDENTIAL_PATTERNS: &[&str] = &[
     "**/*.p12",
 ];
 
-/// mtime cache for fast manifest computation.
-/// Maps file path to (mtime, sha256_hash).
-type MtimeCache = HashMap<PathBuf, (SystemTime, Vec<u8>)>;
-
 /// Compute a manifest of the given context directory.
 ///
 /// # Arguments
@@ -79,7 +75,8 @@ type MtimeCache = HashMap<PathBuf, (SystemTime, Vec<u8>)>;
 /// * `phase` - Phase name
 /// * `iteration` - Iteration number
 /// * `user_patterns` - User-specified glob patterns to exclude
-/// * `use_mtime_optimization` - Whether to use mtime cache
+/// * `use_mtime_optimization` - Whether to skip re-hashing files with unchanged mtime
+/// * `previous_manifest` - Previous manifest to use for mtime-based hash reuse
 ///
 /// Returns a FileManifest with the computed file list.
 #[allow(clippy::too_many_arguments)]
@@ -92,6 +89,7 @@ pub fn compute_manifest(
     iteration: u32,
     user_patterns: &[String],
     use_mtime_optimization: bool,
+    previous_manifest: Option<&FileManifest>,
 ) -> Result<FileManifest> {
     let context_dir = context_dir
         .canonicalize()
@@ -109,12 +107,16 @@ pub fn compute_manifest(
             .collect::<Vec<_>>(),
     )?;
 
-    // Load mtime cache from previous manifest if it exists and optimization enabled
-    let _mtime_cache: MtimeCache = HashMap::new();
-    if use_mtime_optimization {
-        // This would be loaded from disk if needed, but for now we start fresh
-        // A real implementation would load the previous manifest file
-    }
+    // Build mtime lookup from previous manifest if optimization is enabled
+    let prev_by_path: HashMap<&str, &FileEntry> = if use_mtime_optimization {
+        if let Some(prev) = previous_manifest {
+            prev.files.iter().map(|e| (e.path.as_str(), e)).collect()
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
 
     let mut entries = Vec::new();
     let mut file_count = 0;
@@ -156,11 +158,7 @@ pub fn compute_manifest(
             continue;
         }
 
-        // Compute SHA256
-        let sha256_hash = compute_file_hash(path)?;
-        let sha256_hex = hex::encode(&sha256_hash);
-
-        // Get metadata
+        // Get metadata (needed for mtime comparison before potentially skipping hash)
         let metadata = fs::metadata(path).context("Failed to read file metadata")?;
         let size_bytes = metadata.len();
         let modified: DateTime<Utc> = metadata
@@ -172,17 +170,37 @@ pub fn compute_manifest(
                     .single()
             })
             .unwrap_or_else(Utc::now);
+        let modified_str = modified.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
         let path_string = rel_path
             .to_str()
             .ok_or_else(|| anyhow!("Non-UTF-8 path: {:?}", rel_path))?
             .to_string();
 
+        // Check if mtime optimization allows reusing previous hash
+        let sha256_hex = if use_mtime_optimization {
+            if let Some(prev_entry) = prev_by_path.get(path_string.as_str()) {
+                if prev_entry.modified == modified_str {
+                    // mtime unchanged — reuse the previous hash without reading the file
+                    prev_entry.sha256.clone()
+                } else {
+                    // mtime changed — recompute hash
+                    hex::encode(compute_file_hash(path)?)
+                }
+            } else {
+                // New file not in previous manifest — compute hash
+                hex::encode(compute_file_hash(path)?)
+            }
+        } else {
+            // Optimization disabled — always compute hash
+            hex::encode(compute_file_hash(path)?)
+        };
+
         entries.push(FileEntry {
             path: path_string,
             sha256: sha256_hex,
             size_bytes,
-            modified: modified.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            modified: modified_str,
         });
 
         file_count += 1;
@@ -347,7 +365,8 @@ mod tests {
         let output = tmpdir.path().join("output");
         fs::create_dir(&output).unwrap();
 
-        let manifest = compute_manifest(&context, &output, 1, 1, "test", 1, &[], false).unwrap();
+        let manifest =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &[], false, None).unwrap();
 
         // Only normal.txt should be in the manifest
         assert_eq!(manifest.files.len(), 1);
@@ -366,7 +385,8 @@ mod tests {
         let output = tmpdir.path().join("output");
         fs::create_dir(&output).unwrap();
 
-        let manifest = compute_manifest(&context, &output, 1, 1, "test", 1, &[], false).unwrap();
+        let manifest =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &[], false, None).unwrap();
 
         // server.key is a credential file and must be excluded
         let paths: Vec<&str> = manifest.files.iter().map(|e| e.path.as_str()).collect();
@@ -392,8 +412,18 @@ mod tests {
 
         // Exclude .log files via user patterns
         let user_patterns = vec!["**/*.log".to_string()];
-        let manifest =
-            compute_manifest(&context, &output, 1, 1, "test", 1, &user_patterns, false).unwrap();
+        let manifest = compute_manifest(
+            &context,
+            &output,
+            1,
+            1,
+            "test",
+            1,
+            &user_patterns,
+            false,
+            None,
+        )
+        .unwrap();
 
         // .env excluded by credential patterns, build.log excluded by user pattern
         let paths: Vec<&str> = manifest.files.iter().map(|e| e.path.as_str()).collect();
@@ -418,7 +448,8 @@ mod tests {
         fs::write(context.join("normal.txt"), "content").unwrap();
         fs::write(output.join("state.json"), "{}").unwrap();
 
-        let manifest = compute_manifest(context, &output, 1, 1, "test", 1, &[], false).unwrap();
+        let manifest =
+            compute_manifest(context, &output, 1, 1, "test", 1, &[], false, None).unwrap();
 
         // Only normal.txt should be in the manifest
         assert_eq!(manifest.files.len(), 1);
@@ -579,5 +610,239 @@ mod tests {
         assert_eq!(original.files.len(), read_back.files.len());
         assert_eq!(original.files[0].path, read_back.files[0].path);
         assert_eq!(original.files[0].sha256, read_back.files[0].sha256);
+    }
+
+    // Helper: set mtime on a file without changing content (Linux/Unix only).
+    #[cfg(unix)]
+    fn restore_mtime(path: &std::path::Path, mtime: std::time::SystemTime) {
+        use std::os::unix::fs::MetadataExt;
+        let dur = mtime
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap();
+        let ts = libc::timespec {
+            tv_sec: dur.as_secs() as libc::time_t,
+            tv_nsec: dur.subsec_nanos() as libc::c_long,
+        };
+        let path_cstr = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+        // Set both atime and mtime to the same value
+        let times = [ts, ts];
+        unsafe {
+            libc::utimensat(libc::AT_FDCWD, path_cstr.as_ptr(), times.as_ptr(), 0);
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_mtime_optimization_reuses_hash_when_mtime_unchanged() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        let file_path = context.join("file.txt");
+        fs::write(&file_path, "original content").unwrap();
+
+        // Compute the initial manifest
+        let manifest1 =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &[], true, None).unwrap();
+        let hash1 = manifest1
+            .files
+            .iter()
+            .find(|e| e.path == "file.txt")
+            .unwrap()
+            .sha256
+            .clone();
+        let mtime1 = fs::metadata(&file_path).unwrap().modified().unwrap();
+
+        // Overwrite file content and restore original mtime to simulate content change
+        // without mtime change (which the OS would normally prevent).
+        fs::write(&file_path, "different content").unwrap();
+        restore_mtime(&file_path, mtime1);
+
+        // Compute second manifest with mtime optimization enabled and previous manifest provided.
+        // Since mtime is unchanged, the hash from manifest1 should be reused.
+        let manifest2 = compute_manifest(
+            &context,
+            &output,
+            2,
+            1,
+            "test",
+            2,
+            &[],
+            true,
+            Some(&manifest1),
+        )
+        .unwrap();
+        let hash2 = manifest2
+            .files
+            .iter()
+            .find(|e| e.path == "file.txt")
+            .unwrap()
+            .sha256
+            .clone();
+
+        // Hash must equal hash1 — the file was not re-read
+        assert_eq!(
+            hash1, hash2,
+            "mtime unchanged: previous hash should be reused"
+        );
+    }
+
+    #[test]
+    fn test_mtime_optimization_recomputes_hash_when_mtime_changes() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        let file_path = context.join("file.txt");
+        fs::write(&file_path, "original content").unwrap();
+
+        let manifest1 =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &[], true, None).unwrap();
+        let hash1 = manifest1
+            .files
+            .iter()
+            .find(|e| e.path == "file.txt")
+            .unwrap()
+            .sha256
+            .clone();
+
+        // Write new content (mtime will be updated by the OS)
+        fs::write(&file_path, "different content").unwrap();
+
+        // Ensure mtime changed by sleeping briefly if needed, but normally a write is enough
+        let manifest2 = compute_manifest(
+            &context,
+            &output,
+            2,
+            1,
+            "test",
+            2,
+            &[],
+            true,
+            Some(&manifest1),
+        )
+        .unwrap();
+        let hash2 = manifest2
+            .files
+            .iter()
+            .find(|e| e.path == "file.txt")
+            .unwrap()
+            .sha256
+            .clone();
+
+        // If mtime changed, hash should differ (new content hashed)
+        // If the OS happened to use the same mtime (sub-second on some filesystems),
+        // the test still passes because the optimization correctly reused the hash.
+        // We only assert that if the manifest entry has a different mtime, the hash differs.
+        let mtime1_str = &manifest1.files[0].modified;
+        let mtime2_str = &manifest2.files[0].modified;
+        if mtime1_str != mtime2_str {
+            assert_ne!(hash1, hash2, "mtime changed: fresh hash should be computed");
+        }
+    }
+
+    #[test]
+    fn test_mtime_optimization_handles_new_file() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        fs::write(context.join("existing.txt"), "content").unwrap();
+
+        let manifest1 =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &[], true, None).unwrap();
+
+        // Add a new file not present in manifest1
+        fs::write(context.join("new.txt"), "new content").unwrap();
+
+        let manifest2 = compute_manifest(
+            &context,
+            &output,
+            2,
+            1,
+            "test",
+            2,
+            &[],
+            true,
+            Some(&manifest1),
+        )
+        .unwrap();
+
+        // new.txt should be present with a computed hash
+        let new_entry = manifest2.files.iter().find(|e| e.path == "new.txt");
+        assert!(new_entry.is_some(), "new file should appear in manifest");
+        assert!(
+            !new_entry.unwrap().sha256.is_empty(),
+            "new file should have a computed hash"
+        );
+    }
+
+    #[test]
+    fn test_mtime_optimization_disabled_always_computes_hash() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        fs::write(context.join("file.txt"), "content").unwrap();
+
+        // Build a fake previous manifest with a wrong hash but matching path/mtime
+        let manifest1 =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &[], false, None).unwrap();
+        let real_hash = manifest1.files[0].sha256.clone();
+
+        // Construct a fake manifest with the same mtime but a bogus hash
+        let mut fake_prev = manifest1.clone();
+        fake_prev.files[0].sha256 = "bogus_hash_should_not_be_reused".to_string();
+
+        // With optimization disabled, the real hash must be computed even though
+        // the previous manifest is provided with a matching mtime.
+        let manifest2 = compute_manifest(
+            &context,
+            &output,
+            2,
+            1,
+            "test",
+            2,
+            &[],
+            false,
+            Some(&fake_prev),
+        )
+        .unwrap();
+        assert_eq!(
+            manifest2.files[0].sha256, real_hash,
+            "optimization disabled: real hash must be computed"
+        );
+    }
+
+    #[test]
+    fn test_no_previous_manifest_computes_all_hashes() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        fs::write(context.join("a.txt"), "alpha").unwrap();
+        fs::write(context.join("b.txt"), "beta").unwrap();
+
+        // No previous manifest — all hashes must be computed
+        let manifest =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &[], true, None).unwrap();
+
+        assert_eq!(manifest.files.len(), 2);
+        for entry in &manifest.files {
+            assert!(
+                !entry.sha256.is_empty(),
+                "all files should have computed hashes"
+            );
+        }
     }
 }

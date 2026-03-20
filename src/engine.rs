@@ -727,6 +727,7 @@ pub fn run_workflow(
             0,
             &workflow.manifest_ignore,
             workflow.manifest_mtime_optimization,
+            None,
         ) {
             if let Err(e) = write_manifest_gz(&manifest, &before_manifest_path) {
                 eprintln!("⚠  Failed to write before-manifest: {}", e);
@@ -1744,6 +1745,7 @@ pub fn run_workflow(
                 run_spec.phase_iteration,
                 &workflow.manifest_ignore,
                 workflow.manifest_mtime_optimization,
+                current_manifest.as_ref(),
             ) {
                 // Diff with previous manifest if it exists
                 if let Some(ref prev_manifest) = current_manifest {

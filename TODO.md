@@ -23,126 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-014/F-015/F-017: Phase Contracts — Consumes, Produces, and Advisory Warnings
-
-**Spec:** `specs/workflow/phase-contracts.md`
-
-**Summary:** Allow phases to declare which files they read (`consumes`) and write (`produces`). At startup and during execution, rings warns when declared inputs don't exist or declared outputs weren't created. These are advisory warnings — they don't block execution.
-
-### Task 1: Parse consumes/produces in workflow config
-
-**Files:** `src/workflow.rs`
-
-**Steps:**
-- [x] Add `consumes: Vec<String>` and `produces: Vec<String>` fields (with `#[serde(default)]`) to phase config
-- [x] Add `produces_required: bool` field (with `#[serde(default)]`) — when true, missing produces is a hard error not just a warning (F-016)
-- [x] Validate at parse time: patterns should be valid glob strings
-- [x] Store the parsed patterns in `PhaseConfig`
-
-**Tests:**
-- [x] Phase with `consumes = ["src/*.rs"]` parses correctly
-- [x] Phase with `produces = ["output.txt"]` parses correctly
-- [x] Phase with no consumes/produces fields works (empty vecs)
-- [x] Invalid glob pattern produces parse error
-- [x] `just validate` clean
-
----
-
-### Task 2: Startup consumes validation (F-152)
-
-**Files:** `src/main.rs` (or `src/engine.rs`)
-
-**Steps:**
-- [ ] At startup, for each phase with `consumes` patterns:
-  1. Scan `context_dir` for files matching each pattern
-  2. If no files match AND the pattern is not mentioned in the phase's prompt text, print warning
-- [ ] Warning text: `⚠  Phase "{name}" declares consumes = ["{pattern}"] but no matching files exist in context_dir and the pattern is not mentioned in the prompt.`
-- [ ] Suppressible with `--no-contract-check` (already exists as a CLI flag)
-- [ ] Only warn in human output mode
-
-**Tests:**
-- [ ] Consumes pattern with no matching files triggers warning
-- [ ] Consumes pattern with matching files produces no warning
-- [ ] Pattern mentioned in prompt text suppresses the warning
-- [ ] `--no-contract-check` suppresses warning
-- [ ] `just validate` clean
-
----
-
-### Task 3: Post-run produces validation (F-153)
-
-**Files:** `src/engine.rs`
-
-**Steps:**
-- [ ] After each run completes, for phases with `produces` patterns:
-  1. Scan `context_dir` for files matching each pattern
-  2. If no files match any produces pattern, print warning
-- [ ] Warning text: `⚠  Phase "{name}" (run {N}): produces = ["{pattern}"] but no matching files were created/modified.`
-- [ ] If `produces_required = true`, treat as hard error: save state and exit 2
-- [ ] Suppressible with `--no-contract-check`
-
-**Tests:**
-- [ ] Phase that produces declared files: no warning
-- [ ] Phase that doesn't produce declared files: warning
-- [ ] `produces_required = true` with missing produces: exits 2
-- [ ] `--no-contract-check` suppresses warning
-- [ ] `just validate` clean
-
----
-
-## F-052: SIGTERM Handling
-
-**Spec:** `specs/state/cancellation-resume.md`
-
-**Summary:** Treat SIGTERM like Ctrl+C — gracefully save state and exit with code 130. This allows process managers (systemd, Docker, supervisord) to stop rings cleanly.
-
-### Task 1: Register SIGTERM handler
-
-**Files:** `src/cancel.rs`, `src/main.rs`
-
-**Steps:**
-- [ ] In the signal handler setup, register for both SIGINT (Ctrl+C) and SIGTERM
-- [ ] Both signals trigger the same `CancelState` transition (Canceling → ForceKill on second signal)
-- [ ] On Unix: use `signal_hook` or `ctrlc` crate's SIGTERM support
-- [ ] Verify that the existing graceful shutdown flow (save state, print resume command) works for SIGTERM
-
-**Tests:**
-- [ ] SIGTERM triggers graceful cancellation (state saved, resume command printed)
-- [ ] Double SIGTERM force-kills (same as double Ctrl+C)
-- [ ] Exit code is 130 on SIGTERM
-- [ ] `just validate` clean
-
----
-
-## F-055: Context Directory Lock
-
-**Spec:** `specs/state/cancellation-resume.md`
-
-**Summary:** Prevent two rings instances from running against the same `context_dir` simultaneously. Uses a lock file to detect concurrent access.
-
-### Task 1: Add context_dir lock file
-
-**Files:** `src/lock.rs` (already exists), `src/engine.rs`
-
-**Steps:**
-- [ ] Verify that `src/lock.rs` already implements lock file creation/checking
-- [ ] Ensure the lock is acquired before the first executor spawn in the engine
-- [ ] Lock file should be written to `context_dir/.rings.lock` containing the PID and run ID
-- [ ] If lock already exists and the PID is still running: print error and exit 2
-- [ ] If lock exists but PID is not running (stale): print warning, remove stale lock, proceed (F-056)
-- [ ] Release the lock on all exit paths (normal, Ctrl+C, error)
-- [ ] Support `--force-lock` flag (F-091) to override the lock check
-
-**Tests:**
-- [ ] Second rings instance against same context_dir is blocked with clear error
-- [ ] Stale lock from dead process is removed with warning
-- [ ] Lock is released on normal completion
-- [ ] Lock is released on Ctrl+C
-- [ ] `--force-lock` overrides the lock check
-- [ ] `just validate` clean
-
----
-
 ## F-121: mtime Optimization for Manifest Scanning
 
 **Spec:** `specs/observability/file-lineage.md`
@@ -154,16 +34,163 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/manifest.rs`
 
 **Steps:**
-- [ ] When computing a new manifest, compare each file's mtime against the previous manifest's entry for the same path
-- [ ] If the path exists in the previous manifest and mtime is identical, reuse the previous SHA256 hash without reading the file
-- [ ] If mtime differs or the file is new, compute the SHA256 hash normally
-- [ ] Pass the previous manifest (if available) into the manifest computation function
+- [x] When computing a new manifest, compare each file's mtime against the previous manifest's entry for the same path
+- [x] If the path exists in the previous manifest and mtime is identical, reuse the previous SHA256 hash without reading the file
+- [x] If mtime differs or the file is new, compute the SHA256 hash normally
+- [x] Pass the previous manifest (if available) into the manifest computation function
 
 **Tests:**
-- [ ] File with unchanged mtime reuses previous hash (verify by checking that file content is not read)
-- [ ] File with changed mtime gets a fresh hash
-- [ ] New file (not in previous manifest) gets computed hash
-- [ ] First manifest (no previous) computes all hashes
+- [x] File with unchanged mtime reuses previous hash (verify by checking that file content is not read)
+- [x] File with changed mtime gets a fresh hash
+- [x] New file (not in previous manifest) gets computed hash
+- [x] First manifest (no previous) computes all hashes
+- [x] `just validate` clean
+
+---
+
+## F-054: Subprocess Graceful Shutdown
+
+**Spec:** `specs/state/cancellation-resume.md`
+
+**Summary:** When rings needs to kill the executor (Ctrl+C, SIGTERM, timeout), send SIGTERM first and wait up to 5 seconds before escalating to SIGKILL. Gives the executor a chance to clean up.
+
+### Task 1: Implement SIGTERM→SIGKILL escalation
+
+**Files:** `src/executor.rs`
+
+**Steps:**
+- [ ] When the cancel state is `Canceling` and the executor is still running: send SIGTERM to the subprocess
+- [ ] Start a 5-second timer. If the subprocess exits within 5s, proceed normally
+- [ ] If still running after 5s (or on `ForceKill` state from double Ctrl+C): send SIGKILL
+- [ ] On Unix: use `nix::sys::signal::kill(pid, Signal::SIGTERM)` and `Signal::SIGKILL`
+- [ ] Use `#[cfg(unix)]` guard — on non-Unix, fall back to immediate kill
+
+**Tests:**
+- [ ] Mock executor that traps SIGTERM and exits: receives SIGTERM, exits cleanly within 5s
+- [ ] Mock executor that ignores SIGTERM: receives SIGTERM, then SIGKILL after 5s
+- [ ] Double Ctrl+C (ForceKill): SIGKILL sent immediately, no 5s wait
+- [ ] `just validate` clean
+
+---
+
+## F-154: Large Context Directory Warning
+
+**Spec:** `specs/observability/file-lineage.md`
+
+**Summary:** Warn if context_dir has > 10,000 files because manifest scanning will be slow. Advisory only.
+
+### Task 1: Add large directory warning
+
+**Files:** `src/main.rs` (or `src/engine.rs`)
+
+**Steps:**
+- [ ] After context_dir validation but before engine start, count files in context_dir (recursive)
+- [ ] If count > 10,000: print warning `⚠  context_dir contains {N} files. Manifest scanning may be slow.\n   Consider using manifest_ignore patterns to exclude large directories (e.g., node_modules/, target/).`
+- [ ] Only warn when `manifest_enabled = true` (no point warning if manifests are off)
+- [ ] Only warn in human output mode
+
+**Tests:**
+- [ ] Directory with > 10,000 files triggers warning
+- [ ] Directory with < 10,000 files produces no warning
+- [ ] Warning suppressed when manifest_enabled is false
+- [ ] `just validate` clean
+
+---
+
+## F-183: ANSI Color System
+
+**Spec:** `specs/observability/runtime-output.md` (Visual Enhancement section)
+
+**Summary:** Use a semantic color palette (green success, red errors, cyan costs, dim chrome) gated behind NO_COLOR env var and TTY detection. The `style.rs` module already exists with color helpers — verify it's complete and consistent.
+
+### Task 1: Verify and complete color system
+
+**Files:** `src/style.rs`
+
+**Steps:**
+- [ ] Verify the semantic color functions exist: `success()`, `error()`, `warn()`, `accent()`, `dim()`, `muted()`, `bold()`
+- [ ] Verify NO_COLOR environment variable disables all ANSI codes
+- [ ] Verify non-TTY stderr disables colors
+- [ ] Verify `--no-color` CLI flag disables colors
+- [ ] If all above are working, mark as COMPLETE after verification
+
+**Tests:**
+- [ ] `NO_COLOR=1` environment variable disables all ANSI escapes
+- [ ] Non-TTY output contains no ANSI escapes
+- [ ] `--no-color` flag disables colors
+- [ ] Colors are applied correctly in TTY mode
+- [ ] `just validate` clean
+
+---
+
+## F-184: Phase Cost Bar Chart
+
+**Spec:** `specs/observability/runtime-output.md`
+
+**Summary:** Completion and cancellation summaries show a proportional bar chart of cost distribution across phases. The `render_bar_chart` function already exists in `display.rs` — verify it's used in all summary paths.
+
+### Task 1: Verify bar chart in all summary paths
+
+**Files:** `src/display.rs`
+
+**Steps:**
+- [ ] Verify `render_bar_chart` is called in `print_completion`
+- [ ] Verify `render_bar_chart` is called in `print_cancellation`
+- [ ] Verify the bar chart renders correctly with 1 phase, 2 phases, and 5+ phases
+- [ ] If already working in all paths, mark as COMPLETE
+
+**Tests:**
+- [ ] Completion summary includes phase bar chart
+- [ ] Cancellation summary includes phase bar chart
+- [ ] Single-phase workflow shows full bar
+- [ ] `just validate` clean
+
+---
+
+## F-185: Budget Gauge
+
+**Spec:** `specs/observability/runtime-output.md`
+
+**Summary:** When a budget cap is configured, summaries show a visual gauge of budget consumption with color-coded thresholds. The `render_budget_gauge` function already exists — verify it's used.
+
+### Task 1: Verify budget gauge in summaries
+
+**Files:** `src/display.rs`
+
+**Steps:**
+- [ ] Verify `render_budget_gauge` is called in `print_completion` when `budget_cap_usd` is set
+- [ ] Verify it's called in `print_cancellation` when budget cap is set
+- [ ] Verify color thresholds: green < 60%, yellow 60-85%, red > 85%
+- [ ] If already working, mark as COMPLETE
+
+**Tests:**
+- [ ] Summary with budget cap shows gauge
+- [ ] Summary without budget cap omits gauge
+- [ ] Gauge colors change at threshold boundaries
+- [ ] `just validate` clean
+
+---
+
+## F-190: Cumulative Token Display
+
+**Spec:** `specs/observability/runtime-output.md`
+
+**Summary:** The status line and summaries show cumulative input/output token counts that update after each completed run.
+
+### Task 1: Verify token display
+
+**Files:** `src/display.rs`, `src/engine.rs`
+
+**Steps:**
+- [ ] Verify the status line includes token counts when available (already done in `format_status_line`)
+- [ ] Verify completion and cancellation summaries include token totals
+- [ ] Verify tokens are accumulated correctly across runs in `BudgetTracker`
+- [ ] If already working, mark as COMPLETE
+
+**Tests:**
+- [ ] Status line shows `18.2k in · 4.1k out` when tokens are non-zero
+- [ ] Status line omits token segment when both are zero
+- [ ] Completion summary includes token totals
 - [ ] `just validate` clean
 
 ---

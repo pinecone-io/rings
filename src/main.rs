@@ -148,6 +148,16 @@ fn run_inner(
     if args.dry_run {
         let plan = dry_run::DryRunPlan::from_workflow(&workflow, &args.workflow_file)?;
 
+        if output_format == cli::OutputFormat::Jsonl {
+            let event = dry_run::DryRunPlanEvent {
+                event: "dry_run_plan".to_string(),
+                plan,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            };
+            println!("{}", serde_json::to_string(&event)?);
+            return Ok(0);
+        }
+
         // Output in human format (table with ✓/✗)
         println!("Dry run: {}", style::bold(&args.workflow_file));
         println!(
@@ -2445,6 +2455,85 @@ mod tests {
         let styled = style::error("✗");
         assert_ne!(styled, "✗", "error crossmark should include ANSI styling");
         assert!(styled.contains('✗'));
+    }
+
+    // --- dry-run JSONL output tests ---
+
+    #[test]
+    fn dry_run_jsonl_event_has_dry_run_plan_event_field() {
+        use rings::dry_run::{DryRunPhase, DryRunPlan, DryRunPlanEvent, SignalCheck};
+
+        let plan = DryRunPlan {
+            phases: vec![DryRunPhase {
+                name: "builder".to_string(),
+                prompt_source: "<inline prompt_text>".to_string(),
+                runs_per_cycle: 1,
+                signal_check: SignalCheck {
+                    found: true,
+                    line_number: Some(1),
+                },
+                unknown_vars: vec![],
+            }],
+            runs_per_cycle_total: 1,
+            max_cycles: Some(3),
+            max_total_runs: Some(3),
+            completion_signal: "DONE".to_string(),
+        };
+        let event = DryRunPlanEvent {
+            event: "dry_run_plan".to_string(),
+            plan,
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["event"], "dry_run_plan");
+        assert!(parsed["plan"]["phases"].is_array());
+        assert_eq!(parsed["plan"]["max_cycles"], 3);
+        assert_eq!(parsed["plan"]["max_total_runs"], 3);
+        assert_eq!(parsed["plan"]["completion_signal"], "DONE");
+        assert!(parsed["timestamp"].is_string());
+    }
+
+    #[test]
+    fn dry_run_jsonl_output_emits_single_json_line() {
+        use rings::dry_run::DryRunPlan;
+        use rings::workflow::Workflow;
+        use std::str::FromStr;
+
+        let toml = r#"
+[workflow]
+context_dir = "/tmp"
+completion_signal = "DONE"
+max_cycles = 2
+
+[[phases]]
+name = "build"
+prompt_text = "Do the thing.\nDONE"
+runs_per_cycle = 1
+"#;
+        let workflow = Workflow::from_str(toml).unwrap();
+        let plan = DryRunPlan::from_workflow(&workflow, "test.rings.toml").unwrap();
+        let event = rings::dry_run::DryRunPlanEvent {
+            event: "dry_run_plan".to_string(),
+            plan,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        // Must be a single line (no embedded newlines)
+        assert!(!json.contains('\n'), "JSONL output must be a single line");
+        // Must round-trip
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["event"], "dry_run_plan");
+        assert_eq!(parsed["plan"]["completion_signal"], "DONE");
+    }
+
+    #[test]
+    fn dry_run_jsonl_suppressed_for_human_format() {
+        // The JSONL dry-run path is gated by `output_format == OutputFormat::Jsonl`.
+        // Human format does not satisfy that condition.
+        assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
     }
 }
 

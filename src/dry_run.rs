@@ -28,6 +28,7 @@ pub struct DryRunPlan {
     pub runs_per_cycle_total: u32,
     pub max_cycles: Option<u32>,
     pub max_total_runs: Option<u32>,
+    pub completion_signal: String,
 }
 
 /// JSONL event wrapper for dry run plan
@@ -92,6 +93,7 @@ impl DryRunPlan {
             runs_per_cycle_total,
             max_cycles: Some(workflow.max_cycles),
             max_total_runs,
+            completion_signal: workflow.completion_signal.clone(),
         })
     }
 }

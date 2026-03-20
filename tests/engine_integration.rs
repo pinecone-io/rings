@@ -76,6 +76,7 @@ fn engine_exits_zero_on_completion_signal() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -104,6 +105,7 @@ fn engine_exits_one_when_max_cycles_reached() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -127,6 +129,7 @@ fn engine_writes_run_logs() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -157,6 +160,7 @@ fn engine_writes_costs_jsonl() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -184,6 +188,7 @@ fn engine_classifies_nonzero_exit_as_error() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -215,6 +220,7 @@ fn engine_saves_state_and_exits_130_on_cancel() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     // Signal cancellation immediately (test simplicity)
@@ -329,6 +335,7 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -410,6 +417,7 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -475,6 +483,7 @@ fn line_mode_completion_requires_signal_on_own_line() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -510,6 +519,7 @@ fn engine_classifies_quota_error() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -549,6 +559,7 @@ fn engine_classifies_auth_error() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -586,6 +597,7 @@ fn engine_classifies_unknown_error() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -622,6 +634,7 @@ fn engine_saves_failure_reason_in_state() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -657,6 +670,7 @@ fn engine_jsonl_mode_runs_correctly() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Jsonl,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -685,6 +699,7 @@ fn engine_human_mode_runs_correctly() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -719,11 +734,178 @@ fn engine_jsonl_mode_max_cycles() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Jsonl,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
     assert_eq!(
         result.exit_code, 1,
         "JSONL mode should exit 1 on max_cycles"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// --strict-parsing tests
+// ─────────────────────────────────────────────────────────────────
+
+/// Full confidence → strict parsing doesn't halt, run completes normally.
+#[test]
+fn strict_parsing_full_confidence_continues() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 5);
+    // Full-confidence output: "Cost: $X.XX (N input tokens, M output tokens)"
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "Cost: $0.05 (100 input tokens, 20 output tokens) DONE".to_string(),
+        exit_code: 0,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-strict-full".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: true,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0, "full confidence should not halt");
+    assert_eq!(result.total_runs, 1);
+}
+
+/// Partial confidence → strict parsing doesn't halt, run completes normally.
+#[test]
+fn strict_parsing_partial_confidence_continues() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 5);
+    // Partial-confidence output: "Cost: $X.XX" (no token counts)
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "Cost: $0.05 DONE".to_string(),
+        exit_code: 0,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-strict-partial".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: true,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0, "partial confidence should not halt");
+    assert_eq!(result.total_runs, 1);
+}
+
+/// Low confidence → strict parsing halts, state saved, exit code 2.
+#[test]
+fn strict_parsing_low_confidence_halts() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 5);
+    // Low-confidence output: generic "$X.XX" pattern only
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "spent $0.05 today DONE".to_string(),
+        exit_code: 0,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-strict-low".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: true,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(
+        result.exit_code, 2,
+        "low confidence should halt with exit 2"
+    );
+
+    // State should be saved
+    let state_path = dir.path().join("state.json");
+    assert!(
+        state_path.exists(),
+        "state.json should be saved on strict parsing halt"
+    );
+}
+
+/// None confidence → strict parsing halts, state saved, exit code 2.
+#[test]
+fn strict_parsing_none_confidence_halts() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 5);
+    // No cost info in output → None confidence
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "no cost info here DONE".to_string(),
+        exit_code: 0,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-strict-none".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: true,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(
+        result.exit_code, 2,
+        "none confidence should halt with exit 2"
+    );
+
+    // State should be saved
+    let state_path = dir.path().join("state.json");
+    assert!(
+        state_path.exists(),
+        "state.json should be saved on strict parsing halt"
+    );
+}
+
+/// Without --strict-parsing, low confidence produces a warning but run continues.
+#[test]
+fn without_strict_parsing_low_confidence_continues() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 5);
+    // Low-confidence output
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "spent $0.05 today DONE".to_string(),
+        exit_code: 0,
+    }]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-no-strict-low".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(
+        result.exit_code, 0,
+        "without strict parsing, low confidence should not halt"
+    );
+    assert_eq!(result.total_runs, 1);
+    // Should have a parse warning recorded
+    assert_eq!(
+        result.parse_warnings.len(),
+        1,
+        "should record parse warning"
     );
 }

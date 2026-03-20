@@ -359,6 +359,7 @@ pub struct EngineConfig {
     pub ancestry_depth: u32,
     pub no_contract_check: bool,
     pub output_format: crate::cli::OutputFormat,
+    pub strict_parsing: bool,
 }
 
 pub struct EngineResult {
@@ -1236,6 +1237,44 @@ pub fn run_workflow(
                 confidence: cost.confidence.clone(),
                 raw_match: cost.raw_match.clone(),
             });
+
+            // If strict parsing is enabled, halt immediately
+            if config.strict_parsing {
+                let confidence_str = format!("{:?}", cost.confidence).to_lowercase();
+                let msg = format!(
+                    "Strict parsing enabled: cost confidence too low ({}) on run {}. Halting.",
+                    confidence_str, run_spec.global_run_number
+                );
+                if config.output_format == crate::cli::OutputFormat::Human {
+                    eprintln!("{}", msg);
+                }
+                if config.output_format == crate::cli::OutputFormat::Jsonl {
+                    crate::events::emit_jsonl(&crate::events::FatalErrorEvent::new(
+                        Some(config.run_id.clone()),
+                        &msg,
+                    ));
+                }
+                let state = make_state_snapshot(&ctx, config, &run_spec, ExitReason::BudgetCap);
+                state.write_atomic(&state_path)?;
+                emit_summary_if_jsonl(
+                    config,
+                    &ctx,
+                    &workflow.phases,
+                    "strict_parsing_halt",
+                    workflow_start,
+                );
+                return Ok(EngineResult {
+                    exit_code: 2,
+                    completed_cycles: ctx.last_cycle,
+                    total_cost_usd: ctx.budget.cumulative_cost,
+                    total_runs: ctx.total_runs,
+                    total_input_tokens: ctx.budget.cumulative_input_tokens,
+                    total_output_tokens: ctx.budget.cumulative_output_tokens,
+                    parse_warnings: ctx.parse_warnings,
+                    failure_reason: None,
+                    phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
+                });
+            }
         }
 
         // Print per-run result

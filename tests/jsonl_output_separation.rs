@@ -63,6 +63,7 @@ fn make_jsonl_config(dir: &std::path::Path, run_id: &str) -> EngineConfig {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: OutputFormat::Jsonl,
+        strict_parsing: false,
     }
 }
 
@@ -76,6 +77,7 @@ fn make_human_config(dir: &std::path::Path, run_id: &str) -> EngineConfig {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: OutputFormat::Human,
+        strict_parsing: false,
     }
 }
 

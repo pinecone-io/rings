@@ -96,6 +96,7 @@ fn sigterm_called_on_cancellation() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let workflow_str = r#"
@@ -236,6 +237,7 @@ fn double_ctrl_c_sends_sigkill_before_grace_period_expires() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let workflow_str = r#"
@@ -357,6 +359,7 @@ fn single_ctrl_c_waits_up_to_grace_period_without_second_signal() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let workflow_str = r#"

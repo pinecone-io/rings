@@ -4,30 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-109 + F-110: Output Directory Hardening
-
-**Spec:** `specs/observability/audit-logs.md`
-
-**Summary:** Two small security improvements: (1) create output directories with mode 0700 so only the owner can read run logs, and (2) reject `output_dir` values containing `..` to prevent path traversal.
-
-### Task 2: Path traversal protection
-
-**Files:** `src/main.rs` or `src/workflow.rs`
-
-**Steps:**
-- [x] Before using any `output_dir` value (from CLI `--output-dir` or workflow TOML), check if the path contains `..` components
-- [x] If `..` is found: print `Error: output_dir must not contain '..' components` and exit 2
-- [x] Apply the check in both `run_inner` (for `--output-dir` flag) and workflow parsing (for TOML `output_dir`)
-- [x] Use `std::path::Path::components()` and check for `Component::ParentDir`
-
-**Tests:**
-- [x] `--output-dir /tmp/safe/path` is accepted
-- [x] `--output-dir /tmp/../etc/rings` is rejected with exit code 2
-- [x] TOML `output_dir = "../outside"` is rejected at workflow parse time
-- [x] Paths with `.` (current dir) are allowed (only `..` is dangerous)
-
----
-
 ## F-089: `--strict-parsing` CLI Flag
 
 **Spec:** `specs/cli/commands-and-flags.md` lines 65–67
@@ -39,21 +15,21 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cli.rs`, `src/main.rs`, `src/engine.rs`
 
 **Steps:**
-- [ ] Add `--strict-parsing` flag to `RunArgs` in `src/cli.rs`: `pub strict_parsing: bool`
-- [ ] Pass it through to `EngineConfig` as `strict_parsing: bool`
-- [ ] In the engine, after cost parsing for each run: if `strict_parsing` and confidence is `Low` or `None`:
+- [x] Add `--strict-parsing` flag to `RunArgs` in `src/cli.rs`: `pub strict_parsing: bool`
+- [x] Pass it through to `EngineConfig` as `strict_parsing: bool`
+- [x] In the engine, after cost parsing for each run: if `strict_parsing` and confidence is `Low` or `None`:
   1. Save state (same as budget cap flow)
   2. Print error: `Strict parsing enabled: cost confidence too low ({confidence}) on run {N}. Halting.`
   3. Set exit code to 2
   4. Break out of the run loop
-- [ ] In JSONL mode, emit a `fatal_error` event before exiting
+- [x] In JSONL mode, emit a `fatal_error` event before exiting
 
 **Tests:**
-- [ ] `--strict-parsing` with `Full` confidence: run continues normally
-- [ ] `--strict-parsing` with `Partial` confidence: run continues (only Low/None trigger halt)
-- [ ] `--strict-parsing` with `Low` confidence: run halts, state saved, exit 2
-- [ ] `--strict-parsing` with `None` confidence: run halts, state saved, exit 2
-- [ ] Without `--strict-parsing`: low confidence produces a warning but run continues (existing behavior)
+- [x] `--strict-parsing` with `Full` confidence: run continues normally
+- [x] `--strict-parsing` with `Partial` confidence: run continues (only Low/None trigger halt)
+- [x] `--strict-parsing` with `Low` confidence: run halts, state saved, exit 2
+- [x] `--strict-parsing` with `None` confidence: run halts, state saved, exit 2
+- [x] Without `--strict-parsing`: low confidence produces a warning but run continues (existing behavior)
 
 ---
 

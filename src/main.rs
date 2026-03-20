@@ -387,6 +387,7 @@ fn run_inner(
         ancestry_depth,
         no_contract_check: args.no_contract_check,
         output_format,
+        strict_parsing: args.strict_parsing,
     };
 
     let run_start = std::time::Instant::now();
@@ -774,6 +775,7 @@ fn resume_inner(
         ancestry_depth: 1,              // resumed runs always start at depth 1
         no_contract_check: args.no_contract_check,
         output_format,
+        strict_parsing: false,
     };
 
     let resume_point = Some(ResumePoint {

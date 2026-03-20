@@ -125,6 +125,7 @@ fn phase_restriction_builder_signal_ignored_reviewer_signal_exits_zero() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -174,6 +175,7 @@ fn phase_restriction_ineligible_signal_does_not_complete() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -205,6 +207,7 @@ fn empty_completion_signal_phases_any_phase_can_complete() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();

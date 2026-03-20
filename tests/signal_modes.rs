@@ -129,6 +129,7 @@ fn engine_regex_mode_exits_zero_on_match() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
     assert_eq!(result.exit_code, 0);
@@ -218,6 +219,7 @@ fn continue_signal_uses_substring_not_regex() {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     };
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
     assert_eq!(result.exit_code, 0);

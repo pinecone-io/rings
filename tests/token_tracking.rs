@@ -59,6 +59,7 @@ fn make_config(dir: &tempfile::TempDir) -> EngineConfig {
         workflow_file: "test.rings.toml".to_string(),
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
     }
 }
 

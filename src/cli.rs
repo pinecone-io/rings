@@ -161,6 +161,11 @@ pub struct RunArgs {
     /// Pause only at cycle boundaries (ignored in non-TTY contexts)
     #[arg(long)]
     pub step_cycles: bool,
+
+    /// Treat cost parse failures as hard errors. When cost parsing confidence is Low or None,
+    /// halt execution, save state, and exit with code 2. Default: off.
+    #[arg(long)]
+    pub strict_parsing: bool,
 }
 
 #[derive(Args, Debug)]

@@ -59,17 +59,17 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/workflow.rs`, `src/engine.rs`, `src/cli.rs`
 
 **Steps:**
-- [ ] The `timeout_per_run_secs` field already exists in the workflow config — verify it's wired into the engine's poll loop
-- [ ] In the executor poll loop: if `timeout_deadline` is set and `Instant::now() > timeout_deadline`, kill the subprocess and treat as a timeout error
-- [ ] Log the timeout in the run's audit entry with `failure_reason: "timeout"`
-- [ ] The `FailureReason::Timeout` variant already exists in `state.rs` — verify it's used correctly
-- [ ] If already implemented, mark as COMPLETE after verification
+- [x] The `timeout_per_run_secs` field already exists in the workflow config — verify it's wired into the engine's poll loop
+- [x] In the executor poll loop: if `timeout_deadline` is set and `Instant::now() > timeout_deadline`, kill the subprocess and treat as a timeout error
+- [x] Log the timeout in the run's audit entry with `failure_reason: "timeout"`
+- [x] The `FailureReason::Timeout` variant already exists in `state.rs` — verify it's used correctly
+- [x] If already implemented, mark as COMPLETE after verification
 
 **Tests:**
-- [ ] Run with `timeout_per_run_secs = 1` and a mock executor that sleeps 5s: executor is killed, run logged as timeout
-- [ ] Run without timeout: no timeout behavior
-- [ ] Timed-out run saves state for resume
-- [ ] `just validate` clean
+- [x] Run with `timeout_per_run_secs = 1` and a mock executor that sleeps 5s: executor is killed, run logged as timeout
+- [x] Run without timeout: no timeout behavior
+- [x] Timed-out run saves state for resume
+- [x] `just validate` clean
 
 ---
 

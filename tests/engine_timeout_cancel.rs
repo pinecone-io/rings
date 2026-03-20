@@ -537,6 +537,62 @@ prompt_text = "test prompt"
     );
 }
 
+/// Verify that a timed-out run writes the state file to disk with failure_reason = "timeout".
+/// This confirms the state is saved for resume after a timeout.
+#[test]
+fn timeout_saves_state_to_disk_for_resume() {
+    let dir = tempdir().unwrap();
+
+    let executor = SlowMockExecutor::new(
+        200,
+        ExecutorOutput {
+            combined: "done".to_string(),
+            exit_code: 0,
+        },
+    );
+
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test_timeout_state".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+        ..Default::default()
+    };
+
+    let workflow_str = r#"
+[workflow]
+completion_signal = "done"
+context_dir = "."
+max_cycles = 1
+timeout_per_run_secs = 1
+
+[[phases]]
+name = "test"
+prompt_text = "test prompt"
+"#;
+
+    let workflow: Workflow = workflow_str.parse().unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+
+    // Timeout path returns exit_code 2
+    assert_eq!(result.exit_code, 2, "expected timeout exit code 2");
+
+    // Verify state was saved with failure_reason = "timeout"
+    let state_path = dir.path().join("state.json");
+    assert!(state_path.exists(), "state.json should exist after timeout");
+    let state = rings::state::StateFile::read(&state_path).unwrap();
+    assert_eq!(
+        state.failure_reason,
+        Some(FailureReason::Timeout),
+        "state.json should record failure_reason = timeout"
+    );
+}
+
 /// Verify that a per-run timeout still fires correctly on a slow subprocess
 /// when no quota backoff retry is involved.
 #[test]

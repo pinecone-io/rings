@@ -366,6 +366,8 @@ pub struct EngineConfig {
     pub step_cycles: bool,
     /// Injected reader for step prompts (used in tests; overrides stdin).
     pub step_reader: Option<std::sync::Mutex<Box<dyn std::io::BufRead + Send>>>,
+    /// Directories whose file listings are prepended to each prompt as context.
+    pub include_dirs: Vec<PathBuf>,
 }
 
 impl Default for EngineConfig {
@@ -383,6 +385,7 @@ impl Default for EngineConfig {
             step: false,
             step_cycles: false,
             step_reader: None,
+            include_dirs: vec![],
         }
     }
 }
@@ -439,6 +442,26 @@ fn build_phase_costs(phases: &[PhaseConfig], tracker: &BudgetTracker) -> Vec<(St
             (p.name.clone(), cost, runs)
         })
         .collect()
+}
+
+/// Build a context preamble listing files from each include directory (non-recursive).
+pub fn build_include_dir_preamble(dirs: &[PathBuf]) -> String {
+    let mut lines: Vec<String> =
+        vec!["The following context files are available for reference:".to_string()];
+    for dir in dirs {
+        if let Ok(read_dir) = std::fs::read_dir(dir) {
+            let mut paths: Vec<PathBuf> = read_dir
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                .map(|e| e.path())
+                .collect();
+            paths.sort();
+            for path in paths {
+                lines.push(format!("- {}", path.display()));
+            }
+        }
+    }
+    lines.join("\n")
 }
 
 /// Detect whether `signal` appears in `output` using the compiled mode.
@@ -945,7 +968,13 @@ pub fn run_workflow(
             workflow_name: workflow_name.clone(),
             context_dir: workflow.context_dir.clone(),
         };
-        let prompt = render_prompt(&raw_prompt, &vars);
+        let mut prompt = render_prompt(&raw_prompt, &vars);
+
+        // Prepend include-dir preamble if any directories were specified.
+        if !config.include_dirs.is_empty() {
+            let preamble = build_include_dir_preamble(&config.include_dirs);
+            prompt = format!("{preamble}\n{prompt}");
+        }
 
         let invocation = Invocation {
             prompt,

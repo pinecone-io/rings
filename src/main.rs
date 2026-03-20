@@ -261,6 +261,20 @@ fn run_inner(
         }
     }
 
+    // Validate --include-dir paths exist and are directories.
+    let mut include_dirs: Vec<std::path::PathBuf> = Vec::new();
+    for dir_str in &args.include_dir {
+        let path = std::path::PathBuf::from(dir_str);
+        if !path.exists() || !path.is_dir() {
+            eprintln!(
+                "Error: --include-dir '{}' does not exist or is not a directory.",
+                dir_str
+            );
+            return Ok(2);
+        }
+        include_dirs.push(path);
+    }
+
     // Resolve output directory
     let output_base =
         resolve_output_dir(args.output_dir.as_deref(), workflow.output_dir.as_deref());
@@ -498,6 +512,7 @@ fn run_inner(
         step: args.step,
         step_cycles: args.step_cycles,
         step_reader: None,
+        include_dirs,
     };
 
     let run_start = std::time::Instant::now();
@@ -892,6 +907,7 @@ fn resume_inner(
         step: false,
         step_cycles: false,
         step_reader: None,
+        include_dirs: vec![],
     };
 
     let resume_point = Some(ResumePoint {

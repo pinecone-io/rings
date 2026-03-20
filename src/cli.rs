@@ -170,6 +170,10 @@ pub struct RunArgs {
     /// Skip the startup warning if context_dir contains files matching credential patterns
     #[arg(long)]
     pub no_sensitive_files_check: bool,
+
+    /// Prepend a file listing preamble to each prompt (may be specified multiple times)
+    #[arg(short = 'I', long, value_name = "DIR")]
+    pub include_dir: Vec<String>,
 }
 
 #[derive(Args, Debug)]

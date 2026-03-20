@@ -627,6 +627,7 @@ fn format_cancellation(
     output_dir: &str,
     total_input_tokens: u64,
     total_output_tokens: u64,
+    budget_cap_usd: Option<f64>,
 ) -> String {
     let marker = style::error("✗");
     let label_interrupted = style::bold("Interrupted");
@@ -675,6 +676,17 @@ fn format_cancellation(
         }
     }
 
+    // Budget gauge
+    if let Some(cap) = budget_cap_usd {
+        lines.push(String::new());
+        let gauge = render_budget_gauge(total_cost_usd, cap, 20);
+        lines.push(format!(
+            "   {}  {}",
+            style::dim(&format!("{:<lw$}", "Budget")),
+            gauge
+        ));
+    }
+
     lines.push(String::new());
     lines.push("   To resume:".to_string());
     lines.push(format!(
@@ -713,6 +725,7 @@ pub fn print_cancellation(
     output_dir: &str,
     total_input_tokens: u64,
     total_output_tokens: u64,
+    budget_cap_usd: Option<f64>,
 ) {
     eprintln!(
         "{}",
@@ -727,6 +740,7 @@ pub fn print_cancellation(
             output_dir,
             total_input_tokens,
             total_output_tokens,
+            budget_cap_usd,
         )
     );
 }
@@ -1394,6 +1408,40 @@ mod tests {
     }
 
     #[test]
+    fn budget_gauge_color_green_below_60_percent() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_color_enabled();
+        // 22% spent — should be green (success)
+        let gauge_low = render_budget_gauge(1.1, 5.0, 20);
+        // 70% spent — should be yellow (warn)
+        let gauge_mid = render_budget_gauge(3.5, 5.0, 20);
+        // 90% spent — should be red (error)
+        let gauge_high = render_budget_gauge(4.5, 5.0, 20);
+        // All three should differ because of different ANSI codes
+        assert_ne!(gauge_low, gauge_mid, "low and mid gauges should differ");
+        assert_ne!(gauge_mid, gauge_high, "mid and high gauges should differ");
+        assert_ne!(gauge_low, gauge_high, "low and high gauges should differ");
+        // Verify percentages are present
+        assert!(gauge_low.contains("22%"), "missing 22%: {gauge_low}");
+        assert!(gauge_mid.contains("70%"), "missing 70%: {gauge_mid}");
+        assert!(gauge_high.contains("90%"), "missing 90%: {gauge_high}");
+        crate::style::set_no_color();
+        // With no color, same percent should produce same bar string
+        let gauge_low_nc = render_budget_gauge(1.1, 5.0, 20);
+        let gauge_mid_nc = render_budget_gauge(3.5, 5.0, 20);
+        // Bars differ in length so they still differ, but the percentages are right
+        assert!(
+            gauge_low_nc.contains("22%"),
+            "no-color low missing 22%: {gauge_low_nc}"
+        );
+        assert!(
+            gauge_mid_nc.contains("70%"),
+            "no-color mid missing 70%: {gauge_mid_nc}"
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
     fn completion_output_contains_expected_fields() {
         let _guard = COLOR_LOCK.lock().unwrap();
         crate::style::set_no_color();
@@ -1795,6 +1843,7 @@ mod tests {
             "/tmp/run",
             0,
             0,
+            None,
         );
         assert!(
             s.contains('█'),
@@ -1802,6 +1851,54 @@ mod tests {
         );
         assert!(s.contains("builder"), "missing phase name builder: {s}");
         assert!(s.contains("reviewer"), "missing phase name reviewer: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn cancellation_summary_with_budget_cap_shows_gauge() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let s = format_cancellation(
+            "run-xyz-456",
+            1,
+            "builder",
+            1.10,
+            5,
+            &[],
+            &[],
+            "/tmp/run",
+            0,
+            0,
+            Some(5.0),
+        );
+        assert!(s.contains("Budget"), "missing Budget label: {s}");
+        assert!(
+            s.contains("$1.10 / $5.00"),
+            "missing gauge cost values: {s}"
+        );
+        assert!(s.contains('█'), "missing filled gauge blocks: {s}");
+        assert!(s.contains('░'), "missing empty gauge blocks: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn cancellation_summary_without_budget_cap_omits_gauge() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let s = format_cancellation(
+            "run-xyz-456",
+            1,
+            "builder",
+            1.10,
+            5,
+            &[],
+            &[],
+            "/tmp/run",
+            0,
+            0,
+            None,
+        );
+        assert!(!s.contains("Budget"), "Budget gauge should be absent: {s}");
         crate::style::set_color_enabled();
     }
 

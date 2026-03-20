@@ -714,6 +714,7 @@ fn run_inner(
                         &run_dir.to_string_lossy(),
                         result.total_input_tokens,
                         result.total_output_tokens,
+                        workflow.budget_cap_usd,
                     );
                 }
             }
@@ -1174,6 +1175,7 @@ fn resume_inner(
                         &run_dir.to_string_lossy(),
                         result.total_input_tokens,
                         result.total_output_tokens,
+                        workflow.budget_cap_usd,
                     );
                 }
             }

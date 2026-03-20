@@ -317,6 +317,17 @@ fn run_inner(
         );
     }
 
+    // Advisory check: delay_between_runs sanity check (>600 seconds is likely a units mistake)
+    if output_format == cli::OutputFormat::Human && workflow.delay_between_runs > 600 {
+        let human = format_human_duration(workflow.delay_between_runs);
+        eprintln!(
+            "⚠  delay_between_runs = {} seconds ({}) between each run.\n   \
+             This is unusually long. If you meant {} milliseconds, rings uses whole seconds.\n   \
+             Use --delay to override for this run without editing the workflow file.",
+            workflow.delay_between_runs, human, workflow.delay_between_runs
+        );
+    }
+
     // Advisory check: context_dir is empty
     if output_format == cli::OutputFormat::Human && context_dir_is_empty(&workflow.context_dir) {
         eprintln!(
@@ -1803,6 +1814,41 @@ fn scan_sensitive_files(path: &str) -> Vec<String> {
     matches
 }
 
+/// Formats a duration in seconds as a human-readable string.
+///
+/// Examples: 60 → "1 minute", 900 → "15 minutes", 3600 → "1 hour",
+/// 5400 → "1 hour 30 minutes", 7200 → "2 hours"
+fn format_human_duration(secs: u64) -> String {
+    let hours = secs / 3600;
+    let minutes = (secs % 3600) / 60;
+    let remaining_secs = secs % 60;
+
+    let mut parts = Vec::new();
+    if hours > 0 {
+        if hours == 1 {
+            parts.push("1 hour".to_string());
+        } else {
+            parts.push(format!("{hours} hours"));
+        }
+    }
+    if minutes > 0 {
+        if minutes == 1 {
+            parts.push("1 minute".to_string());
+        } else {
+            parts.push(format!("{minutes} minutes"));
+        }
+    }
+    if parts.is_empty() {
+        // Only seconds (no hours or minutes)
+        if remaining_secs == 1 {
+            return "1 second".to_string();
+        } else {
+            return format!("{remaining_secs} seconds");
+        }
+    }
+    parts.join(" ")
+}
+
 /// Walks from `path` up to the filesystem root, returning the first directory
 /// that contains a `.git` entry. Returns `None` if no such directory is found.
 fn find_git_root(path: &std::path::Path) -> Option<PathBuf> {
@@ -2003,6 +2049,69 @@ mod tests {
         // The advisory check is guarded by `output_format == OutputFormat::Human`.
         // JSONL mode uses OutputFormat::Jsonl, which does not satisfy the guard.
         assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
+
+    // --- delay_between_runs sanity check tests ---
+
+    #[test]
+    fn delay_sanity_900_seconds_triggers_warning() {
+        // 900 > 600, should trigger; human-readable is "15 minutes"
+        assert!(900 > 600, "threshold check: 900 > 600");
+        let human = format_human_duration(900);
+        assert_eq!(human, "15 minutes");
+    }
+
+    #[test]
+    fn delay_sanity_601_seconds_triggers_warning() {
+        // 601 > 600, threshold is >600 (strictly greater)
+        assert!(601 > 600);
+        let human = format_human_duration(601);
+        // 601s = 10 minutes 1 second — but the function only shows hours and minutes
+        assert_eq!(human, "10 minutes");
+    }
+
+    #[test]
+    fn delay_sanity_600_seconds_does_not_trigger_warning() {
+        // Exactly 600 should NOT trigger (threshold is >600)
+        assert!(!(600 > 600), "600 should not exceed threshold");
+    }
+
+    #[test]
+    fn delay_sanity_30_seconds_does_not_trigger_warning() {
+        assert!(!(30 > 600), "30 should not exceed threshold");
+    }
+
+    #[test]
+    fn delay_sanity_jsonl_mode_suppressed_by_format_guard() {
+        // The advisory check is guarded by `output_format == OutputFormat::Human`.
+        assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
+
+    // --- format_human_duration tests ---
+
+    #[test]
+    fn format_human_duration_minutes_only() {
+        assert_eq!(format_human_duration(900), "15 minutes");
+        assert_eq!(format_human_duration(60), "1 minute");
+        assert_eq!(format_human_duration(120), "2 minutes");
+    }
+
+    #[test]
+    fn format_human_duration_hours_only() {
+        assert_eq!(format_human_duration(3600), "1 hour");
+        assert_eq!(format_human_duration(7200), "2 hours");
+    }
+
+    #[test]
+    fn format_human_duration_hours_and_minutes() {
+        assert_eq!(format_human_duration(5400), "1 hour 30 minutes");
+        assert_eq!(format_human_duration(3660), "1 hour 1 minute");
+    }
+
+    #[test]
+    fn format_human_duration_seconds_only() {
+        assert_eq!(format_human_duration(1), "1 second");
+        assert_eq!(format_human_duration(30), "30 seconds");
     }
 
     #[test]

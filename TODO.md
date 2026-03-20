@@ -376,16 +376,16 @@ Note: `--output-format stream-json` requires `--verbose` flag when using `-p` (p
 **Files:** `src/executor.rs`
 
 **Steps:**
-- [ ] In the stdout reader thread (line ~227-238), when `verbose == true`: call `verbose::format_stream_event(&line)` instead of printing raw line
-- [ ] If the formatter returns `Some(formatted)`, print `formatted` via `eprintln!`
-- [ ] If the formatter returns `None` (suppressed events), skip printing
-- [ ] Keep the stderr reader thread unchanged — stderr from Claude Code is already human-readable diagnostic output, print as-is when verbose
-- [ ] Raw output is still accumulated in the `Arc<Mutex<String>>` regardless of rendering (needed for cost parsing, log files)
+- [x] In the stdout reader thread (line ~227-238), when `verbose == true`: call `verbose::format_stream_event(&line)` instead of printing raw line
+- [x] If the formatter returns `Some(formatted)`, print `formatted` via `eprintln!`
+- [x] If the formatter returns `None` (suppressed events), skip printing
+- [x] Keep the stderr reader thread unchanged — stderr from Claude Code is already human-readable diagnostic output, print as-is when verbose
+- [x] Raw output is still accumulated in the `Arc<Mutex<String>>` regardless of rendering (needed for cost parsing, log files)
 
 **Tests:**
-- [ ] Verbose mode with stream-json events: suppressed events (`system`, `result`) do not appear in stderr output
-- [ ] Verbose mode with non-JSON executor output: lines pass through unchanged
-- [ ] Non-verbose mode: no output to stderr from reader threads (unchanged behavior)
+- [x] Verbose mode with stream-json events: suppressed events (`system`, `result`) do not appear in stderr output
+- [x] Verbose mode with non-JSON executor output: lines pass through unchanged
+- [x] Non-verbose mode: no output to stderr from reader threads (unchanged behavior)
 
 ---
 

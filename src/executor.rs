@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+use crate::verbose;
+
 #[cfg(feature = "testing")]
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -228,7 +230,9 @@ fn spawn_child(
         let reader = BufReader::new(stdout);
         for line in reader.lines().map_while(Result::ok) {
             if verbose {
-                eprintln!("{}", line);
+                if let Some(formatted) = verbose::format_stream_event(&line) {
+                    eprintln!("{}", formatted);
+                }
             }
             if let Ok(mut acc) = stdout_accum.lock() {
                 acc.push_str(&line);
@@ -507,6 +511,45 @@ impl Executor for MockExecutor {
             sigterm_called: Arc::new(AtomicBool::new(false)),
             sigkill_called: Arc::new(AtomicBool::new(false)),
         }))
+    }
+}
+
+/// Tests for the verbose stdout rendering logic wired into the reader thread.
+/// The reader thread calls `verbose::format_stream_event` per line; these tests
+/// verify the filter contract: suppressed events produce None, others produce Some.
+#[cfg(test)]
+mod verbose_rendering_tests {
+    use crate::verbose;
+
+    #[test]
+    fn suppressed_system_event_returns_none() {
+        let line = r#"{"type":"system","subtype":"init","cwd":"/tmp","tools":[]}"#;
+        // Verifies: suppressed events do not produce output to stderr
+        assert_eq!(verbose::format_stream_event(line), None);
+    }
+
+    #[test]
+    fn suppressed_result_event_returns_none() {
+        let line = r#"{"type":"result","subtype":"success","total_cost_usd":0.01,"result":"done"}"#;
+        // Verifies: result events are suppressed (rings shows its own summary)
+        assert_eq!(verbose::format_stream_event(line), None);
+    }
+
+    #[test]
+    fn non_json_executor_output_passes_through_unchanged() {
+        let line = "This is plain text output from a custom executor";
+        let result = verbose::format_stream_event(line);
+        // Verifies: non-JSON output is returned as-is
+        assert_eq!(result, Some(line.to_string()));
+    }
+
+    #[test]
+    fn assistant_text_event_produces_output() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello, I will help you."}]}}"#;
+        let result = verbose::format_stream_event(line);
+        // Verifies: assistant text events are rendered
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("Hello, I will help you."));
     }
 }
 

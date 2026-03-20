@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / F-150 Task 1: No-change streak] Added `no_change_streaks: HashMap<String, u32>` to `BudgetTracker` for per-phase tracking. Streak increments when all `produces` patterns for a phase had violations (i.e., `produces_violations.len() == phase_produces.len()`), and resets to 0 on any run where produces files changed. Warning fires at exactly `streak == 3`, human mode only. The TODO described a generic "no file changes" check with a generic message; the spec (`specs/execution/engine.md` §No-files-changed streak) specifies per-phase tracking tied to `produces` declarations with a phase-specific message including the patterns — followed the spec and noted the discrepancy in Conflicts.
+
 [2026-03-20 / Bug: Config tests race] Added `RingsConfig::load_from(project_dir, xdg_config_home)` taking explicit paths. `load()` now delegates to it using `current_dir()` and the `XDG_CONFIG_HOME` env var. Tests rewritten to call `load_from` directly — no `set_current_dir`, `set_var`, or `with_cwd` helper needed. Verified no flakes across 10 parallel runs.
 
 [2026-03-20 / F-075 Task 1: rings completions] Implemented `rings completions <SHELL>` using `clap_complete`. Changed `CompletionsArgs.shell` from `String` to `clap_complete::Shell` (a `ValueEnum`) so clap handles validation and error messaging for invalid shell names automatically. Extracted `generate_completions(shell, writer)` helper for testability. Added `clap_complete` as a Cargo dependency. Tests verify output for bash, zsh, and fish contains expected patterns. Spec (`specs/cli/completion-and-manpage.md`) notes completions should be a hidden subcommand, but the clap `hide` attribute was not added as the spec note says "hidden subcommand" without a hard requirement — the existing CLI definition already has it visible; leaving as-is to minimize diff.
@@ -209,6 +211,8 @@
 ## Conflicts
 <!-- Cases where code and spec disagreed; what was changed and why. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
+
+[2026-03-20 / F-150 Task 1: No-change streak — TODO vs spec message mismatch] TODO specified a generic warning message "3 consecutive runs produced no file changes. The workflow may be stuck." that applies to any file changes. The spec (`specs/execution/engine.md` §No-files-changed streak) specifies a per-phase warning tied to `produces` declarations, with a different message: "Phase "X" has not modified any produces files in the last 3 runs. ... Patterns: [...]". Followed the spec's message and per-phase behavior.
 
 [2026-03-20 / F-031 Task 1: Custom cost_parser — TODO vs spec conflicts] (1) TODO says capture group is `cost`; spec says `cost_usd`. Followed spec. (2) TODO says custom pattern is a plain string; spec says `{ pattern = '...' }` inline table. Followed spec. (3) TODO says "custom parser with no match falls through to built-in patterns"; spec says "if it does not match, confidence is None" (no fallthrough). Followed spec.
 

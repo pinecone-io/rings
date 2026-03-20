@@ -45,6 +45,7 @@ pub struct BudgetTracker {
     pub budget_warned_80_phase: HashMap<String, bool>,
     pub budget_warned_90_phase: HashMap<String, bool>,
     pub rolling_windows: HashMap<String, VecDeque<f64>>, // per-phase rolling window, cap 5
+    pub no_change_streaks: HashMap<String, u32>, // per-phase consecutive no-produces-change count
 }
 
 impl Default for BudgetTracker {
@@ -66,6 +67,7 @@ impl BudgetTracker {
             budget_warned_80_phase: HashMap::new(),
             budget_warned_90_phase: HashMap::new(),
             rolling_windows: HashMap::new(),
+            no_change_streaks: HashMap::new(),
         }
     }
 
@@ -1787,6 +1789,30 @@ pub fn run_workflow(
         } else {
             vec![]
         };
+
+        // No-files-changed streak detection: track consecutive runs where a phase
+        // with produces declared produced no matching file changes.
+        if workflow.manifest_enabled && !phase_produces.is_empty() {
+            // All patterns violated = no produces files changed this run.
+            let no_produces_change = produces_violations.len() == phase_produces.len();
+            let streak = ctx
+                .budget
+                .no_change_streaks
+                .entry(run_spec.phase_name.clone())
+                .or_insert(0);
+            if no_produces_change {
+                *streak += 1;
+            } else {
+                *streak = 0;
+            }
+            // Warn exactly once per streak, at count == 3.
+            if *streak == 3 && config.output_format == crate::cli::OutputFormat::Human {
+                eprintln!(
+                    "⚠  Phase \"{}\" has not modified any produces files in the last 3 runs.\n   The phase may be stalled or the produces patterns may be wrong.\n   Patterns: {:?}",
+                    run_spec.phase_name, phase_produces
+                );
+            }
+        }
 
         if config.output_format == crate::cli::OutputFormat::Jsonl {
             crate::events::emit_jsonl(&crate::events::RunEndEvent::new(

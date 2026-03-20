@@ -327,6 +327,23 @@ fn run_inner(
         );
     }
 
+    // Advisory check: sensitive files in context_dir
+    if output_format == cli::OutputFormat::Human && !args.no_sensitive_files_check {
+        let sensitive = scan_sensitive_files(&workflow.context_dir);
+        if !sensitive.is_empty() {
+            let listed: Vec<&str> = sensitive.iter().take(10).map(String::as_str).collect();
+            let mut file_list = listed.join(", ");
+            if sensitive.len() > 10 {
+                file_list.push_str(&format!(" ... and {} more", sensitive.len() - 10));
+            }
+            eprintln!(
+                "⚠  context_dir contains files that may contain credentials:\n   {}\n   \
+                 These files will be visible to the executor. Use --no-sensitive-files-check to suppress.",
+                file_list
+            );
+        }
+    }
+
     // Advisory check: completion signal in prompts
     if output_format == cli::OutputFormat::Human && !args.no_completion_check {
         let mut prompt_texts: Vec<String> = Vec::new();
@@ -1702,6 +1719,59 @@ fn context_dir_is_empty(path: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Scans the top-level of `path` (non-recursive) for files matching credential patterns.
+/// Returns a sorted list of matching filenames. Ignores entries that cannot be read.
+fn scan_sensitive_files(path: &str) -> Vec<String> {
+    // Exact names (case-sensitive)
+    const EXACT_NAMES: &[&str] = &[".env", ".env.local", ".env.production", ".npmrc", ".pypirc"];
+    // Extensions (case-insensitive)
+    const SENSITIVE_EXTENSIONS: &[&str] = &["key", "pem", "p12", "pfx", "jks", "keystore"];
+    // Substrings that flag a file (case-insensitive)
+    const SENSITIVE_SUBSTRINGS: &[&str] = &["credentials", "secret", "token"];
+
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return Vec::new();
+    };
+
+    let mut matches: Vec<String> = Vec::new();
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        // Check exact names
+        if EXACT_NAMES.contains(&name_str.as_ref()) {
+            matches.push(name_str.into_owned());
+            continue;
+        }
+
+        let lower = name_str.to_lowercase();
+
+        // Check extensions
+        if let Some(ext) = std::path::Path::new(&*name_str).extension() {
+            let ext_lower = ext.to_string_lossy().to_lowercase();
+            if SENSITIVE_EXTENSIONS.contains(&ext_lower.as_str()) {
+                matches.push(name_str.into_owned());
+                continue;
+            }
+        }
+
+        // Check substrings (case-insensitive)
+        if SENSITIVE_SUBSTRINGS.iter().any(|sub| lower.contains(sub)) {
+            matches.push(name_str.into_owned());
+        }
+    }
+
+    matches.sort();
+    matches
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1731,6 +1801,87 @@ mod tests {
         // The advisory check is guarded by `output_format == OutputFormat::Human`.
         // JSONL mode uses OutputFormat::Jsonl, which does not satisfy the guard.
         assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
+
+    // --- sensitive files advisory check tests ---
+
+    #[test]
+    fn sensitive_files_env_file_triggers_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".env"), "SECRET=abc").unwrap();
+        let matches = scan_sensitive_files(tmp.path().to_str().unwrap());
+        assert!(
+            matches.contains(&".env".to_string()),
+            "expected .env to be flagged, got: {:?}",
+            matches
+        );
+    }
+
+    #[test]
+    fn sensitive_files_key_extension_triggers_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("server.key"), "private-key-data").unwrap();
+        let matches = scan_sensitive_files(tmp.path().to_str().unwrap());
+        assert!(
+            matches.contains(&"server.key".to_string()),
+            "expected server.key to be flagged, got: {:?}",
+            matches
+        );
+    }
+
+    #[test]
+    fn sensitive_files_pem_extension_triggers_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("cert.pem"), "-----BEGIN CERTIFICATE-----").unwrap();
+        let matches = scan_sensitive_files(tmp.path().to_str().unwrap());
+        assert!(matches.contains(&"cert.pem".to_string()));
+    }
+
+    #[test]
+    fn sensitive_files_credentials_substring_triggers_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("credentials.json"), "{}").unwrap();
+        let matches = scan_sensitive_files(tmp.path().to_str().unwrap());
+        assert!(
+            matches.contains(&"credentials.json".to_string()),
+            "expected credentials.json to be flagged"
+        );
+    }
+
+    #[test]
+    fn sensitive_files_no_sensitive_files_returns_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("main.rs"), "fn main() {}").unwrap();
+        std::fs::write(tmp.path().join("README.md"), "# Readme").unwrap();
+        let matches = scan_sensitive_files(tmp.path().to_str().unwrap());
+        assert!(
+            matches.is_empty(),
+            "expected no matches, got: {:?}",
+            matches
+        );
+    }
+
+    #[test]
+    fn sensitive_files_jsonl_mode_suppressed_by_format_guard() {
+        // The advisory check is guarded by `output_format == OutputFormat::Human`.
+        // JSONL mode uses OutputFormat::Jsonl, which does not satisfy the guard.
+        assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
+
+    #[test]
+    fn sensitive_files_case_insensitive_substring_matching() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("MySecret.txt"), "data").unwrap();
+        std::fs::write(tmp.path().join("API_TOKEN.json"), "data").unwrap();
+        let matches = scan_sensitive_files(tmp.path().to_str().unwrap());
+        assert!(
+            matches.contains(&"MySecret.txt".to_string()),
+            "expected MySecret.txt (case-insensitive 'secret') to be flagged"
+        );
+        assert!(
+            matches.contains(&"API_TOKEN.json".to_string()),
+            "expected API_TOKEN.json (case-insensitive 'token') to be flagged"
+        );
     }
 
     #[test]

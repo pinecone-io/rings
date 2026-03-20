@@ -166,6 +166,10 @@ pub struct RunArgs {
     /// halt execution, save state, and exit with code 2. Default: off.
     #[arg(long)]
     pub strict_parsing: bool,
+
+    /// Skip the startup warning if context_dir contains files matching credential patterns
+    #[arg(long)]
+    pub no_sensitive_files_check: bool,
 }
 
 #[derive(Args, Debug)]

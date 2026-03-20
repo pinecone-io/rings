@@ -23,30 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-144: Empty Context Directory Warning
-
-**Spec:** `specs/execution/engine.md` (Advisory Checks table)
-
-**Summary:** Warn at startup if `context_dir` contains zero files, since the executor will see nothing. This catches pointing at the wrong directory before spending money.
-
-### Task 1: Add empty context_dir check
-
-**Files:** `src/main.rs` (or `src/engine.rs`, wherever startup advisory checks run)
-
-**Steps:**
-- [x] After validating `context_dir` exists (F-143, already done), count entries via `std::fs::read_dir` — if 0 entries (excluding `.` and `..`), print warning
-- [x] Warning text: `⚠  context_dir ("{path}") contains no files.\n   The executor will start with an empty working directory.\n   If this is intentional (the executor will create files from scratch), ignore this warning.`
-- [x] Only warn in human output mode (suppress in JSONL mode — no advisory warnings on stdout)
-- [x] Do not block execution — this is advisory only
-
-**Tests:**
-- [x] Empty context_dir triggers warning on stderr
-- [x] Non-empty context_dir produces no warning
-- [x] JSONL mode suppresses the warning
-- [x] `just validate` clean
-
----
-
 ## F-145: Sensitive Files Warning
 
 **Spec:** `specs/execution/engine.md` (Advisory Checks table)
@@ -58,22 +34,22 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or `src/engine.rs`)
 
 **Steps:**
-- [ ] After context_dir validation, scan the top-level directory (non-recursive) for files matching credential patterns:
+- [x] After context_dir validation, scan the top-level directory (non-recursive) for files matching credential patterns:
   - Exact names: `.env`, `.env.local`, `.env.production`, `.npmrc`, `.pypirc`
   - Extensions: `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
   - Patterns: `*credentials*`, `*secret*`, `*token*` (case-insensitive)
-- [ ] If any matches found, print warning listing the matched filenames (max 10, then "... and N more")
-- [ ] Warning text: `⚠  context_dir contains files that may contain credentials:\n   .env, server.key, credentials.json\n   These files will be visible to the executor. Use --no-sensitive-files-check to suppress.`
-- [ ] Check the `--no-sensitive-files-check` flag — if set, skip this check entirely
-- [ ] Only warn in human output mode
+- [x] If any matches found, print warning listing the matched filenames (max 10, then "... and N more")
+- [x] Warning text: `⚠  context_dir contains files that may contain credentials:\n   .env, server.key, credentials.json\n   These files will be visible to the executor. Use --no-sensitive-files-check to suppress.`
+- [x] Check the `--no-sensitive-files-check` flag — if set, skip this check entirely
+- [x] Only warn in human output mode
 
 **Tests:**
-- [ ] Directory with `.env` triggers warning
-- [ ] Directory with `server.key` triggers warning
-- [ ] Directory with no sensitive files produces no warning
-- [ ] `--no-sensitive-files-check` suppresses the warning
-- [ ] JSONL mode suppresses the warning
-- [ ] `just validate` clean
+- [x] Directory with `.env` triggers warning
+- [x] Directory with `server.key` triggers warning
+- [x] Directory with no sensitive files produces no warning
+- [x] `--no-sensitive-files-check` suppresses the warning
+- [x] JSONL mode suppresses the warning
+- [x] `just validate` clean
 
 ---
 
@@ -82,13 +58,13 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cli.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Add `--no-sensitive-files-check` flag to `RunArgs`: `pub no_sensitive_files_check: bool`
-- [ ] Pass it through to the advisory checks section and skip the sensitive files scan when set
+- [x] Add `--no-sensitive-files-check` flag to `RunArgs`: `pub no_sensitive_files_check: bool`
+- [x] Pass it through to the advisory checks section and skip the sensitive files scan when set
 
 **Tests:**
-- [ ] `rings run --no-sensitive-files-check workflow.toml` parses correctly
-- [ ] Flag suppresses the sensitive files warning
-- [ ] `just validate` clean
+- [x] `rings run --no-sensitive-files-check workflow.toml` parses correctly
+- [x] Flag suppresses the sensitive files warning
+- [x] `just validate` clean
 
 ---
 

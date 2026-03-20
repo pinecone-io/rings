@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / F-145 Task 1 + Task 2: Sensitive files advisory check] Implemented `scan_sensitive_files(path: &str) -> Vec<String>` in `src/main.rs` (non-recursive top-level scan). Matching uses exact names, extension check, and case-insensitive substring check. The `--no-sensitive-files-check` flag was added to `RunArgs` (Task 2) in the same commit since Task 1 depends on it. The JSONL suppression test follows the same pattern as the empty context_dir check — verifying the `OutputFormat::Jsonl != OutputFormat::Human` guard rather than capturing stderr.
+
 [2026-03-20 / F-144 Task 1: Add empty context_dir check] Advisory check added in `run_inner()` in `src/main.rs` after the budget cap check. Logic extracted into `context_dir_is_empty(path: &str) -> bool` for testability. stderr capture is not available in this codebase's test suite, so the "JSONL mode suppresses warning" test verifies the `OutputFormat::Jsonl != OutputFormat::Human` guard rather than capturing stderr output. The warning fires only in human output mode and does not block execution.
 
 [2026-03-20 / Bug: Executor Output Reader Drops Data After Non-UTF8 Line] Replaced `reader.lines().map_while(Result::ok)` with a `read_until`-based loop using `String::from_utf8_lossy` for both stdout and stderr reader threads. The task spec suggested `filter_map(Result::ok)`, but clippy rejects this (`lines_filter_map_ok`) because I/O errors on `Lines` can repeat infinitely. The `read_until` approach correctly handles invalid UTF-8 (via lossy conversion), stops on EOF (Ok(0)), and breaks on I/O errors, matching the intended semantics without the infinite-loop risk.

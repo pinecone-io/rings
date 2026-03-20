@@ -614,6 +614,92 @@ pub fn print_completion(
     );
 }
 
+/// Format the cancellation summary as a string (for testing).
+#[allow(clippy::too_many_arguments)]
+fn format_cancellation(
+    run_id: &str,
+    cycle: u32,
+    phase_name: &str,
+    total_cost_usd: f64,
+    total_runs: u32,
+    phase_costs: &[(String, f64, u32)],
+    resume_commands: &[String],
+    output_dir: &str,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
+) -> String {
+    let marker = style::error("✗");
+    let label_interrupted = style::bold("Interrupted");
+    let lw = 10usize;
+
+    let mut lines = vec![
+        String::new(),
+        format!("{}  {}", marker, label_interrupted),
+        String::new(),
+        format!(
+            "   {}  {}",
+            style::dim(&format!("{:<lw$}", "Run ID")),
+            style::muted(run_id)
+        ),
+        format!(
+            "   {}  cycle {}, {} ({} runs)",
+            style::dim(&format!("{:<lw$}", "Progress")),
+            cycle,
+            phase_name,
+            total_runs,
+        ),
+        format!(
+            "   {}  {}",
+            style::dim(&format!("{:<lw$}", "Cost")),
+            style::accent(&format!("${:.2}", total_cost_usd))
+        ),
+    ];
+
+    if total_input_tokens > 0 || total_output_tokens > 0 {
+        let token_text = format!(
+            "{} input · {} output",
+            format_number_with_commas(total_input_tokens),
+            format_number_with_commas(total_output_tokens)
+        );
+        lines.push(format!(
+            "   {}  {}",
+            style::dim(&format!("{:<lw$}", "Tokens")),
+            style::dim(&token_text)
+        ));
+    }
+
+    if !phase_costs.is_empty() {
+        lines.push(String::new());
+        for line in render_bar_chart(phase_costs, 20) {
+            lines.push(line);
+        }
+    }
+
+    lines.push(String::new());
+    lines.push("   To resume:".to_string());
+    lines.push(format!(
+        "     {}",
+        style::bold(&style::accent(&format!("rings resume {run_id}")))
+    ));
+
+    if !resume_commands.is_empty() {
+        lines.push(String::new());
+        lines.push("   Partial sessions:".to_string());
+        for cmd in resume_commands {
+            lines.push(format!("     {}", style::muted(cmd)));
+        }
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "   {}  {}",
+        style::dim(&format!("{:<lw$}", "Audit logs")),
+        style::muted(&format!("{}/", output_dir))
+    ));
+
+    lines.join("\n")
+}
+
 /// Print the cancellation summary.
 #[allow(clippy::too_many_arguments)]
 pub fn print_cancellation(
@@ -628,71 +714,20 @@ pub fn print_cancellation(
     total_input_tokens: u64,
     total_output_tokens: u64,
 ) {
-    let marker = style::error("✗");
-    let label_interrupted = style::bold("Interrupted");
-    let lw = 10usize;
-
-    eprintln!();
-    eprintln!("{}  {}", marker, label_interrupted);
-    eprintln!();
     eprintln!(
-        "   {}  {}",
-        style::dim(&format!("{:<lw$}", "Run ID")),
-        style::muted(run_id)
-    );
-    eprintln!(
-        "   {}  cycle {}, {} ({} runs)",
-        style::dim(&format!("{:<lw$}", "Progress")),
-        cycle,
-        phase_name,
-        total_runs,
-    );
-    eprintln!(
-        "   {}  {}",
-        style::dim(&format!("{:<lw$}", "Cost")),
-        style::accent(&format!("${:.2}", total_cost_usd))
-    );
-
-    if total_input_tokens > 0 || total_output_tokens > 0 {
-        let token_text = format!(
-            "{} input · {} output",
-            format_number_with_commas(total_input_tokens),
-            format_number_with_commas(total_output_tokens)
-        );
-        eprintln!(
-            "   {}  {}",
-            style::dim(&format!("{:<lw$}", "Tokens")),
-            style::dim(&token_text)
-        );
-    }
-
-    if !phase_costs.is_empty() {
-        eprintln!();
-        for line in render_bar_chart(phase_costs, 20) {
-            eprintln!("{line}");
-        }
-    }
-
-    eprintln!();
-    eprintln!("   To resume:");
-    eprintln!(
-        "     {}",
-        style::bold(&style::accent(&format!("rings resume {run_id}")))
-    );
-
-    if !resume_commands.is_empty() {
-        eprintln!();
-        eprintln!("   Partial sessions:");
-        for cmd in resume_commands {
-            eprintln!("     {}", style::muted(cmd));
-        }
-    }
-
-    eprintln!();
-    eprintln!(
-        "   {}  {}",
-        style::dim(&format!("{:<lw$}", "Audit logs")),
-        style::muted(&format!("{}/", output_dir))
+        "{}",
+        format_cancellation(
+            run_id,
+            cycle,
+            phase_name,
+            total_cost_usd,
+            total_runs,
+            phase_costs,
+            resume_commands,
+            output_dir,
+            total_input_tokens,
+            total_output_tokens,
+        )
     );
 }
 
@@ -1708,6 +1743,91 @@ mod tests {
         // The snippet in the output should be exactly 100 x's
         let expected_snippet = format!("\"{}\"", "x".repeat(100));
         assert!(s.contains(&expected_snippet), "snippet not truncated: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_summary_includes_bar_chart_with_phases() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let phase_costs = vec![
+            ("builder".to_string(), 0.80, 8u32),
+            ("reviewer".to_string(), 0.20, 2u32),
+        ];
+        let s = format_completion(
+            1,
+            10,
+            "builder",
+            1.00,
+            10,
+            300,
+            "/tmp/run",
+            &phase_costs,
+            None,
+            0,
+            0,
+        );
+        assert!(
+            s.contains('█'),
+            "completion summary missing bar chart blocks: {s}"
+        );
+        assert!(s.contains("builder"), "missing phase name builder: {s}");
+        assert!(s.contains("reviewer"), "missing phase name reviewer: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn cancellation_summary_includes_bar_chart_with_phases() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let phase_costs = vec![
+            ("builder".to_string(), 0.70, 7u32),
+            ("reviewer".to_string(), 0.30, 3u32),
+        ];
+        let s = format_cancellation(
+            "run-abc-123",
+            2,
+            "builder",
+            1.00,
+            10,
+            &phase_costs,
+            &[],
+            "/tmp/run",
+            0,
+            0,
+        );
+        assert!(
+            s.contains('█'),
+            "cancellation summary missing bar chart blocks: {s}"
+        );
+        assert!(s.contains("builder"), "missing phase name builder: {s}");
+        assert!(s.contains("reviewer"), "missing phase name reviewer: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn bar_chart_five_phases_renders_all_lines() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let items = vec![
+            ("alpha".to_string(), 0.30, 3u32),
+            ("beta".to_string(), 0.25, 2u32),
+            ("gamma".to_string(), 0.20, 2u32),
+            ("delta".to_string(), 0.15, 1u32),
+            ("epsilon".to_string(), 0.10, 1u32),
+        ];
+        let lines = render_bar_chart(&items, 20);
+        assert_eq!(lines.len(), 5, "expected 5 lines for 5 phases");
+        assert!(lines[0].contains("alpha"), "missing alpha: {}", lines[0]);
+        assert!(
+            lines[4].contains("epsilon"),
+            "missing epsilon: {}",
+            lines[4]
+        );
+        // All lines should contain bar characters
+        for line in &lines {
+            assert!(line.contains('█'), "missing bar in: {line}");
+        }
         crate::style::set_color_enabled();
     }
 }

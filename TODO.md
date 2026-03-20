@@ -23,32 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-183: ANSI Color System
-
-**Spec:** `specs/observability/runtime-output.md` (Visual Enhancement section)
-
-**Summary:** Use a semantic color palette (green success, red errors, cyan costs, dim chrome) gated behind NO_COLOR env var and TTY detection. The `style.rs` module already exists with color helpers — verify it's complete and consistent.
-
-### Task 1: Verify and complete color system
-
-**Files:** `src/style.rs`
-
-**Steps:**
-- [x] Verify the semantic color functions exist: `success()`, `error()`, `warn()`, `accent()`, `dim()`, `muted()`, `bold()`
-- [x] Verify NO_COLOR environment variable disables all ANSI codes
-- [x] Verify non-TTY stderr disables colors
-- [x] Verify `--no-color` CLI flag disables colors
-- [x] If all above are working, mark as COMPLETE after verification
-
-**Tests:**
-- [x] `NO_COLOR=1` environment variable disables all ANSI escapes
-- [x] Non-TTY output contains no ANSI escapes
-- [x] `--no-color` flag disables colors
-- [x] Colors are applied correctly in TTY mode
-- [x] `just validate` clean
-
----
-
 ## F-184: Phase Cost Bar Chart
 
 **Spec:** `specs/observability/runtime-output.md`
@@ -60,16 +34,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/display.rs`
 
 **Steps:**
-- [ ] Verify `render_bar_chart` is called in `print_completion`
-- [ ] Verify `render_bar_chart` is called in `print_cancellation`
-- [ ] Verify the bar chart renders correctly with 1 phase, 2 phases, and 5+ phases
-- [ ] If already working in all paths, mark as COMPLETE
+- [x] Verify `render_bar_chart` is called in `print_completion`
+- [x] Verify `render_bar_chart` is called in `print_cancellation`
+- [x] Verify the bar chart renders correctly with 1 phase, 2 phases, and 5+ phases
+- [x] If already working in all paths, mark as COMPLETE
 
 **Tests:**
-- [ ] Completion summary includes phase bar chart
-- [ ] Cancellation summary includes phase bar chart
-- [ ] Single-phase workflow shows full bar
-- [ ] `just validate` clean
+- [x] Completion summary includes phase bar chart
+- [x] Cancellation summary includes phase bar chart
+- [x] Single-phase workflow shows full bar
+- [x] `just validate` clean
 
 ---
 
@@ -117,6 +91,99 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] Status line shows `18.2k in · 4.1k out` when tokens are non-zero
 - [ ] Status line omits token segment when both are zero
 - [ ] Completion summary includes token totals
+- [ ] `just validate` clean
+
+---
+
+## F-191: Model Name Display
+
+**Spec:** `specs/observability/runtime-output.md`
+
+**Summary:** The startup header shows the detected model name or "(default)" so the user always knows which model is being used. The `RunHeaderParams.model` field already exists — verify it's populated correctly.
+
+### Task 1: Verify model name detection and display
+
+**Files:** `src/display.rs`, `src/main.rs`, `src/workflow.rs`
+
+**Steps:**
+- [ ] Verify `Workflow::detect_model_name()` extracts the model from executor args (scans for `--model` flag)
+- [ ] Verify the startup header displays the model name when detected
+- [ ] Verify "(default)" is shown when no model flag is found
+- [ ] If already working, mark as COMPLETE
+
+**Tests:**
+- [ ] Workflow with `args = ["--model", "claude-sonnet-4-6"]` shows "sonnet" or full model name in header
+- [ ] Workflow with no `--model` flag shows "(default)"
+- [ ] `just validate` clean
+
+---
+
+## F-186: Styled Startup Header
+
+**Spec:** `specs/observability/runtime-output.md`
+
+**Summary:** The startup header shows workflow details in a clean, labeled layout with semantic coloring. The `print_run_header` function already exists — verify it uses the color system consistently.
+
+### Task 1: Verify styled header
+
+**Files:** `src/display.rs`
+
+**Steps:**
+- [ ] Verify the startup header uses `style::dim` for labels, `style::bold` for the version line, `style::accent` for budget
+- [ ] Verify the header includes: Workflow, Context, Phases, Model, Max, Budget (if set), Output
+- [ ] Verify `--no-color` and `NO_COLOR` disable all styling
+- [ ] If already working, mark as COMPLETE
+
+**Tests:**
+- [ ] Header contains all expected labels and values
+- [ ] `NO_COLOR=1` produces plain text header with no ANSI
+- [ ] `just validate` clean
+
+---
+
+## F-188: Styled List Table
+
+**Spec:** `specs/observability/runtime-output.md`
+
+**Summary:** `rings list` output uses color-coded status, bold headers, and accent cost figures.
+
+### Task 1: Verify styled list output
+
+**Files:** `src/main.rs` (list display section)
+
+**Steps:**
+- [ ] Verify `rings list` headers use `style::bold`
+- [ ] Verify status values are color-coded: green for completed, red for failed, yellow for canceled/running
+- [ ] Verify cost figures use `style::accent`
+- [ ] If already working, mark as COMPLETE
+
+**Tests:**
+- [ ] List output with color enabled shows styled headers and status
+- [ ] `NO_COLOR=1` produces plain text list
+- [ ] `just validate` clean
+
+---
+
+## F-193/F-194/F-195: Context Dir Tracking and List Filtering
+
+**Spec:** `specs/cli/commands-and-flags.md` (rings list section)
+
+**Summary:** Store `context_dir` in `run.toml` metadata, add DIR column to `rings list`, and add `--dir` filter flag. Specs and inventory already updated — check if implementation was completed.
+
+### Task 1: Verify context_dir in list display
+
+**Files:** `src/state.rs`, `src/list.rs`, `src/main.rs`
+
+**Steps:**
+- [ ] Verify `RunMeta.context_dir` field exists and is populated on run start
+- [ ] Verify `rings list` displays a DIR column
+- [ ] Verify `--dir` filter works as substring match on context_dir
+- [ ] If already working, mark as COMPLETE
+
+**Tests:**
+- [ ] `rings list` output includes DIR column
+- [ ] `--dir /my/project` filters correctly
+- [ ] JSONL output includes `context_dir` field
 - [ ] `just validate` clean
 
 ---

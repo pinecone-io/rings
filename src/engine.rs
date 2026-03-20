@@ -360,6 +360,31 @@ pub struct EngineConfig {
     pub no_contract_check: bool,
     pub output_format: crate::cli::OutputFormat,
     pub strict_parsing: bool,
+    /// Pause after every run for interactive inspection.
+    pub step: bool,
+    /// Pause only at cycle boundaries.
+    pub step_cycles: bool,
+    /// Injected reader for step prompts (used in tests; overrides stdin).
+    pub step_reader: Option<std::sync::Mutex<Box<dyn std::io::BufRead + Send>>>,
+}
+
+impl Default for EngineConfig {
+    fn default() -> Self {
+        Self {
+            output_dir: PathBuf::new(),
+            verbose: false,
+            run_id: String::new(),
+            workflow_file: String::new(),
+            ancestry_continuation_of: None,
+            ancestry_depth: 0,
+            no_contract_check: false,
+            output_format: crate::cli::OutputFormat::Human,
+            strict_parsing: false,
+            step: false,
+            step_cycles: false,
+            step_reader: None,
+        }
+    }
 }
 
 pub struct EngineResult {
@@ -550,6 +575,63 @@ pub fn interruptible_sleep(
         }
     }
     SleepResult::Completed
+}
+
+/// Action returned by the step-through pause prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StepAction {
+    Continue,
+    SkipCycle,
+    Quit,
+}
+
+/// Prompt the user for step-through input and return their chosen action.
+fn step_pause(
+    config: &EngineConfig,
+    run_spec: &RunSpec,
+    run_cost_usd: Option<f64>,
+    cumulative_cost: f64,
+    signal_detected: bool,
+) -> StepAction {
+    use std::io::BufRead;
+    eprintln!(
+        "\n── Step pause  run {}  cycle {}  phase {} ──",
+        run_spec.global_run_number, run_spec.cycle, run_spec.phase_name
+    );
+    eprintln!("  Run cost:        ${:.4}", run_cost_usd.unwrap_or(0.0));
+    eprintln!("  Cumulative cost: ${:.4}", cumulative_cost);
+    eprintln!(
+        "  Completion signal: {}",
+        if signal_detected {
+            "detected"
+        } else {
+            "not detected"
+        }
+    );
+    eprint!("[c]ontinue, [s]kip cycle, [q]uit > ");
+
+    let mut line = String::new();
+    let read_result = if let Some(ref reader_mutex) = config.step_reader {
+        let mut reader = reader_mutex.lock().unwrap_or_else(|e| e.into_inner());
+        reader.read_line(&mut line)
+    } else {
+        let stdin = std::io::stdin();
+        let mut stdin_lock = stdin.lock();
+        stdin_lock.read_line(&mut line)
+    };
+
+    if read_result.is_err() || line.is_empty() {
+        // On EOF or error, default to continue.
+        eprintln!();
+        return StepAction::Continue;
+    }
+    eprintln!();
+
+    match line.trim_start().chars().next() {
+        Some('s') | Some('S') => StepAction::SkipCycle,
+        Some('q') | Some('Q') => StepAction::Quit,
+        _ => StepAction::Continue,
+    }
 }
 
 /// Run a workflow to completion (or until max_cycles, error, or cancellation).
@@ -2062,6 +2144,68 @@ pub fn run_workflow(
         if let Some(ref cs) = workflow.continue_signal {
             if output_contains_signal(&response_text, cs) {
                 schedule.skip_to_next_cycle(run_spec.cycle);
+            }
+        }
+
+        // Step-through pause (--step / --step-cycles).
+        // Condition: TTY or injected reader must be available; --step fires after every run,
+        // --step-cycles fires only at cycle boundaries (last phase, last iteration).
+        let is_cycle_end = run_spec.phase_index == workflow.phases.len().saturating_sub(1)
+            && run_spec.phase_iteration == run_spec.phase_total_iterations;
+        let step_active = (config.step || (config.step_cycles && is_cycle_end))
+            && (config.step_reader.is_some() || crate::display::is_stderr_tty());
+
+        if step_active {
+            match step_pause(
+                config,
+                &run_spec,
+                cost.cost_usd,
+                ctx.budget.cumulative_cost,
+                false, // signal not detected here; a detected signal exits before this point
+            ) {
+                StepAction::Continue => {}
+                StepAction::SkipCycle => {
+                    schedule.skip_to_next_cycle(run_spec.cycle);
+                    // Skip the inter-run delay when user explicitly skips.
+                    continue;
+                }
+                StepAction::Quit => {
+                    // Treat as user-initiated cancellation: save state and exit 130.
+                    if config.output_format == crate::cli::OutputFormat::Human
+                        && ctx.current_display_cycle > 0
+                    {
+                        crate::display::print_cycle_cost(cycle_cost);
+                    }
+                    let mut state =
+                        make_state_snapshot(&ctx, config, &run_spec, ExitReason::Canceled);
+                    state.claude_resume_commands = resume_commands.clone();
+                    state.write_atomic(&state_path)?;
+                    if config.output_format == crate::cli::OutputFormat::Jsonl {
+                        crate::events::emit_jsonl(&crate::events::CanceledEvent::new(
+                            &config.run_id,
+                            ctx.total_runs as u64,
+                            ctx.budget.cumulative_cost,
+                        ));
+                    }
+                    emit_summary_if_jsonl(
+                        config,
+                        &ctx,
+                        &workflow.phases,
+                        "canceled",
+                        workflow_start,
+                    );
+                    return Ok(EngineResult {
+                        exit_code: 130,
+                        completed_cycles: ctx.last_cycle,
+                        total_cost_usd: ctx.budget.cumulative_cost,
+                        total_runs: ctx.total_runs,
+                        total_input_tokens: ctx.budget.cumulative_input_tokens,
+                        total_output_tokens: ctx.budget.cumulative_output_tokens,
+                        parse_warnings: ctx.parse_warnings,
+                        failure_reason: None,
+                        phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
+                    });
+                }
             }
         }
 

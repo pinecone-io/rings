@@ -495,6 +495,9 @@ fn run_inner(
         no_contract_check: args.no_contract_check,
         output_format,
         strict_parsing: args.strict_parsing,
+        step: args.step,
+        step_cycles: args.step_cycles,
+        step_reader: None,
     };
 
     let run_start = std::time::Instant::now();
@@ -886,6 +889,9 @@ fn resume_inner(
         no_contract_check: args.no_contract_check,
         output_format,
         strict_parsing: false,
+        step: false,
+        step_cycles: false,
+        step_reader: None,
     };
 
     let resume_point = Some(ResumePoint {

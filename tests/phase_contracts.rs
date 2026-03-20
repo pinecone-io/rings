@@ -230,6 +230,7 @@ fn engine_produces_violations_populated_when_no_match() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -287,6 +288,7 @@ fn engine_produces_violations_empty_when_matched() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -336,6 +338,7 @@ fn engine_produces_required_exits_two_when_no_match() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -382,6 +385,7 @@ fn engine_produces_required_false_advisory_continues() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -417,6 +421,7 @@ fn engine_manifest_disabled_skips_produces_check() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -463,6 +468,7 @@ fn engine_no_contract_check_suppresses_produces() {
         no_contract_check: true, // suppress all contract checks
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -518,6 +524,7 @@ fn engine_no_completion_check_does_not_suppress_contract_warnings() {
         no_contract_check: false, // --no-completion-check does NOT set this
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();

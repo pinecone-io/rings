@@ -60,6 +60,7 @@ fn make_config(dir: &tempfile::TempDir) -> EngineConfig {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     }
 }
 

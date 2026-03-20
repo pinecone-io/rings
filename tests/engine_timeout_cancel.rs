@@ -97,6 +97,7 @@ fn sigterm_called_on_cancellation() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let workflow_str = r#"
@@ -238,6 +239,7 @@ fn double_ctrl_c_sends_sigkill_before_grace_period_expires() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let workflow_str = r#"
@@ -360,6 +362,7 @@ fn single_ctrl_c_waits_up_to_grace_period_without_second_signal() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let workflow_str = r#"
@@ -449,6 +452,7 @@ fn quota_retry_succeeds_with_active_timeout() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     // Workflow with quota_backoff enabled (0 delay so test is fast),
@@ -506,6 +510,7 @@ fn quota_retry_succeeds_without_timeout() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let workflow_str = r#"
@@ -557,6 +562,7 @@ fn timeout_fires_correctly_without_retry() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     // 1-second timeout; the mock executor stays alive for 20 seconds (200 × 100ms).

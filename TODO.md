@@ -34,25 +34,25 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`, `src/display.rs`
 
 **Steps:**
-- [ ] Add `step: bool` and `step_cycles: bool` fields to `EngineConfig`
-- [ ] Pass `args.step` and `args.step_cycles` through from `run_inner` in `main.rs`
-- [ ] After each completed run (after cost parsing, before next run): if `step` is true and stderr is a TTY:
+- [x] Add `step: bool` and `step_cycles: bool` fields to `EngineConfig`
+- [x] Pass `args.step` and `args.step_cycles` through from `run_inner` in `main.rs`
+- [x] After each completed run (after cost parsing, before next run): if `step` is true and stderr is a TTY:
   1. Print step summary: cost of this run, cumulative cost, whether completion signal was detected
   2. Prompt: `[c]ontinue, [s]kip cycle, [q]uit > `
   3. Read a single character from stdin
   4. `c` or Enter: continue to next run
   5. `s`: skip remaining runs in this cycle, advance to next cycle
   6. `q`: trigger normal cancellation flow (save state, print resume command)
-- [ ] For `step_cycles`: same logic but only prompt at cycle boundaries (after all phases in a cycle complete), not after every run
-- [ ] Non-TTY: `--step` and `--step-cycles` are silently ignored (no pausing)
-- [ ] Already have: `--step` + `--output-format jsonl` conflict check (exits 2)
+- [x] For `step_cycles`: same logic but only prompt at cycle boundaries (after all phases in a cycle complete), not after every run
+- [x] Non-TTY: `--step` and `--step-cycles` are silently ignored (no pausing)
+- [x] Already have: `--step` + `--output-format jsonl` conflict check (exits 2)
 
 **Tests:**
-- [ ] `--step` with mock stdin `c\nc\nq\n`: runs 2 runs then quits with cancellation
-- [ ] `--step` with mock stdin `s\n`: skips remaining runs in cycle
-- [ ] `--step-cycles` only pauses at cycle boundaries, not between runs within a cycle
-- [ ] Non-TTY mode: `--step` runs without pausing
-- [ ] Step summary shows cost and completion signal status
-- [ ] `just validate` clean
+- [x] `--step` with mock stdin `c\nc\nq\n`: runs 2 runs then quits with cancellation
+- [x] `--step` with mock stdin `s\n`: skips remaining runs in cycle
+- [x] `--step-cycles` only pauses at cycle boundaries, not between runs within a cycle
+- [x] Non-TTY mode: `--step` runs without pausing
+- [x] Step summary shows cost and completion signal status
+- [x] `just validate` clean
 
 ---

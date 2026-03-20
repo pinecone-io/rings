@@ -61,6 +61,7 @@ fn make_jsonl_config(dir: &std::path::Path) -> EngineConfig {
         no_contract_check: false,
         output_format: OutputFormat::Jsonl,
         strict_parsing: false,
+        ..Default::default()
     }
 }
 

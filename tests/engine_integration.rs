@@ -78,6 +78,7 @@ fn engine_exits_zero_on_completion_signal() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -107,6 +108,7 @@ fn engine_exits_one_when_max_cycles_reached() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -131,6 +133,7 @@ fn engine_writes_run_logs() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -162,6 +165,7 @@ fn engine_writes_costs_jsonl() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -190,6 +194,7 @@ fn engine_classifies_nonzero_exit_as_error() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -222,6 +227,7 @@ fn engine_saves_state_and_exits_130_on_cancel() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     // Signal cancellation immediately (test simplicity)
@@ -337,6 +343,7 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -419,6 +426,7 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -485,6 +493,7 @@ fn line_mode_completion_requires_signal_on_own_line() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -521,6 +530,7 @@ fn engine_classifies_quota_error() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -561,6 +571,7 @@ fn engine_classifies_auth_error() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -599,6 +610,7 @@ fn engine_classifies_unknown_error() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -636,6 +648,7 @@ fn engine_saves_failure_reason_in_state() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -672,6 +685,7 @@ fn engine_jsonl_mode_runs_correctly() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Jsonl,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -701,6 +715,7 @@ fn engine_human_mode_runs_correctly() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -736,6 +751,7 @@ fn engine_jsonl_mode_max_cycles() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Jsonl,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -769,6 +785,7 @@ fn strict_parsing_full_confidence_continues() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: true,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -796,6 +813,7 @@ fn strict_parsing_partial_confidence_continues() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: true,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -823,6 +841,7 @@ fn strict_parsing_low_confidence_halts() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: true,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -859,6 +878,7 @@ fn strict_parsing_none_confidence_halts() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: true,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -895,6 +915,7 @@ fn without_strict_parsing_low_confidence_continues() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -937,6 +958,7 @@ fn cost_entry_written_after_each_successful_run() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
@@ -1009,6 +1031,7 @@ fn resume_deduplicates_duplicate_cost_entries() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, Some(resume_point), None).unwrap();
@@ -1069,6 +1092,7 @@ fn resume_with_clean_costs_jsonl_accumulates_correctly() {
         no_contract_check: false,
         output_format: rings::cli::OutputFormat::Human,
         strict_parsing: false,
+        ..Default::default()
     };
 
     let result = run_workflow(&workflow, &executor, &config, Some(resume_point), None).unwrap();
@@ -1080,4 +1104,176 @@ fn resume_with_clean_costs_jsonl_accumulates_correctly() {
         expected,
         result.total_cost_usd
     );
+}
+
+// ── Step-through tests ────────────────────────────────────────────────────────
+
+fn make_step_reader(input: &str) -> std::sync::Mutex<Box<dyn std::io::BufRead + Send>> {
+    let cursor = std::io::Cursor::new(input.as_bytes().to_vec());
+    std::sync::Mutex::new(Box::new(cursor))
+}
+
+/// --step with mock stdin "c\nc\nq\n": runs 3 runs then quits (exit 130).
+/// (c after run 1, c after run 2, q after run 3 → cancellation)
+#[test]
+fn step_continue_continue_quit_exits_130() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 10);
+    // Provide enough outputs; the 4th would never be reached.
+    let executor = MockExecutor::new(
+        (0..5)
+            .map(|_| ExecutorOutput {
+                combined: "no signal".to_string(),
+                exit_code: 0,
+            })
+            .collect(),
+    );
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        run_id: "test-step-ccq".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        step: true,
+        step_reader: Some(make_step_reader("c\nc\nq\n")),
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 130, "expected cancellation exit code");
+    assert_eq!(result.total_runs, 3, "expected 3 runs before quit");
+}
+
+/// --step with mock stdin "s\n": after first run in cycle, skips remaining
+/// iterations of that cycle and advances to next cycle.
+#[test]
+fn step_skip_cycle_skips_remaining_iterations() {
+    let dir = tempdir().unwrap();
+    // Phase has 3 iterations per cycle, 2 cycles max.
+    let workflow = make_workflow("DONE", &[("builder", 3)], 2);
+    // After 's' skips cycle 1 after run 1, cycle 2 runs all 3.
+    // step_reader has "s\n" for run 1, then EOF (defaults to continue) for remaining.
+    let executor = MockExecutor::new(
+        (0..4)
+            .map(|_| ExecutorOutput {
+                combined: "no signal".to_string(),
+                exit_code: 0,
+            })
+            .collect(),
+    );
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        run_id: "test-step-skip".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        step: true,
+        step_reader: Some(make_step_reader("s\n")),
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    // Cycle 1: only 1 run (then 's' skips remainder). Cycle 2: 3 runs.
+    assert_eq!(
+        result.total_runs, 4,
+        "expected 1 (cycle1) + 3 (cycle2) runs"
+    );
+    assert_eq!(result.exit_code, 1, "expected max_cycles exit");
+}
+
+/// --step-cycles only pauses at cycle boundaries, not between runs within a cycle.
+/// With 2 phases per cycle and step_reader "q\n", the prompt fires after the
+/// last run of cycle 1 (cycle boundary) and the user quits → exit 130 after 2 runs.
+#[test]
+fn step_cycles_only_pauses_at_cycle_boundary() {
+    let dir = tempdir().unwrap();
+    // 2 phases, 1 run each → cycle boundary after run 2.
+    let workflow = make_workflow("DONE", &[("phase-a", 1), ("phase-b", 1)], 5);
+    let executor = MockExecutor::new(
+        (0..10)
+            .map(|_| ExecutorOutput {
+                combined: "no signal".to_string(),
+                exit_code: 0,
+            })
+            .collect(),
+    );
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        run_id: "test-step-cycles".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        step_cycles: true,
+        step_reader: Some(make_step_reader("q\n")),
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    // phase-a (run 1) → no pause (not cycle end). phase-b (run 2) → cycle end
+    // → prompt → 'q' → quit.
+    assert_eq!(
+        result.exit_code, 130,
+        "expected cancellation at cycle boundary"
+    );
+    assert_eq!(
+        result.total_runs, 2,
+        "expected 2 runs (both phases of cycle 1)"
+    );
+}
+
+/// Non-TTY mode: --step is silently ignored when step_reader is None and stderr
+/// is not a TTY (test environments have no TTY). The workflow runs to completion.
+#[test]
+fn step_non_tty_silently_ignored() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 2);
+    let executor = MockExecutor::new(vec![
+        ExecutorOutput {
+            combined: "no signal".to_string(),
+            exit_code: 0,
+        },
+        ExecutorOutput {
+            combined: "no signal".to_string(),
+            exit_code: 0,
+        },
+    ]);
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        run_id: "test-step-non-tty".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        // step=true but step_reader=None → TTY check will fail → no pause.
+        step: true,
+        step_reader: None,
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    // Runs to max_cycles without any pausing.
+    assert_eq!(
+        result.exit_code, 1,
+        "expected max_cycles exit (step silently ignored)"
+    );
+    assert_eq!(result.total_runs, 2);
+}
+
+/// The step summary captures cost and completion-signal status.
+/// Verify the step prompt is reached and cost data is available (exit_code=130 proves
+/// the prompt was reached and processed the 'q' input).
+#[test]
+fn step_summary_shows_cost_and_signal_status() {
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 5);
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        // Include a cost line to verify cost parsing path works with step.
+        combined: "Cost: $0.01\nno signal".to_string(),
+        exit_code: 0,
+    }]);
+    let config = EngineConfig {
+        output_dir: dir.path().to_path_buf(),
+        run_id: "test-step-summary".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        step: true,
+        step_reader: Some(make_step_reader("q\n")),
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    // The step prompt was reached (proved by 'q' causing exit 130).
+    assert_eq!(result.exit_code, 130);
+    // Cost was tracked correctly.
+    assert!(result.total_cost_usd > 0.0, "expected non-zero cost");
 }

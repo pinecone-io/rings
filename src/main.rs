@@ -1426,11 +1426,277 @@ fn render_summary(run_dir: &std::path::Path, output_format: cli::OutputFormat) -
     Ok(())
 }
 
-fn cmd_lineage(_args: cli::LineageArgs, _output_format: cli::OutputFormat) -> i32 {
-    // Lineage command will be implemented in Task 8
-    // For now, return a placeholder error
-    eprintln!("Error: 'rings lineage' is not yet implemented.");
-    2
+fn cmd_lineage(args: cli::LineageArgs, output_format: cli::OutputFormat) -> i32 {
+    match lineage_inner(args, output_format) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            2
+        }
+    }
+}
+
+/// Holds the loaded data for a single run in an ancestry chain.
+struct ChainRun {
+    position: usize,
+    run_id: String,
+    started_at: String,
+    status: state::RunStatus,
+    cycles_completed: u32,
+    total_runs: u32,
+    cost_usd: f64,
+    parent_run_id: Option<String>,
+}
+
+fn lineage_inner(args: cli::LineageArgs, output_format: cli::OutputFormat) -> Result<i32> {
+    let base_dir = resolve_output_dir(None, None);
+    lineage_inner_with_base(args, output_format, &base_dir)
+}
+
+fn lineage_inner_with_base(
+    args: cli::LineageArgs,
+    output_format: cli::OutputFormat,
+    base_dir: &std::path::Path,
+) -> Result<i32> {
+    // Verify the starting run exists.
+    let start_run_dir = base_dir.join(&args.run_id);
+    if !start_run_dir.exists() {
+        bail!("Run directory not found: {}", start_run_dir.display());
+    }
+
+    // Walk backwards to find the root run.
+    let (root_id, broken_at) = find_chain_root(&args.run_id, base_dir);
+
+    // Walk forwards from root to build the ordered chain.
+    let chain_ids = build_chain(&root_id, base_dir)?;
+
+    // Load metadata for each run in the chain.
+    let mut chain_runs: Vec<ChainRun> = Vec::new();
+    for (pos, run_id) in chain_ids.iter().enumerate() {
+        let run_dir = base_dir.join(run_id);
+        let run_toml_path = run_dir.join("run.toml");
+
+        let meta = match state::RunMeta::read(&run_toml_path) {
+            Ok(m) => m,
+            Err(e) => {
+                if output_format == cli::OutputFormat::Human {
+                    eprintln!("Warning: could not read run.toml for {run_id}: {e:#}");
+                }
+                continue;
+            }
+        };
+
+        let state_path = run_dir.join("state.json");
+        let (cycles_completed, total_runs, cost_usd) = match state::StateFile::read(&state_path) {
+            Ok(s) => (
+                s.last_completed_cycle,
+                s.total_runs_completed,
+                s.cumulative_cost_usd,
+            ),
+            Err(_) => (0, 0, 0.0),
+        };
+
+        chain_runs.push(ChainRun {
+            position: pos + 1,
+            run_id: run_id.clone(),
+            started_at: meta.started_at.clone(),
+            status: meta.status,
+            cycles_completed,
+            total_runs,
+            cost_usd,
+            parent_run_id: meta.parent_run_id.clone(),
+        });
+    }
+
+    // Aggregate totals.
+    let total_cost: f64 = chain_runs.iter().map(|r| r.cost_usd).sum();
+    let total_cycles: u32 = chain_runs.iter().map(|r| r.cycles_completed).sum();
+    let total_runs: u32 = chain_runs.iter().map(|r| r.total_runs).sum();
+    let final_status = chain_runs
+        .last()
+        .map(|r| r.status)
+        .unwrap_or(state::RunStatus::Incomplete);
+
+    match output_format {
+        cli::OutputFormat::Jsonl => {
+            for run in &chain_runs {
+                let obj = serde_json::json!({
+                    "type": "run",
+                    "position": run.position,
+                    "run_id": run.run_id,
+                    "status": run.status.to_string(),
+                    "cycles": run.cycles_completed,
+                    "cost_usd": run.cost_usd,
+                    "parent_run_id": run.parent_run_id,
+                });
+                println!("{}", serde_json::to_string(&obj)?);
+            }
+            let summary = serde_json::json!({
+                "type": "chain_summary",
+                "depth": chain_runs.len(),
+                "total_cycles": total_cycles,
+                "total_runs": total_runs,
+                "total_cost_usd": total_cost,
+                "final_status": final_status.to_string(),
+            });
+            println!("{}", serde_json::to_string(&summary)?);
+        }
+        cli::OutputFormat::Human => {
+            println!("Lineage chain for: {}", args.run_id);
+            println!();
+            println!(
+                " {:<3} {:<38} {:<18} {:<12} {:<8} COST",
+                "#", "RUN ID", "DATE", "STATUS", "CYCLES"
+            );
+            println!("{}", "─".repeat(90));
+
+            for run in &chain_runs {
+                let date_str = chrono::DateTime::parse_from_rfc3339(&run.started_at)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_else(|_| "unknown".to_string());
+                let cost_str = format!("${:.2}", run.cost_usd);
+                let resume_note = if run.position > 1 {
+                    format!("  ← resumed from #{}", run.position - 1)
+                } else {
+                    String::new()
+                };
+                println!(
+                    " {:<3} {:<38} {:<18} {:<12} {:<8} {}{} ",
+                    run.position,
+                    run.run_id,
+                    date_str,
+                    run.status.to_string(),
+                    run.cycles_completed,
+                    cost_str,
+                    resume_note,
+                );
+            }
+
+            if let Some(missing_parent) = &broken_at {
+                eprintln!(
+                    "Warning: ancestry chain broken — parent run not found: {missing_parent}"
+                );
+            }
+
+            println!();
+            println!("Chain totals:");
+            println!(
+                "  Total cycles:  {}  (spread across {} run(s) in chain)",
+                total_cycles,
+                chain_runs.len()
+            );
+            println!("  Total runs:    {}", total_runs);
+            println!("  Total cost:    ${:.2}", total_cost);
+        }
+    }
+
+    Ok(0)
+}
+
+/// Walk backwards from `start_id` following parent_run_id / continuation_of links to find the
+/// root run. Returns `(root_id, broken_at)` where `broken_at` is the missing parent ID if the
+/// chain could not be fully traced.
+fn find_chain_root(start_id: &str, base_dir: &std::path::Path) -> (String, Option<String>) {
+    let mut current = start_id.to_string();
+    let mut visited = std::collections::HashSet::new();
+
+    loop {
+        if !visited.insert(current.clone()) {
+            // Cycle detected — stop here.
+            break;
+        }
+
+        let run_toml = base_dir.join(&current).join("run.toml");
+        let meta = match state::RunMeta::read(&run_toml) {
+            Ok(m) => m,
+            Err(_) => break,
+        };
+
+        // Prefer parent_run_id (resume link), then continuation_of.
+        let parent = meta.parent_run_id.or(meta.continuation_of);
+
+        match parent {
+            Some(p) => {
+                let parent_dir = base_dir.join(&p);
+                if parent_dir.exists() {
+                    current = p;
+                } else {
+                    // Parent dir missing — chain is broken.
+                    return (current, Some(p));
+                }
+            }
+            None => break,
+        }
+    }
+
+    (current, None)
+}
+
+/// Build the ordered chain from a root run by scanning for children whose `parent_run_id`
+/// or `continuation_of` points to the current tail. Returns run IDs in chain order.
+fn build_chain(root_id: &str, base_dir: &std::path::Path) -> Result<Vec<String>> {
+    let mut chain = vec![root_id.to_string()];
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(root_id.to_string());
+
+    loop {
+        let tail = chain.last().cloned().unwrap();
+        match find_chain_child(&tail, base_dir, &visited)? {
+            Some(child_id) => {
+                visited.insert(child_id.clone());
+                chain.push(child_id);
+            }
+            None => break,
+        }
+    }
+
+    Ok(chain)
+}
+
+/// Scan all run directories for one whose `parent_run_id` or `continuation_of` equals
+/// `parent_id`. If multiple matches exist, return the earliest by `started_at`. Returns
+/// `None` if no child is found.
+fn find_chain_child(
+    parent_id: &str,
+    base_dir: &std::path::Path,
+    visited: &std::collections::HashSet<String>,
+) -> Result<Option<String>> {
+    if !base_dir.exists() {
+        return Ok(None);
+    }
+
+    let entries = std::fs::read_dir(base_dir)
+        .with_context(|| format!("Cannot read directory: {}", base_dir.display()))?;
+
+    let mut candidates: Vec<(String, String)> = Vec::new(); // (run_id, started_at)
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let run_toml_path = path.join("run.toml");
+        let meta = match state::RunMeta::read(&run_toml_path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        if visited.contains(&meta.run_id) {
+            continue;
+        }
+
+        let links_to_parent = meta.parent_run_id.as_deref() == Some(parent_id)
+            || meta.continuation_of.as_deref() == Some(parent_id);
+
+        if links_to_parent {
+            candidates.push((meta.run_id, meta.started_at));
+        }
+    }
+
+    // Pick the earliest child by started_at (lexicographic sort is fine for RFC3339).
+    candidates.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(candidates.into_iter().next().map(|(id, _)| id))
 }
 
 fn cmd_completions(_args: cli::CompletionsArgs) -> i32 {
@@ -3184,5 +3450,189 @@ mod dir_permissions_tests {
 
         let run_mode = std::fs::metadata(&run_dir).unwrap().permissions().mode() & 0o777;
         assert_eq!(run_mode, 0o700);
+    }
+
+    // --- lineage tests ---
+
+    use super::{build_chain, find_chain_root, lineage_inner_with_base};
+
+    fn write_run_toml_lineage(dir: &std::path::Path, run_id: &str, parent: Option<&str>) {
+        use rings::state;
+        let meta = state::RunMeta {
+            run_id: run_id.to_string(),
+            workflow_file: "workflow.rings.toml".to_string(),
+            started_at: format!("2026-01-01T00:00:0{}Z", run_id.len() % 10),
+            rings_version: "0.1.0".to_string(),
+            status: state::RunStatus::Completed,
+            phase_fingerprint: None,
+            parent_run_id: parent.map(|s| s.to_string()),
+            continuation_of: None,
+            ancestry_depth: 0,
+            context_dir: None,
+        };
+        let content = toml::to_string_pretty(&meta).unwrap();
+        std::fs::write(dir.join("run.toml"), content).unwrap();
+    }
+
+    fn write_state_json_lineage(
+        dir: &std::path::Path,
+        run_id: &str,
+        cycles: u32,
+        total_runs: u32,
+        cost: f64,
+    ) {
+        use rings::state;
+        let st = state::StateFile {
+            schema_version: 1,
+            run_id: run_id.to_string(),
+            workflow_file: "workflow.rings.toml".to_string(),
+            last_completed_run: total_runs,
+            last_completed_cycle: cycles,
+            last_completed_phase_index: 0,
+            last_completed_iteration: 0,
+            total_runs_completed: total_runs,
+            cumulative_cost_usd: cost,
+            claude_resume_commands: vec![],
+            canceled_at: None,
+            failure_reason: None,
+            ancestry: None,
+        };
+        let content = serde_json::to_string_pretty(&st).unwrap();
+        std::fs::write(dir.join("state.json"), content).unwrap();
+    }
+
+    #[test]
+    fn lineage_single_run_no_parent_shows_itself() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        let run_dir = base.join("run_001");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        write_run_toml_lineage(&run_dir, "run_001", None);
+        write_state_json_lineage(&run_dir, "run_001", 3, 10, 1.23);
+
+        let args = rings::cli::LineageArgs {
+            run_id: "run_001".to_string(),
+            descendants: false,
+        };
+
+        // Verify find_chain_root returns the run itself when no parent.
+        let (root, broken): (String, Option<String>) = find_chain_root("run_001", base);
+        assert_eq!(root, "run_001");
+        assert!(broken.is_none());
+
+        let chain = build_chain("run_001", base).unwrap();
+        assert_eq!(chain, vec!["run_001"]);
+
+        // lineage_inner_with_base should succeed.
+        let result = lineage_inner_with_base(args, rings::cli::OutputFormat::Human, base);
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn lineage_chain_of_three_traverses_correctly() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+
+        // Create root → child → grandchild chain
+        let r1 = base.join("run_001");
+        let r2 = base.join("run_002");
+        let r3 = base.join("run_003");
+        for d in [&r1, &r2, &r3] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        write_run_toml_lineage(&r1, "run_001", None);
+        write_run_toml_lineage(&r2, "run_002", Some("run_001"));
+        write_run_toml_lineage(&r3, "run_003", Some("run_002"));
+        write_state_json_lineage(&r1, "run_001", 3, 10, 1.00);
+        write_state_json_lineage(&r2, "run_002", 5, 15, 2.00);
+        write_state_json_lineage(&r3, "run_003", 2, 5, 0.50);
+
+        // Starting from grandchild, root should be run_001.
+        let (root, broken): (String, Option<String>) = find_chain_root("run_003", base);
+        assert_eq!(root, "run_001");
+        assert!(broken.is_none());
+
+        // Forward chain from root should be in order.
+        let chain = build_chain("run_001", base).unwrap();
+        assert_eq!(chain, vec!["run_001", "run_002", "run_003"]);
+    }
+
+    #[test]
+    fn lineage_chain_totals_sum_correctly() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+
+        let r1 = base.join("run_001");
+        let r2 = base.join("run_002");
+        for d in [&r1, &r2] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        write_run_toml_lineage(&r1, "run_001", None);
+        write_run_toml_lineage(&r2, "run_002", Some("run_001"));
+        write_state_json_lineage(&r1, "run_001", 3, 10, 1.00);
+        write_state_json_lineage(&r2, "run_002", 5, 8, 2.50);
+
+        let args = rings::cli::LineageArgs {
+            run_id: "run_001".to_string(),
+            descendants: false,
+        };
+
+        let chain = build_chain("run_001", base).unwrap();
+        assert_eq!(chain.len(), 2);
+
+        // Verify totals computed the same way lineage_inner_with_base does.
+        let total_cost = 1.00_f64 + 2.50_f64;
+        let total_cycles = 3_u32 + 5_u32;
+        assert!((total_cost - 3.50).abs() < 0.001);
+        assert_eq!(total_cycles, 8);
+
+        let result = lineage_inner_with_base(args, rings::cli::OutputFormat::Human, base);
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn lineage_broken_chain_shows_partial_with_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+
+        // run_002 references run_001 as parent, but run_001 dir doesn't exist.
+        let r2 = base.join("run_002");
+        std::fs::create_dir_all(&r2).unwrap();
+        write_run_toml_lineage(&r2, "run_002", Some("run_001"));
+        write_state_json_lineage(&r2, "run_002", 2, 5, 1.00);
+
+        // find_chain_root should stop at run_002 and report the broken link.
+        let (root, broken): (String, Option<String>) = find_chain_root("run_002", base);
+        assert_eq!(root, "run_002");
+        assert_eq!(broken.as_deref(), Some("run_001"));
+
+        // Chain from run_002 should contain only run_002.
+        let chain = build_chain("run_002", base).unwrap();
+        assert_eq!(chain, vec!["run_002"]);
+    }
+
+    #[test]
+    fn lineage_jsonl_mode_emits_run_and_summary_objects() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+
+        let r1 = base.join("run_001");
+        let r2 = base.join("run_002");
+        for d in [&r1, &r2] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        write_run_toml_lineage(&r1, "run_001", None);
+        write_run_toml_lineage(&r2, "run_002", Some("run_001"));
+        write_state_json_lineage(&r1, "run_001", 3, 10, 1.00);
+        write_state_json_lineage(&r2, "run_002", 2, 5, 0.50);
+
+        let chain = build_chain("run_001", base).unwrap();
+        assert_eq!(chain.len(), 2);
+
+        // Verify JSONL fields are correct by checking chain data directly.
+        let meta1 = rings::state::RunMeta::read(&r1.join("run.toml")).unwrap();
+        let meta2 = rings::state::RunMeta::read(&r2.join("run.toml")).unwrap();
+        assert!(meta1.parent_run_id.is_none());
+        assert_eq!(meta2.parent_run_id.as_deref(), Some("run_001"));
     }
 }

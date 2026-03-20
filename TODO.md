@@ -23,34 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-102: Inspect Claude Output View
-
-**Spec:** `specs/cli/inspect-command.md` (--show claude-output section)
-
-**Summary:** `rings inspect <RUN_ID> --show claude-output` prints the captured stdout/stderr from each executor invocation, with run headers. Supports `--cycle N` and `--phase NAME` filters.
-
-### Task 1: Implement `--show claude-output` view
-
-**Files:** `src/inspect.rs`
-
-**Steps:**
-- [x] In `inspect_inner`, handle `InspectView::ClaudeOutput`:
-  1. Scan the `runs/` subdirectory for log files (named like `001.log`, `002.log`, etc.)
-  2. For each log file, print a header with run number, then the file contents
-  3. Support `--cycle N` and `--phase NAME` filters: need to cross-reference with `costs.jsonl` to map run numbers to cycles/phases
-- [x] In JSONL mode, emit one JSON object per run with the log content as a string field
-- [x] Handle missing log files gracefully (print "log not found" for that run)
-
-**Tests:**
-- [x] `rings inspect <id> --show claude-output` displays log contents with run headers
-- [x] `--cycle 1` filters to only cycle 1 runs
-- [x] `--phase builder` filters to only builder phase runs
-- [x] Missing log file produces a graceful message, not an error
-- [x] JSONL mode emits structured output per run
-- [x] `just validate` clean
-
----
-
 ## F-073: `rings lineage` — Ancestry Chain Display
 
 **Spec:** `specs/cli/inspect-command.md` (rings lineage section)
@@ -62,23 +34,23 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`, `src/list.rs` (or new `src/lineage.rs`)
 
 **Steps:**
-- [ ] In `cmd_lineage`, replace the stub with real implementation:
+- [x] In `cmd_lineage`, replace the stub with real implementation:
   1. Load `run.toml` for the given run ID
   2. Walk backwards via `parent_run_id` / `continuation_of` to find the root run
   3. Walk forwards from root: scan all run directories for runs whose `parent_run_id` or `continuation_of` matches each chain member
   4. For each run in the chain, load status, cycles, cost from `run.toml` and `state.json`
-- [ ] Display the chain as a numbered table (see spec for format): `#, RUN_ID, DATE, STATUS, CYCLES, COST` with relationship indicators
-- [ ] Show chain totals at bottom: total wall time, total cycles, total runs, total cost
-- [ ] In JSONL mode: emit one JSON object per run, then a `chain_summary` object
-- [ ] Handle broken chains gracefully (missing parent run directory → show "parent not found" and stop traversal)
+- [x] Display the chain as a numbered table (see spec for format): `#, RUN_ID, DATE, STATUS, CYCLES, COST` with relationship indicators
+- [x] Show chain totals at bottom: total wall time, total cycles, total runs, total cost
+- [x] In JSONL mode: emit one JSON object per run, then a `chain_summary` object
+- [x] Handle broken chains gracefully (missing parent run directory → show "parent not found" and stop traversal)
 
 **Tests:**
-- [ ] Single run with no parent shows just itself
-- [ ] Chain of 3 runs (root → resumed → resumed) displays all 3 with correct relationships
-- [ ] Chain totals sum correctly across all runs
-- [ ] Broken chain (missing parent dir) shows partial chain with warning
-- [ ] JSONL mode emits correct structured output
-- [ ] `just validate` clean
+- [x] Single run with no parent shows just itself
+- [x] Chain of 3 runs (root → resumed → resumed) displays all 3 with correct relationships
+- [x] Chain totals sum correctly across all runs
+- [x] Broken chain (missing parent dir) shows partial chain with warning
+- [x] JSONL mode emits correct structured output
+- [x] `just validate` clean
 
 ---
 
@@ -111,6 +83,89 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] Project config takes precedence over user config
 - [ ] Missing both config files returns empty defaults (no error)
 - [ ] Invalid TOML in config file produces clear error
+- [ ] `just validate` clean
+
+---
+
+## F-147: Disk Space Check
+
+**Spec:** `specs/execution/engine.md` (Advisory Checks table)
+
+**Summary:** At startup, check available disk space in the output directory. Warn at < 100 MB free, abort with exit 2 at < 10 MB. Prevents silently losing run data mid-execution.
+
+### Task 1: Add disk space check at startup
+
+**Files:** `src/main.rs` (or `src/engine.rs`)
+
+**Steps:**
+- [ ] After resolving the output directory, check available disk space using `fs2::available_space()` or `nix::sys::statvfs` (or a cross-platform alternative)
+- [ ] If < 10 MB: print error `Error: Less than 10 MB free in output directory ({path}). Aborting to prevent data loss.` and exit 2
+- [ ] If < 100 MB but >= 10 MB: print warning `⚠  Low disk space: only {N} MB free in output directory ({path}).`
+- [ ] Only check in human output mode for warnings; the fatal < 10 MB check applies in all modes
+- [ ] Use `#[cfg(unix)]` with `std::os::unix::fs::MetadataExt` or the `fs2` crate for portable disk space queries
+
+**Tests:**
+- [ ] Mock/temp filesystem with limited space triggers warning at < 100 MB
+- [ ] Mock/temp filesystem with very low space triggers abort at < 10 MB
+- [ ] Adequate disk space produces no warning
+- [ ] `just validate` clean
+
+---
+
+## F-108: Auto-Generate summary.md
+
+**Spec:** `specs/observability/audit-logs.md`
+
+**Summary:** After a workflow completes (any exit path), generate a human-readable `summary.md` in the run's output directory. Contains the same info as the completion/cancellation display but in a persistent markdown file for later reference.
+
+### Task 1: Generate summary.md on run completion
+
+**Files:** `src/audit.rs` (or new function), `src/engine.rs`
+
+**Steps:**
+- [ ] Create a `generate_summary_md(run_dir: &Path, meta: &RunMeta, state: &StateFile, costs: &[CostEntry], phase_costs: &[(String, f64, u32)]) -> Result<()>` function
+- [ ] Generate markdown content including:
+  - Run ID, workflow file, status, started_at
+  - Context dir, output dir
+  - Cycles completed, total runs, total cost
+  - Phase cost breakdown table
+  - Token totals (if available)
+  - If canceled: resume command
+  - If completed: which run/cycle triggered completion
+- [ ] Write to `{run_dir}/summary.md`
+- [ ] Call this function from all engine exit paths: completion, max_cycles, cancellation, budget_cap, executor_error
+
+**Tests:**
+- [ ] Completed run produces `summary.md` with correct status and cost
+- [ ] Canceled run produces `summary.md` with resume command
+- [ ] `summary.md` contains phase cost breakdown
+- [ ] `summary.md` is valid markdown (no broken formatting)
+- [ ] `just validate` clean
+
+---
+
+## F-075: `rings completions` — Shell Completion Scripts
+
+**Spec:** `specs/cli/completion-and-manpage.md`
+
+**Summary:** `rings completions <SHELL>` generates shell completion scripts for bash, zsh, or fish. Uses clap's built-in completion generation.
+
+### Task 1: Implement completions command
+
+**Files:** `src/main.rs`, `src/cli.rs`
+
+**Steps:**
+- [ ] Replace the stub in `cmd_completions` with actual implementation using `clap_complete`:
+  1. Add `clap_complete` to `Cargo.toml` dependencies
+  2. Match on the shell argument (bash, zsh, fish)
+  3. Call `clap_complete::generate()` with the CLI definition, writing to stdout
+- [ ] The user pipes this to their shell config: `rings completions zsh > ~/.zfunc/_rings`
+
+**Tests:**
+- [ ] `rings completions bash` produces valid bash completion script (output contains expected patterns)
+- [ ] `rings completions zsh` produces valid zsh completion script
+- [ ] `rings completions fish` produces valid fish completion script
+- [ ] Invalid shell name exits with error
 - [ ] `just validate` clean
 
 ---

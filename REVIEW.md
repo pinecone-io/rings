@@ -198,6 +198,8 @@
 
 [2026-03-20 / F-074: rings cleanup Tasks 1+2] Implemented both CLI parsing (Task 1) and cleanup logic (Task 2) in one pass because the no-stubs rule required a real `cmd_cleanup` function to compile Task 1. Used `duration::SinceSpec` (already exists) for `--older-than` parsing. Used `walkdir` (already a dependency) to compute approximate freed MB before deletion. Tests for the actual deletion behavior are mostly unit-level (candidate selection logic, flag parsing) because `cleanup_inner` calls `resolve_output_dir(None, None)` which reads the real data directory — a full integration test would require refactoring to inject the base_dir. The JSONL summary event uses `freed_mb` as a rounded float.
 
+[2026-03-20 / F-073 Task 1: rings lineage] Implemented `cmd_lineage` with full ancestry traversal. Helper functions: `find_chain_root` walks backwards via `parent_run_id`/`continuation_of`; `build_chain` walks forward by scanning all run dirs for children; `find_chain_child` scans for a run whose `parent_run_id` or `continuation_of` matches the current tail. Extracted `lineage_inner_with_base(args, format, base_dir)` for testability (same pattern as `cleanup_inner`). The spec shows wall time in chain totals but no `ended_at` field is stored in run.toml or state.json, so wall time is omitted from the output. If the ancestry chain is broken (missing parent dir), a warning is emitted and the partial chain is shown. When multiple children exist (branched chains), the earliest by `started_at` is selected as the canonical child. The `--descendants` flag in `LineageArgs` is parsed by clap but ignored in the current implementation (not in scope for this task; no spec exists for descendants-only traversal).
+
 ## Conflicts
 <!-- Cases where code and spec disagreed; what was changed and why. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
@@ -227,6 +229,10 @@
 ## Open Questions
 <!-- Ambiguities, spec gaps, or missing specs that need human review. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
+
+[2026-03-20 / F-073 Task 1: rings lineage — wall time gap] The spec shows "Total wall time" in chain totals, but neither `run.toml` nor `state.json` stores an `ended_at` timestamp. Wall time is not computable from available data. This should be addressed in a future spec update that adds `ended_at` to `RunMeta` or `StateFile`.
+
+[2026-03-20 / F-073 Task 1: rings lineage — --descendants flag] `LineageArgs` has a `descendants: bool` field defined in `cli.rs`, but no spec exists for descendants-only traversal and the task steps don't require it. The flag is accepted but silently ignored in the current implementation.
 
 [2026-03-20 / F-109 Output Directory Hardening Task 1] The spec (`specs/observability/audit-logs.md` lines 66-70) says "if the output directory already exists with broader permissions, rings does not downgrade permissions but does warn". This warning behavior is not included in the task steps. Should a warning be added when the newly-created directory already exists with mode > 0700?
 

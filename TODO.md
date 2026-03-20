@@ -23,55 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-012: Completion Signal Modes
-
-**Spec:** `specs/execution/completion-detection.md`
-
-**Summary:** Support matching the completion signal by exact substring (default), line anchor, or full regex. Currently only substring matching is implemented. The `completion_signal_mode` field already exists in the workflow config.
-
-### Task 1: Add regex completion signal matching
-
-**Files:** `src/completion.rs`, `src/workflow.rs`
-
-**Steps:**
-- [x] Verify the current modes: `"substring"` (default) and `"line"` — both should already work
-- [x] Add `"regex"` mode: compile `completion_signal` as a regex at workflow parse time, match against executor output
-- [x] Invalid regex in `completion_signal` when mode is `"regex"` produces exit 2 at parse time
-- [x] If `"substring"` and `"line"` are already working, only the `"regex"` mode needs implementation
-
-**Tests:**
-- [x] `completion_signal_mode = "substring"`: matches signal anywhere in output
-- [x] `completion_signal_mode = "line"`: matches only when signal is an entire line
-- [x] `completion_signal_mode = "regex"`: matches regex pattern (e.g., `"DONE_\\d+"` matches `"DONE_42"`)
-- [x] Invalid regex exits 2 at parse time
-- [x] `just validate` clean
-
----
-
-## F-013: Completion Signal Phase Restriction
-
-**Spec:** `specs/execution/completion-detection.md`
-
-**Summary:** Limit which phases can trigger workflow completion via `completion_signal_phases`. Prevents early phases from accidentally ending the workflow.
-
-### Task 1: Add phase restriction to completion detection
-
-**Files:** `src/workflow.rs`, `src/engine.rs`
-
-**Steps:**
-- [ ] Add `completion_signal_phases: Option<Vec<String>>` to the workflow config (may already exist)
-- [ ] In the engine's completion signal check: if `completion_signal_phases` is set and non-empty, only check for the signal in output from phases listed in the array
-- [ ] If the signal is detected in a non-listed phase, log it but don't trigger completion
-- [ ] Validate at startup that all phase names in `completion_signal_phases` actually exist in the workflow
-
-**Tests:**
-- [ ] With `completion_signal_phases = ["reviewer"]`: signal in "builder" output is ignored, signal in "reviewer" triggers completion
-- [ ] With no restriction (default): any phase can trigger completion
-- [ ] Invalid phase name in restriction list exits 2 at startup
-- [ ] `just validate` clean
-
----
-
 ## F-014/F-015/F-017: Phase Contracts — Consumes, Produces, and Advisory Warnings
 
 **Spec:** `specs/workflow/phase-contracts.md`
@@ -83,17 +34,17 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/workflow.rs`
 
 **Steps:**
-- [ ] Add `consumes: Vec<String>` and `produces: Vec<String>` fields (with `#[serde(default)]`) to phase config
-- [ ] Add `produces_required: bool` field (with `#[serde(default)]`) — when true, missing produces is a hard error not just a warning (F-016)
-- [ ] Validate at parse time: patterns should be valid glob strings
-- [ ] Store the parsed patterns in `PhaseConfig`
+- [x] Add `consumes: Vec<String>` and `produces: Vec<String>` fields (with `#[serde(default)]`) to phase config
+- [x] Add `produces_required: bool` field (with `#[serde(default)]`) — when true, missing produces is a hard error not just a warning (F-016)
+- [x] Validate at parse time: patterns should be valid glob strings
+- [x] Store the parsed patterns in `PhaseConfig`
 
 **Tests:**
-- [ ] Phase with `consumes = ["src/*.rs"]` parses correctly
-- [ ] Phase with `produces = ["output.txt"]` parses correctly
-- [ ] Phase with no consumes/produces fields works (empty vecs)
-- [ ] Invalid glob pattern produces parse error
-- [ ] `just validate` clean
+- [x] Phase with `consumes = ["src/*.rs"]` parses correctly
+- [x] Phase with `produces = ["output.txt"]` parses correctly
+- [x] Phase with no consumes/produces fields works (empty vecs)
+- [x] Invalid glob pattern produces parse error
+- [x] `just validate` clean
 
 ---
 

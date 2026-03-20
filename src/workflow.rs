@@ -1,5 +1,6 @@
 use crate::cost::CompiledCostParser;
 use crate::duration::DurationField;
+use globset::Glob;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -236,6 +237,12 @@ pub enum WorkflowError {
     UnknownCompletionSignalPhase(String),
     #[error("phase '{0}' has produces_required = true but manifest_enabled = false")]
     ProducesRequiredWithoutManifest(String),
+    #[error("phase '{phase}': invalid glob pattern '{pattern}': {message}")]
+    InvalidGlobPattern {
+        phase: String,
+        pattern: String,
+        message: String,
+    },
     #[error("output_dir contains path traversal ('..') which is not allowed")]
     OutputDirContainsParentDir,
     #[error(
@@ -504,6 +511,14 @@ impl Workflow {
                     phase.name.clone(),
                 ));
             }
+            // Validate consumes and produces glob patterns.
+            for pattern in phase.consumes.iter().chain(phase.produces.iter()) {
+                Glob::new(pattern).map_err(|e| WorkflowError::InvalidGlobPattern {
+                    phase: phase.name.clone(),
+                    pattern: pattern.clone(),
+                    message: e.to_string(),
+                })?;
+            }
             // Validate that --model does not appear in both effective args and extra_args.
             let effective_args = file
                 .executor
@@ -727,6 +742,96 @@ produces_required = true
         assert!(phase.consumes.is_empty());
         assert!(phase.produces.is_empty());
         assert!(!phase.produces_required);
+    }
+
+    #[test]
+    fn phase_consumes_parses_correctly() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+consumes = ["src/*.rs"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.phases[0].consumes, vec!["src/*.rs"]);
+    }
+
+    #[test]
+    fn phase_produces_parses_correctly() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+produces = ["output.txt"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.phases[0].produces, vec!["output.txt"]);
+    }
+
+    #[test]
+    fn invalid_consumes_glob_pattern_errors() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+consumes = ["[invalid"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(
+            matches!(&err, WorkflowError::InvalidGlobPattern { phase, pattern, .. }
+                if phase == "builder" && pattern == "[invalid")
+        );
+    }
+
+    #[test]
+    fn invalid_produces_glob_pattern_errors() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+produces = ["[bad"]
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(
+            matches!(&err, WorkflowError::InvalidGlobPattern { phase, pattern, .. }
+                if phase == "builder" && pattern == "[bad")
+        );
     }
 
     #[test]

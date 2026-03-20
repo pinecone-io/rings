@@ -1,4 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
+pub use clap_complete::Shell;
 use std::str::FromStr;
 
 fn validate_run_id(s: &str) -> Result<String, String> {
@@ -295,8 +296,8 @@ pub struct LineageArgs {
 
 #[derive(Args, Debug)]
 pub struct CompletionsArgs {
-    /// Shell type (bash, zsh, fish, powershell)
-    pub shell: String,
+    /// Shell type (bash, zsh, fish, powershell, elvish)
+    pub shell: Shell,
 }
 
 #[derive(Args, Debug)]

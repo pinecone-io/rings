@@ -1895,11 +1895,16 @@ fn find_chain_child(
     Ok(candidates.into_iter().next().map(|(id, _)| id))
 }
 
-fn cmd_completions(_args: cli::CompletionsArgs) -> i32 {
-    // Completions command will be implemented in Task 8
-    // For now, return a placeholder error
-    eprintln!("Error: 'rings completions' is not yet implemented.");
-    2
+fn generate_completions(shell: cli::Shell, writer: &mut dyn std::io::Write) {
+    use clap::CommandFactory;
+    use clap_complete::generate;
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "rings", writer);
+}
+
+fn cmd_completions(args: cli::CompletionsArgs) -> i32 {
+    generate_completions(args.shell, &mut std::io::stdout());
+    0
 }
 
 fn cmd_init(args: cli::InitArgs, output_format: cli::OutputFormat) -> i32 {
@@ -3959,5 +3964,67 @@ mod dir_permissions_tests {
         let meta2 = rings::state::RunMeta::read(&r2.join("run.toml")).unwrap();
         assert!(meta1.parent_run_id.is_none());
         assert_eq!(meta2.parent_run_id.as_deref(), Some("run_001"));
+    }
+}
+
+#[cfg(test)]
+mod completions_tests {
+    use super::*;
+    use clap_complete::Shell;
+
+    fn completions_output(shell: Shell) -> String {
+        let mut buf = Vec::new();
+        generate_completions(shell, &mut buf);
+        String::from_utf8(buf).unwrap()
+    }
+
+    #[test]
+    fn bash_completions_contains_expected_patterns() {
+        let output = completions_output(Shell::Bash);
+        assert!(
+            output.contains("_rings"),
+            "bash script missing function _rings"
+        );
+        assert!(
+            output.contains("complete"),
+            "bash script missing complete builtin"
+        );
+    }
+
+    #[test]
+    fn zsh_completions_contains_expected_patterns() {
+        let output = completions_output(Shell::Zsh);
+        assert!(
+            output.contains("#compdef rings"),
+            "zsh script missing #compdef header"
+        );
+        assert!(
+            output.contains("_rings"),
+            "zsh script missing _rings function"
+        );
+    }
+
+    #[test]
+    fn fish_completions_contains_expected_patterns() {
+        let output = completions_output(Shell::Fish);
+        assert!(
+            output.contains("complete"),
+            "fish script missing complete command"
+        );
+        assert!(
+            output.contains("rings"),
+            "fish script missing rings references"
+        );
+    }
+
+    #[test]
+    fn completions_output_is_non_empty_for_all_shells() {
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish] {
+            let output = completions_output(shell);
+            assert!(
+                !output.is_empty(),
+                "completions output for {shell:?} is empty"
+            );
+        }
     }
 }

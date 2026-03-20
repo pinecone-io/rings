@@ -23,38 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-108: Auto-Generate summary.md
-
-**Spec:** `specs/observability/audit-logs.md`
-
-**Summary:** After a workflow completes (any exit path), generate a human-readable `summary.md` in the run's output directory. Contains the same info as the completion/cancellation display but in a persistent markdown file for later reference.
-
-### Task 1: Generate summary.md on run completion
-
-**Files:** `src/audit.rs` (or new function), `src/engine.rs`
-
-**Steps:**
-- [x] Create a `generate_summary_md(run_dir: &Path, meta: &RunMeta, state: &StateFile, costs: &[CostEntry], phase_costs: &[(String, f64, u32)]) -> Result<()>` function
-- [x] Generate markdown content including:
-  - Run ID, workflow file, status, started_at
-  - Context dir, output dir
-  - Cycles completed, total runs, total cost
-  - Phase cost breakdown table
-  - Token totals (if available)
-  - If canceled: resume command
-  - If completed: which run/cycle triggered completion
-- [x] Write to `{run_dir}/summary.md`
-- [x] Call this function from all engine exit paths: completion, max_cycles, cancellation, budget_cap, executor_error
-
-**Tests:**
-- [x] Completed run produces `summary.md` with correct status and cost
-- [x] Canceled run produces `summary.md` with resume command
-- [x] `summary.md` contains phase cost breakdown
-- [x] `summary.md` is valid markdown (no broken formatting)
-- [x] `just validate` clean
-
----
-
 ## F-075: `rings completions` — Shell Completion Scripts
 
 **Spec:** `specs/cli/completion-and-manpage.md`
@@ -66,18 +34,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`, `src/cli.rs`
 
 **Steps:**
-- [ ] Replace the stub in `cmd_completions` with actual implementation using `clap_complete`:
+- [x] Replace the stub in `cmd_completions` with actual implementation using `clap_complete`:
   1. Add `clap_complete` to `Cargo.toml` dependencies
   2. Match on the shell argument (bash, zsh, fish)
   3. Call `clap_complete::generate()` with the CLI definition, writing to stdout
-- [ ] The user pipes this to their shell config: `rings completions zsh > ~/.zfunc/_rings`
+- [x] The user pipes this to their shell config: `rings completions zsh > ~/.zfunc/_rings`
 
 **Tests:**
-- [ ] `rings completions bash` produces valid bash completion script (output contains expected patterns)
-- [ ] `rings completions zsh` produces valid zsh completion script
-- [ ] `rings completions fish` produces valid fish completion script
-- [ ] Invalid shell name exits with error
-- [ ] `just validate` clean
+- [x] `rings completions bash` produces valid bash completion script (output contains expected patterns)
+- [x] `rings completions zsh` produces valid zsh completion script
+- [x] `rings completions fish` produces valid fish completion script
+- [x] Invalid shell name exits with error
+- [x] `just validate` clean
 
 ---
 

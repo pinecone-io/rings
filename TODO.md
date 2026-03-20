@@ -345,29 +345,29 @@ Note: `--output-format stream-json` requires `--verbose` flag when using `-p` (p
 **Files:** `src/verbose.rs` (new), `src/lib.rs`
 
 **Steps:**
-- [ ] Create `src/verbose.rs` with `format_stream_event(line: &str) -> Option<String>` function
-- [ ] Parse each line as JSON; extract the `type` field
-- [ ] Render known event types:
+- [x] Create `src/verbose.rs` with `format_stream_event(line: &str) -> Option<String>` function
+- [x] Parse each line as JSON; extract the `type` field
+- [x] Render known event types:
   - `system` (subtype `init`) → return `None` (suppress — huge blob listing all tools/MCP servers)
   - `assistant` with `content[].type == "text"` → return the text content
   - `assistant` with `content[].type == "tool_use"` → return one-line summary: `  Tool: Read  file_path=...` (dimmed via `style::dim`)
   - `user` (tool results) → return abbreviated summary: `  [tool result: N lines]` (dimmed)
   - `rate_limit_event` → return `None` (suppress)
   - `result` → return `None` (suppress — rings shows its own summary)
-- [ ] Handle mixed content: a single `assistant` event can contain both text and tool_use in its `content[]` array — iterate and render each block, return concatenated lines
-- [ ] Non-JSON or unknown event types → return `Some(line.to_string())` as-is (graceful fallback for custom executors)
-- [ ] Register `pub mod verbose;` in `src/lib.rs`
+- [x] Handle mixed content: a single `assistant` event can contain both text and tool_use in its `content[]` array — iterate and render each block, return concatenated lines
+- [x] Non-JSON or unknown event types → return `Some(line.to_string())` as-is (graceful fallback for custom executors)
+- [x] Register `pub mod verbose;` in `src/lib.rs`
 
 **Tests:**
-- [ ] `system init` event returns `None`
-- [ ] `assistant` text event returns the text content
-- [ ] `assistant` tool_use event returns `Tool: <name>  <key>=<value>` summary
-- [ ] `assistant` event with both text and tool_use renders both
-- [ ] `user` tool_result returns abbreviated `[tool result: N lines]`
-- [ ] `rate_limit_event` returns `None`
-- [ ] `result` event returns `None`
-- [ ] Non-JSON input returns the line as-is
-- [ ] Unknown JSON event type returns the line as-is
+- [x] `system init` event returns `None`
+- [x] `assistant` text event returns the text content
+- [x] `assistant` tool_use event returns `Tool: <name>  <key>=<value>` summary
+- [x] `assistant` event with both text and tool_use renders both
+- [x] `user` tool_result returns abbreviated `[tool result: N lines]`
+- [x] `rate_limit_event` returns `None`
+- [x] `result` event returns `None`
+- [x] Non-JSON input returns the line as-is
+- [x] Unknown JSON event type returns the line as-is
 
 ---
 

@@ -20,4 +20,5 @@ pub mod manifest;
 pub mod state;
 pub mod style;
 pub mod template;
+pub mod verbose;
 pub mod workflow;

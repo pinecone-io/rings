@@ -85,6 +85,8 @@ pub enum Command {
     Init(InitArgs),
     /// Update rings to the latest nightly release
     Update,
+    /// Remove run data for old runs to free disk space
+    Cleanup(CleanupArgs),
 }
 
 #[derive(Args, Debug)]
@@ -278,6 +280,21 @@ pub struct LineageArgs {
 pub struct CompletionsArgs {
     /// Shell type (bash, zsh, fish, powershell)
     pub shell: String,
+}
+
+#[derive(Args, Debug)]
+pub struct CleanupArgs {
+    /// Remove runs older than this duration (e.g. 7d, 30d, 90d, 24h). Default: 30d.
+    #[arg(long, default_value = "30d", value_name = "DURATION")]
+    pub older_than: String,
+
+    /// Show what would be deleted without deleting anything
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Skip confirmation prompt (for scripting)
+    #[arg(short = 'y', long)]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug)]

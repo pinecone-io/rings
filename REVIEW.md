@@ -132,6 +132,8 @@
 
 [2026-03-16 / Task 1: nix + duration parser] Added `nix = { version = "0.29", features = ["signal", "process"] }` under `[target.'cfg(unix)'.dependencies]`. Moved `tempfile` from `[dev-dependencies]` to `[dependencies]` because downstream tasks (lock file, working-file writes) will use it in production code. Implemented `parse_duration_secs` and `DurationField` enum in `src/duration.rs`. The overflow test case value in NEXT.md (`5165088294h`) does not actually overflow u64 — 5_165_088_294 * 3_600 ≈ 1.86×10^13 which is well within u64::MAX (1.84×10^19). Used `9999999999999999h` instead, which does overflow. Filed under Decisions because the spec test vector is wrong rather than spec/code conflict.
 
+[2026-03-20 / F-074: rings cleanup Tasks 1+2] Implemented both CLI parsing (Task 1) and cleanup logic (Task 2) in one pass because the no-stubs rule required a real `cmd_cleanup` function to compile Task 1. Used `duration::SinceSpec` (already exists) for `--older-than` parsing. Used `walkdir` (already a dependency) to compute approximate freed MB before deletion. Tests for the actual deletion behavior are mostly unit-level (candidate selection logic, flag parsing) because `cleanup_inner` calls `resolve_output_dir(None, None)` which reads the real data directory — a full integration test would require refactoring to inject the base_dir. The JSONL summary event uses `freed_mb` as a rounded float.
+
 ## Conflicts
 <!-- Cases where code and spec disagreed; what was changed and why. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->

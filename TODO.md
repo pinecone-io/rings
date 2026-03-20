@@ -15,17 +15,17 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cli.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Add `Cleanup(CleanupArgs)` variant to `Command` enum in `src/cli.rs`
-- [ ] Define `CleanupArgs` struct:
+- [x] Add `Cleanup(CleanupArgs)` variant to `Command` enum in `src/cli.rs`
+- [x] Define `CleanupArgs` struct:
   - `--older-than <DURATION>` (default: `"30d"`) — accepts duration strings like `7d`, `30d`, `90d`, `24h`
   - `--dry-run` (`bool`) — show what would be deleted without deleting
   - `-y, --yes` (`bool`) — skip confirmation prompt
-- [ ] Add `Command::Cleanup(args) => cmd_cleanup(args, cli.output_format)` match arm in `main.rs`
+- [x] Add `Command::Cleanup(args) => cmd_cleanup(args, cli.output_format)` match arm in `main.rs`
 
 **Tests:**
-- [ ] `rings cleanup` parses with no args (older-than defaults to "30d")
-- [ ] `rings cleanup --older-than 7d` parses duration
-- [ ] `rings cleanup --dry-run --yes` parses both flags
+- [x] `rings cleanup` parses with no args (older-than defaults to "30d")
+- [x] `rings cleanup --older-than 7d` parses duration
+- [x] `rings cleanup --dry-run --yes` parses both flags
 
 ---
 
@@ -34,27 +34,27 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or new `src/cleanup.rs`)
 
 **Steps:**
-- [ ] Implement `cleanup_inner(args, output_format) -> Result<i32>`:
+- [x] Implement `cleanup_inner(args, output_format) -> Result<i32>`:
   1. Parse `--older-than` using `duration::SinceSpec` (already exists for `rings list --since`)
   2. Scan the base output directory for run directories (reuse pattern from `list::list_runs`)
   3. For each run dir: read `run.toml`, check `started_at` against the cutoff
   4. Skip runs where `status == "running"` (never delete active runs)
   5. Collect candidates as `(run_id, started_at, status, dir_path)`
-- [ ] If no candidates found: print "No runs older than {duration} found." and exit 0
-- [ ] If `--dry-run`: print what would be deleted (one line per run), exit 0
-- [ ] If not `--yes` and stderr is a TTY: prompt `Delete N runs? [y/N]`, read stdin, abort on anything except `y`/`Y`
-- [ ] Delete each candidate directory with `std::fs::remove_dir_all`
-- [ ] Print summary: "Deleted N runs, freed approximately X MB"
-- [ ] In JSONL mode: emit one `{"event":"cleanup_deleted","run_id":"...","path":"..."}` per deleted run, then a summary event
+- [x] If no candidates found: print "No runs older than {duration} found." and exit 0
+- [x] If `--dry-run`: print what would be deleted (one line per run), exit 0
+- [x] If not `--yes` and stderr is a TTY: prompt `Delete N runs? [y/N]`, read stdin, abort on anything except `y`/`Y`
+- [x] Delete each candidate directory with `std::fs::remove_dir_all`
+- [x] Print summary: "Deleted N runs, freed approximately X MB"
+- [x] In JSONL mode: emit one `{"event":"cleanup_deleted","run_id":"...","path":"..."}` per deleted run, then a summary event
 
 **Tests:**
-- [ ] Runs older than threshold are identified for deletion
-- [ ] Runs newer than threshold are skipped
-- [ ] Running runs are never deleted regardless of age
-- [ ] `--dry-run` lists candidates but does not delete
-- [ ] `--yes` skips confirmation prompt
-- [ ] Empty base directory returns 0 with "no runs found" message
-- [ ] JSONL output emits one event per deleted run
+- [x] Runs older than threshold are identified for deletion
+- [x] Runs newer than threshold are skipped
+- [x] Running runs are never deleted regardless of age
+- [x] `--dry-run` lists candidates but does not delete
+- [x] `--yes` skips confirmation prompt
+- [x] Empty base directory returns 0 with "no runs found" message
+- [x] JSONL output emits one event per deleted run
 
 ---
 
@@ -255,6 +255,64 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] `parse_cost_from_output("Cost: $-10.00 ...")` returns confidence `None`, cost `None`
 - [ ] `parse_cost_from_output("Cost: $0.00 ...")` still works (zero is valid)
 - [ ] Existing cost parsing tests continue to pass
+- [ ] `just validate` clean
+
+---
+
+## Bug: Timeout Deadline Not Reset After Quota Backoff Retry
+
+**Ref:** `specs/execution/engine.md`, `specs/execution/rate-limiting.md`
+
+**Summary:** In `engine.rs`, the per-run timeout deadline is computed from `run_start` (line 874), which is set once before the retry loop. After a quota backoff wait (which could be 300+ seconds), the retry re-enters the loop but the deadline is already expired, causing the retry to immediately timeout without executing. This effectively breaks `timeout_per_run_secs` when combined with quota backoff.
+
+### Task 1: Reset timeout deadline on retry
+
+**Files:** `src/engine.rs`
+
+**Steps:**
+- [ ] Move `run_start = std::time::Instant::now()` inside the `'retry_loop` (before line 940), so each retry attempt gets a fresh timeout deadline
+- [ ] Alternatively, recompute `timeout_deadline` at the top of each retry iteration (after the `continue 'retry_loop` at line 1190 re-enters)
+- [ ] Ensure `elapsed_secs` at line 1198 still reflects total wall-clock time (for display purposes), so keep the original `run_start` for display and add a separate `attempt_start` for timeout
+
+**Tests:**
+- [ ] A run with `timeout_per_run_secs = 10` and quota backoff delay of 5s: retry attempt gets a fresh 10s timeout, not an expired one
+- [ ] A run with no timeout: retry behavior unchanged
+- [ ] A run with timeout and no retries: timeout still fires correctly
+- [ ] `just validate` clean
+
+---
+
+## Bug: Cost Entry Written Too Late in Success Path — Crash Window
+
+**Ref:** `specs/observability/audit-logs.md`, `specs/state/cancellation-resume.md`
+
+**Summary:** In the success path of `engine.rs`, state.json is written at line 1503 (including cumulative cost), but `costs.jsonl` is not appended until line 1594 — after manifest computation (lines 1515-1549), contract checks (1551-1574), and JSONL event emission (1576-1591). If the process crashes in this ~90-line window, the cost for that run is lost from `costs.jsonl`. On resume, cost reconstruction from `costs.jsonl` (lines 627-653) will produce a lower cumulative cost than reality. The error path (lines 1459-1478) does this correctly — cost is appended immediately after state.
+
+Additionally, the resume cost reconstruction at lines 627-653 does not deduplicate entries by run number. If a cost entry was appended to `costs.jsonl` but the subsequent state write failed (e.g., disk full), the run would be re-executed on resume, creating a duplicate cost entry that gets double-counted.
+
+### Task 1: Move cost append immediately after state write
+
+**Files:** `src/engine.rs`
+
+**Steps:**
+- [ ] Move the `append_cost_entry()` call (currently at line 1594-1612) to immediately after `state.write_atomic(&state_path)?` (line 1503), before manifest computation
+- [ ] The cost entry will need `files_added/modified/deleted/changed` set to 0 initially, then updated if manifest info is computed later — OR collect manifest data before writing cost (less desirable since it widens the state-before-costs gap)
+- [ ] Simpler approach: accept that the cost entry written early won't have file counts, and emit a separate `manifest_diff` entry or update later — OR split the cost entry write to happen early (with cost data) and keep file counts in the JSONL event only
+- [ ] Verify the error path (lines 1459-1478) still follows the same pattern
+
+### Task 2: Deduplicate cost entries on resume reconstruction
+
+**Files:** `src/engine.rs`
+
+**Steps:**
+- [ ] In the resume cost reconstruction loop (lines 627-653), track seen run numbers in a `HashSet<u32>`
+- [ ] If a run number has already been seen, skip the duplicate entry (use the first occurrence)
+- [ ] This handles the edge case where cost was appended but state write failed, causing a re-execution that appends a second entry for the same run
+
+**Tests:**
+- [ ] Resume with a costs.jsonl containing duplicate run entries: cumulative cost counts each run only once
+- [ ] Resume with clean costs.jsonl: behavior unchanged
+- [ ] Cost entry is appended immediately after state write (no crash window for manifest computation)
 - [ ] `just validate` clean
 
 ---

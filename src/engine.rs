@@ -935,6 +935,10 @@ pub fn run_workflow(
         }
 
         'retry_loop: loop {
+            // Reset attempt_start each retry so timeout_deadline is fresh after quota backoff.
+            // run_start is preserved for total elapsed display (set before this loop).
+            let attempt_start = std::time::Instant::now();
+
             // Show in-progress indicator before spawning.
             if config.output_format == crate::cli::OutputFormat::Human {
                 crate::display::print_run_start(
@@ -951,7 +955,7 @@ pub fn run_workflow(
             // Spawn the subprocess and implement wait loop with timeout/cancellation.
             let mut handle = executor.spawn(&invocation, config.verbose)?;
             let timeout_deadline =
-                timeout_secs.map(|secs| run_start + std::time::Duration::from_secs(secs));
+                timeout_secs.map(|secs| attempt_start + std::time::Duration::from_secs(secs));
 
             loop {
                 // Check ForceKill first (highest priority)

@@ -418,3 +418,167 @@ prompt_text = "test prompt"
         "SIGKILL should not be sent for single Ctrl+C"
     );
 }
+
+/// Verify that a quota backoff retry succeeds when a per-run timeout is configured.
+/// With the fix, each retry attempt gets a fresh timeout deadline. Without the fix,
+/// a retry after a backoff delay would re-use the original run_start and might
+/// observe a stale deadline.
+#[test]
+fn quota_retry_succeeds_with_active_timeout() {
+    let dir = tempdir().unwrap();
+
+    // First call: quota error (matches "rate limit" in the ClaudeCode error profile)
+    // Second call: success with completion signal
+    let quota_error = ExecutorOutput {
+        combined: "rate limit reached, please wait".to_string(),
+        exit_code: 1,
+    };
+    let success = ExecutorOutput {
+        combined: "task complete: done".to_string(),
+        exit_code: 0,
+    };
+    let executor = MockExecutor::new(vec![quota_error, success]);
+
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test_quota_timeout".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+    };
+
+    // Workflow with quota_backoff enabled (0 delay so test is fast),
+    // a generous timeout (30s — won't fire during an instant retry),
+    // and completion_signal "done".
+    let workflow_str = r#"
+[workflow]
+completion_signal = "done"
+context_dir = "."
+max_cycles = 1
+quota_backoff = true
+quota_backoff_delay = 0
+quota_backoff_max_retries = 1
+timeout_per_run_secs = 30
+
+[[phases]]
+name = "test"
+prompt_text = "test prompt"
+"#;
+
+    let workflow: Workflow = workflow_str.parse().unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+
+    // The retry should have succeeded with exit_code 0 (completion signal found)
+    assert_eq!(
+        result.exit_code, 0,
+        "expected success after quota retry, got exit_code {}",
+        result.exit_code
+    );
+}
+
+/// Verify that a quota backoff retry also works when no per-run timeout is set
+/// (baseline: retry mechanism unaffected by the timeout deadline change).
+#[test]
+fn quota_retry_succeeds_without_timeout() {
+    let dir = tempdir().unwrap();
+
+    let quota_error = ExecutorOutput {
+        combined: "rate limit reached, please wait".to_string(),
+        exit_code: 1,
+    };
+    let success = ExecutorOutput {
+        combined: "task complete: done".to_string(),
+        exit_code: 0,
+    };
+    let executor = MockExecutor::new(vec![quota_error, success]);
+
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test_quota_no_timeout".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+    };
+
+    let workflow_str = r#"
+[workflow]
+completion_signal = "done"
+context_dir = "."
+max_cycles = 1
+quota_backoff = true
+quota_backoff_delay = 0
+quota_backoff_max_retries = 1
+
+[[phases]]
+name = "test"
+prompt_text = "test prompt"
+"#;
+
+    let workflow: Workflow = workflow_str.parse().unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+
+    assert_eq!(
+        result.exit_code, 0,
+        "expected success after quota retry (no timeout), got exit_code {}",
+        result.exit_code
+    );
+}
+
+/// Verify that a per-run timeout still fires correctly on a slow subprocess
+/// when no quota backoff retry is involved.
+#[test]
+fn timeout_fires_correctly_without_retry() {
+    let dir = tempdir().unwrap();
+
+    // Mock executor that stays "alive" for many polls — far exceeding a 1-second timeout.
+    let executor = SlowMockExecutor::new(
+        200,
+        ExecutorOutput {
+            combined: "done".to_string(),
+            exit_code: 0,
+        },
+    );
+
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test_timeout_fires".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+    };
+
+    // 1-second timeout; the mock executor stays alive for 20 seconds (200 × 100ms).
+    let workflow_str = r#"
+[workflow]
+completion_signal = "done"
+context_dir = "."
+max_cycles = 1
+timeout_per_run_secs = 1
+
+[[phases]]
+name = "test"
+prompt_text = "test prompt"
+"#;
+
+    let workflow: Workflow = workflow_str.parse().unwrap();
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+
+    // Timeout path returns exit_code 2
+    assert_eq!(
+        result.exit_code, 2,
+        "expected timeout exit code 2, got {}",
+        result.exit_code
+    );
+}

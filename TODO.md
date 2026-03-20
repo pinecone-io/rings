@@ -4,29 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Tech Debt: Validate Parsed Cost Values Are Non-Negative
-
-**Ref:** `specs/observability/cost-tracking.md`, `specs/execution/output-parsing.md`
-
-**Summary:** `parse_cost_from_output()` in `src/cost.rs` accepts any dollar amount matched by the regex, including negative values. A malformed or adversarial executor output like `Cost: $-10.00` would parse as `cost_usd: Some(-10.0)`, which would subtract from cumulative cost and could allow budget cap bypass.
-
-### Task 1: Add non-negative validation to cost parser
-
-**Files:** `src/cost.rs`
-
-**Steps:**
-- [x] After extracting `cost_usd` from any regex match, clamp or reject negative values: if `cost < 0.0`, treat as `ParseConfidence::None` with `cost_usd: None`
-- [x] Also reject `NaN` and `Infinity` values (defense in depth against malformed f64 parsing)
-- [x] Log a warning when a negative/invalid cost is encountered (similar to low-confidence warning)
-
-**Tests:**
-- [x] `parse_cost_from_output("Cost: $-10.00 ...")` returns confidence `None`, cost `None`
-- [x] `parse_cost_from_output("Cost: $0.00 ...")` still works (zero is valid)
-- [x] Existing cost parsing tests continue to pass
-- [x] `just validate` clean
-
----
-
 ## Bug: Timeout Deadline Not Reset After Quota Backoff Retry
 
 **Ref:** `specs/execution/engine.md`, `specs/execution/rate-limiting.md`
@@ -38,15 +15,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`
 
 **Steps:**
-- [ ] Move `run_start = std::time::Instant::now()` inside the `'retry_loop` (before line 940), so each retry attempt gets a fresh timeout deadline
-- [ ] Alternatively, recompute `timeout_deadline` at the top of each retry iteration (after the `continue 'retry_loop` at line 1190 re-enters)
-- [ ] Ensure `elapsed_secs` at line 1198 still reflects total wall-clock time (for display purposes), so keep the original `run_start` for display and add a separate `attempt_start` for timeout
+- [x] Move `run_start = std::time::Instant::now()` inside the `'retry_loop` (before line 940), so each retry attempt gets a fresh timeout deadline
+- [x] Alternatively, recompute `timeout_deadline` at the top of each retry iteration (after the `continue 'retry_loop` at line 1190 re-enters)
+- [x] Ensure `elapsed_secs` at line 1198 still reflects total wall-clock time (for display purposes), so keep the original `run_start` for display and add a separate `attempt_start` for timeout
 
 **Tests:**
-- [ ] A run with `timeout_per_run_secs = 10` and quota backoff delay of 5s: retry attempt gets a fresh 10s timeout, not an expired one
-- [ ] A run with no timeout: retry behavior unchanged
-- [ ] A run with timeout and no retries: timeout still fires correctly
-- [ ] `just validate` clean
+- [x] A run with `timeout_per_run_secs = 10` and quota backoff delay of 5s: retry attempt gets a fresh 10s timeout, not an expired one
+- [x] A run with no timeout: retry behavior unchanged
+- [x] A run with timeout and no retries: timeout still fires correctly
+- [x] `just validate` clean
 
 ---
 

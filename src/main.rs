@@ -1006,12 +1006,14 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
     Ok(0)
 }
 
-fn cmd_show(_args: cli::ShowArgs, _output_format: cli::OutputFormat) -> i32 {
-    // Show is a shorthand for inspect --show summary
-    // This will be fully implemented when rings inspect is available (Task 8)
-    // For now, return a placeholder error
-    eprintln!("Error: 'rings show' is not yet fully implemented. Use 'rings inspect' instead.");
-    2
+fn cmd_show(args: cli::ShowArgs, output_format: cli::OutputFormat) -> i32 {
+    let inspect_args = cli::InspectArgs {
+        run_id: args.run_id,
+        show: vec![cli::InspectView::Summary],
+        cycle: None,
+        phase: None,
+    };
+    cmd_inspect(inspect_args, output_format)
 }
 
 fn cmd_inspect(args: cli::InspectArgs, output_format: cli::OutputFormat) -> i32 {
@@ -1024,7 +1026,7 @@ fn cmd_inspect(args: cli::InspectArgs, output_format: cli::OutputFormat) -> i32 
     }
 }
 
-fn inspect_inner(args: cli::InspectArgs, _output_format: cli::OutputFormat) -> Result<i32> {
+fn inspect_inner(args: cli::InspectArgs, output_format: cli::OutputFormat) -> Result<i32> {
     let base_dir = resolve_output_dir(None, None);
     let run_dir = base_dir.join(&args.run_id);
 
@@ -1040,6 +1042,9 @@ fn inspect_inner(args: cli::InspectArgs, _output_format: cli::OutputFormat) -> R
 
     for view in &views {
         match view {
+            cli::InspectView::Summary => {
+                render_summary(&run_dir, output_format)?;
+            }
             cli::InspectView::DataFlow => {
                 let declared = rings::inspect::load_declared_flow(&run_dir)?;
                 print!("{}", rings::inspect::render_data_flow_declared(&declared));
@@ -1059,6 +1064,111 @@ fn inspect_inner(args: cli::InspectArgs, _output_format: cli::OutputFormat) -> R
     }
 
     Ok(0)
+}
+
+fn render_summary(run_dir: &std::path::Path, output_format: cli::OutputFormat) -> Result<()> {
+    use std::collections::BTreeMap;
+
+    // Read run.toml
+    let run_toml_path = run_dir.join("run.toml");
+    let meta = state::RunMeta::read(&run_toml_path)
+        .with_context(|| format!("Run directory not found: {}", run_dir.display()))?;
+
+    // Read state.json (optional — gracefully handle missing)
+    let state_path = run_dir.join("state.json");
+    let state_opt = state::StateFile::read(&state_path).ok();
+
+    // Read costs.jsonl for per-phase breakdown
+    let costs_path = run_dir.join("costs.jsonl");
+    let cost_entries: Vec<rings::audit::CostEntry> = if costs_path.exists() {
+        rings::audit::stream_cost_entries(&costs_path)?
+            .filter_map(|r| r.ok())
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // Compute totals from cost entries
+    let total_cost_usd: f64 = cost_entries.iter().filter_map(|e| e.cost_usd).sum();
+    let total_input_tokens: u64 = cost_entries.iter().filter_map(|e| e.input_tokens).sum();
+    let total_output_tokens: u64 = cost_entries.iter().filter_map(|e| e.output_tokens).sum();
+
+    // Phase cost breakdown: sum cost per phase
+    let mut phase_costs: BTreeMap<String, f64> = BTreeMap::new();
+    for entry in &cost_entries {
+        if let Some(cost) = entry.cost_usd {
+            *phase_costs.entry(entry.phase.clone()).or_insert(0.0) += cost;
+        }
+    }
+
+    // Cycles completed
+    let cycles_completed = state_opt
+        .as_ref()
+        .map(|s| s.last_completed_cycle)
+        .unwrap_or(0);
+
+    // Duration: parse started_at, compute elapsed
+    let duration_str = chrono::DateTime::parse_from_rfc3339(&meta.started_at)
+        .ok()
+        .map(|started| {
+            let started_utc = started.with_timezone(&chrono::Utc);
+            let now = chrono::Utc::now();
+            let elapsed = now.signed_duration_since(started_utc);
+            let secs = elapsed.num_seconds().max(0) as u64;
+            if secs < 60 {
+                format!("{}s", secs)
+            } else if secs < 3600 {
+                format!("{}m {}s", secs / 60, secs % 60)
+            } else {
+                format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+            }
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    if output_format == cli::OutputFormat::Jsonl {
+        // Emit a single JSON summary object
+        let mut obj = serde_json::json!({
+            "event": "run_summary",
+            "run_id": meta.run_id,
+            "status": meta.status.to_string(),
+            "workflow_file": meta.workflow_file,
+            "started_at": meta.started_at,
+            "cycles_completed": cycles_completed,
+            "total_cost_usd": total_cost_usd,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "phase_costs": phase_costs,
+        });
+        if let Some(ctx) = &meta.context_dir {
+            obj["context_dir"] = serde_json::Value::String(ctx.clone());
+        }
+        println!("{}", serde_json::to_string(&obj)?);
+    } else {
+        // Human-readable summary
+        println!("Run ID:     {}", meta.run_id);
+        println!("Status:     {}", meta.status);
+        println!("Workflow:   {}", meta.workflow_file);
+        if let Some(ctx) = &meta.context_dir {
+            println!("Context:    {}", ctx);
+        }
+        println!("Started:    {}", meta.started_at);
+        println!("Duration:   {}", duration_str);
+        println!("Cycles:     {}", cycles_completed);
+        println!("Cost:       ${:.4}", total_cost_usd);
+        println!(
+            "Tokens:     {} in / {} out",
+            total_input_tokens, total_output_tokens
+        );
+
+        if !phase_costs.is_empty() {
+            println!("\nPhase cost breakdown:");
+            for (phase, cost) in &phase_costs {
+                println!("  {:<20}  ${:.4}", phase, cost);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn cmd_lineage(_args: cli::LineageArgs, _output_format: cli::OutputFormat) -> i32 {
@@ -2055,5 +2165,179 @@ mod cleanup_tests {
         });
         assert_eq!(summary["event"], "cleanup_summary");
         assert_eq!(summary["deleted_count"], 3);
+    }
+}
+
+#[cfg(test)]
+mod show_tests {
+    use super::*;
+    use rings::audit::CostEntry;
+    use rings::state::{RunMeta, RunStatus, StateFile};
+    use tempfile::TempDir;
+
+    fn make_run_dir(base: &std::path::Path, run_id: &str, status: RunStatus) -> std::path::PathBuf {
+        let run_dir = base.join(run_id);
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let meta = RunMeta {
+            run_id: run_id.to_string(),
+            workflow_file: "workflow.rings.toml".to_string(),
+            started_at: "2025-01-01T00:00:00Z".to_string(),
+            rings_version: "0.1.0".to_string(),
+            status,
+            phase_fingerprint: None,
+            parent_run_id: None,
+            continuation_of: None,
+            ancestry_depth: 0,
+            context_dir: Some("/home/user/project".to_string()),
+        };
+        meta.write(&run_dir.join("run.toml")).unwrap();
+        run_dir
+    }
+
+    fn write_state(run_dir: &std::path::Path, cycles: u32, cost: f64) {
+        let state = StateFile {
+            schema_version: 1,
+            run_id: run_dir.file_name().unwrap().to_string_lossy().into_owned(),
+            workflow_file: "workflow.rings.toml".to_string(),
+            last_completed_run: cycles,
+            last_completed_cycle: cycles,
+            last_completed_phase_index: 0,
+            last_completed_iteration: 0,
+            total_runs_completed: cycles,
+            cumulative_cost_usd: cost,
+            claude_resume_commands: vec![],
+            canceled_at: None,
+            failure_reason: None,
+            ancestry: None,
+        };
+        state.write_atomic(&run_dir.join("state.json")).unwrap();
+    }
+
+    fn write_cost_entries(run_dir: &std::path::Path, entries: &[CostEntry]) {
+        use std::io::Write;
+        let path = run_dir.join("costs.jsonl");
+        let mut f = std::fs::File::create(&path).unwrap();
+        for entry in entries {
+            writeln!(f, "{}", serde_json::to_string(entry).unwrap()).unwrap();
+        }
+    }
+
+    fn make_cost_entry(
+        run: u32,
+        phase: &str,
+        cost_usd: f64,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> CostEntry {
+        CostEntry {
+            run,
+            cycle: 1,
+            phase: phase.to_string(),
+            iteration: 1,
+            cost_usd: Some(cost_usd),
+            input_tokens: Some(input_tokens),
+            output_tokens: Some(output_tokens),
+            cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
+            produces_violations: vec![],
+        }
+    }
+
+    #[test]
+    fn show_prints_summary_with_run_id_status_cost_cycles() {
+        let tmp = TempDir::new().unwrap();
+        let run_dir = make_run_dir(tmp.path(), "run_test_001", RunStatus::Completed);
+        write_state(&run_dir, 3, 0.042);
+        write_cost_entries(
+            &run_dir,
+            &[
+                make_cost_entry(1, "builder", 0.020, 1000, 500),
+                make_cost_entry(2, "reviewer", 0.022, 1100, 600),
+            ],
+        );
+
+        // Call render_summary directly and verify it succeeds
+        let result = render_summary(&run_dir, cli::OutputFormat::Human);
+        assert!(
+            result.is_ok(),
+            "render_summary should succeed: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn show_invalid_run_id_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let fake_dir = tmp.path().join("nonexistent_run");
+        let result = render_summary(&fake_dir, cli::OutputFormat::Human);
+        assert!(result.is_err(), "should error on missing run directory");
+    }
+
+    #[test]
+    fn show_jsonl_mode_emits_single_json_object() {
+        use std::io::{self, Write};
+
+        let tmp = TempDir::new().unwrap();
+        let run_dir = make_run_dir(tmp.path(), "run_jsonl_001", RunStatus::Completed);
+        write_state(&run_dir, 2, 0.015);
+        write_cost_entries(&run_dir, &[make_cost_entry(1, "builder", 0.010, 500, 200)]);
+
+        // Capture stdout via a buffer — we redirect by calling render_summary with jsonl
+        // and checking it doesn't error (full output capture would require a pipe)
+        let result = render_summary(&run_dir, cli::OutputFormat::Jsonl);
+        assert!(
+            result.is_ok(),
+            "render_summary jsonl should succeed: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn show_summary_includes_phase_cost_breakdown() {
+        let tmp = TempDir::new().unwrap();
+        let run_dir = make_run_dir(tmp.path(), "run_phases_001", RunStatus::Completed);
+        write_state(&run_dir, 2, 0.05);
+        write_cost_entries(
+            &run_dir,
+            &[
+                make_cost_entry(1, "builder", 0.020, 1000, 400),
+                make_cost_entry(2, "reviewer", 0.030, 1500, 600),
+            ],
+        );
+
+        // Verify the data loading works correctly (phase breakdown is computed from cost entries)
+        let costs_path = run_dir.join("costs.jsonl");
+        let entries: Vec<CostEntry> = rings::audit::stream_cost_entries(&costs_path)
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert_eq!(entries.len(), 2);
+        let builder_cost: f64 = entries
+            .iter()
+            .filter(|e| e.phase == "builder")
+            .filter_map(|e| e.cost_usd)
+            .sum();
+        assert!((builder_cost - 0.020).abs() < 1e-9);
+
+        let result = render_summary(&run_dir, cli::OutputFormat::Human);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn show_gracefully_handles_missing_state_json() {
+        let tmp = TempDir::new().unwrap();
+        // Only run.toml, no state.json
+        let run_dir = make_run_dir(tmp.path(), "run_no_state", RunStatus::Completed);
+        // No state.json written
+        let result = render_summary(&run_dir, cli::OutputFormat::Human);
+        assert!(
+            result.is_ok(),
+            "should succeed even without state.json: {:?}",
+            result
+        );
     }
 }

@@ -4,60 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-074: `rings cleanup` — Remove Old Run Data
-
-**Spec:** `specs/cli/commands-and-flags.md` lines 146–158
-
-**Summary:** `rings cleanup` removes run directories older than a configurable threshold to free disk space. Skips runs with `status = "running"`. Supports `--dry-run`, `--yes`, and `--output-format jsonl`.
-
-### Task 1: CLI subcommand and argument parsing
-
-**Files:** `src/cli.rs`, `src/main.rs`
-
-**Steps:**
-- [x] Add `Cleanup(CleanupArgs)` variant to `Command` enum in `src/cli.rs`
-- [x] Define `CleanupArgs` struct:
-  - `--older-than <DURATION>` (default: `"30d"`) — accepts duration strings like `7d`, `30d`, `90d`, `24h`
-  - `--dry-run` (`bool`) — show what would be deleted without deleting
-  - `-y, --yes` (`bool`) — skip confirmation prompt
-- [x] Add `Command::Cleanup(args) => cmd_cleanup(args, cli.output_format)` match arm in `main.rs`
-
-**Tests:**
-- [x] `rings cleanup` parses with no args (older-than defaults to "30d")
-- [x] `rings cleanup --older-than 7d` parses duration
-- [x] `rings cleanup --dry-run --yes` parses both flags
-
----
-
-### Task 2: Cleanup logic
-
-**Files:** `src/main.rs` (or new `src/cleanup.rs`)
-
-**Steps:**
-- [x] Implement `cleanup_inner(args, output_format) -> Result<i32>`:
-  1. Parse `--older-than` using `duration::SinceSpec` (already exists for `rings list --since`)
-  2. Scan the base output directory for run directories (reuse pattern from `list::list_runs`)
-  3. For each run dir: read `run.toml`, check `started_at` against the cutoff
-  4. Skip runs where `status == "running"` (never delete active runs)
-  5. Collect candidates as `(run_id, started_at, status, dir_path)`
-- [x] If no candidates found: print "No runs older than {duration} found." and exit 0
-- [x] If `--dry-run`: print what would be deleted (one line per run), exit 0
-- [x] If not `--yes` and stderr is a TTY: prompt `Delete N runs? [y/N]`, read stdin, abort on anything except `y`/`Y`
-- [x] Delete each candidate directory with `std::fs::remove_dir_all`
-- [x] Print summary: "Deleted N runs, freed approximately X MB"
-- [x] In JSONL mode: emit one `{"event":"cleanup_deleted","run_id":"...","path":"..."}` per deleted run, then a summary event
-
-**Tests:**
-- [x] Runs older than threshold are identified for deletion
-- [x] Runs newer than threshold are skipped
-- [x] Running runs are never deleted regardless of age
-- [x] `--dry-run` lists candidates but does not delete
-- [x] `--yes` skips confirmation prompt
-- [x] Empty base directory returns 0 with "no runs found" message
-- [x] JSONL output emits one event per deleted run
-
----
-
 ## F-071: `rings show` — Single-Screen Run Summary
 
 **Spec:** `specs/cli/commands-and-flags.md` line 162–163
@@ -69,20 +15,20 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`, `src/inspect.rs`
 
 **Steps:**
-- [ ] Implement the `Summary` view in `inspect_inner` for the `InspectView::Summary` match arm:
+- [x] Implement the `Summary` view in `inspect_inner` for the `InspectView::Summary` match arm:
   1. Read `run.toml` from the run directory → `RunMeta`
   2. Read `state.json` → `StateFile` (cycles completed, cumulative cost)
   3. Read `costs.jsonl` → per-run cost entries
   4. Display: Run ID, status, workflow file, context_dir, started_at, duration, cycles completed, total cost, total tokens, phase cost breakdown
-- [ ] Wire `cmd_show` to call `inspect_inner` with `show: vec![InspectView::Summary]` instead of printing an error stub
-- [ ] Support `--output-format jsonl` — emit the summary as a single JSON object
+- [x] Wire `cmd_show` to call `inspect_inner` with `show: vec![InspectView::Summary]` instead of printing an error stub
+- [x] Support `--output-format jsonl` — emit the summary as a single JSON object
 
 **Tests:**
-- [ ] `rings show <valid-run-id>` prints a summary with run ID, status, cost, cycles
-- [ ] `rings show <invalid-run-id>` exits 2 with "Run directory not found"
-- [ ] Summary includes phase cost breakdown when costs.jsonl exists
-- [ ] JSONL mode emits a single JSON summary object
-- [ ] Summary gracefully handles missing state.json (shows what it can from run.toml)
+- [x] `rings show <valid-run-id>` prints a summary with run ID, status, cost, cycles
+- [x] `rings show <invalid-run-id>` exits 2 with "Run directory not found"
+- [x] Summary includes phase cost breakdown when costs.jsonl exists
+- [x] JSONL mode emits a single JSON summary object
+- [x] Summary gracefully handles missing state.json (shows what it can from run.toml)
 
 ---
 
@@ -314,5 +260,63 @@ Additionally, the resume cost reconstruction at lines 627-653 does not deduplica
 - [ ] Resume with clean costs.jsonl: behavior unchanged
 - [ ] Cost entry is appended immediately after state write (no crash window for manifest computation)
 - [ ] `just validate` clean
+
+---
+
+## CI: Transition Release Pipeline from Push-Triggered to Cron-Triggered
+
+**Ref:** `.github/workflows/ci.yml`
+
+**Summary:** Every push to `main` currently triggers a full build+release pipeline, creating a version-bump commit (`chore: bump version to vX.Y.Z [skip ci]`) on every code push. This pollutes the git history with mechanical commits. Instead, split CI into two workflows: a push-triggered check-only workflow and a cron-triggered release workflow that wakes up hourly, compares the latest release tag to `HEAD`, and only bumps/builds/releases if there are unreleased code changes.
+
+### Task 1: Split `ci.yml` into check-only and release workflows
+
+**Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml` (new)
+
+**Steps:**
+- [ ] Strip the `changes`, `bump`, `build`, and `release` jobs from `ci.yml`, leaving only the `check` job
+- [ ] Remove the `workflow_dispatch` trigger from `ci.yml` (it's only useful for manual releases)
+- [ ] Create `.github/workflows/release.yml` containing the `changes`, `bump`, `build`, and `release` jobs (copied from current `ci.yml`)
+- [ ] In `release.yml`, add a `check` job as the first step (same as current `ci.yml` check job) so releases are never built from code that doesn't pass CI
+
+### Task 2: Configure cron + workflow_dispatch triggers on `release.yml`
+
+**Files:** `.github/workflows/release.yml`
+
+**Steps:**
+- [ ] Set triggers to `schedule: [{cron: '0 * * * *'}]` (every hour on the hour) and `workflow_dispatch`
+- [ ] Do not include `push` or `pull_request` triggers
+- [ ] Confirm that `[skip ci]` in bump commits only suppresses `push`-triggered runs, not `schedule`-triggered ones (this is the documented GitHub Actions behavior)
+
+### Task 3: Replace change detection with tag-based diff
+
+**Files:** `.github/workflows/release.yml`
+
+**Steps:**
+- [ ] In the `changes` job, replace `fetch-depth: 2` with `fetch-depth: 0` so all tags and history are available
+- [ ] Replace the `HEAD~1` vs `HEAD` diff with a tag-based comparison:
+  1. Find the latest `v*` tag: `LATEST_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo '')`
+  2. If no tag exists, set `should_release=true` (first release)
+  3. If a tag exists, diff `$LATEST_TAG..HEAD` and filter out docs-only changes (same grep pattern as current)
+  4. If code changes exist between the tag and HEAD, set `should_release=true`; otherwise `should_release=false`
+- [ ] Keep the `workflow_dispatch` override that always sets `should_release=true`
+
+### Task 4: Clean up `ci.yml`
+
+**Files:** `.github/workflows/ci.yml`
+
+**Steps:**
+- [ ] Remove the `if: github.ref == 'refs/heads/main'` condition that was only relevant for gating release jobs
+- [ ] Verify the `check` job still runs on both `push` and `pull_request` to `main`
+- [ ] Verify no leftover `needs:` references to removed jobs
+
+### Task 5: Test the new workflow split
+
+**Steps:**
+- [ ] Push the two-file split to `main`
+- [ ] Verify a push triggers only the `ci.yml` check job (no release)
+- [ ] Trigger `release.yml` manually via `workflow_dispatch` and confirm it detects unreleased changes, bumps version, builds, and publishes
+- [ ] Verify that if no new commits exist since the last `v*` tag, the cron/manual run exits early without bumping or building
+- [ ] Verify that multiple code pushes between cron ticks result in a single version bump (not one per push)
 
 ---

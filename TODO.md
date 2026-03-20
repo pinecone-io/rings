@@ -4,29 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Tech Debt: Harden `costs.jsonl` Append Against Partial Writes
-
-**Ref:** `specs/observability/audit-logs.md`
-
-**Summary:** `append_cost_entry()` in `src/audit.rs` opens the file in append mode and writes a JSON line. If the process is killed mid-write (e.g., SIGKILL, OOM kill), the file can be left with a truncated JSON line. On resume, `recover_last_run_from_costs()` already skips malformed lines, but a partial line could still corrupt the next append if it doesn't end with a newline.
-
-### Task 1: Atomic-ish cost entry append
-
-**Files:** `src/audit.rs`
-
-**Steps:**
-- [x] Serialize the full line (JSON + newline) to a `String` first (already done)
-- [x] Write the entire serialized bytes in a single `write_all()` call instead of `writeln!()` (which may split the write into data + newline)
-- [x] Call `file.sync_data()` after the write to flush to disk before returning
-- [x] Add a recovery safeguard: when reading `costs.jsonl` for resume, if the last line does not end with `\n`, truncate the file to remove the partial line before appending
-
-**Tests:**
-- [x] Existing cost parsing and state recovery tests continue to pass
-- [x] Test that a costs.jsonl with a truncated last line (no trailing newline) is handled gracefully on read
-- [x] `just validate` clean
-
----
-
 ## Tech Debt: Validate Parsed Cost Values Are Non-Negative
 
 **Ref:** `specs/observability/cost-tracking.md`, `specs/execution/output-parsing.md`
@@ -38,15 +15,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cost.rs`
 
 **Steps:**
-- [ ] After extracting `cost_usd` from any regex match, clamp or reject negative values: if `cost < 0.0`, treat as `ParseConfidence::None` with `cost_usd: None`
-- [ ] Also reject `NaN` and `Infinity` values (defense in depth against malformed f64 parsing)
-- [ ] Log a warning when a negative/invalid cost is encountered (similar to low-confidence warning)
+- [x] After extracting `cost_usd` from any regex match, clamp or reject negative values: if `cost < 0.0`, treat as `ParseConfidence::None` with `cost_usd: None`
+- [x] Also reject `NaN` and `Infinity` values (defense in depth against malformed f64 parsing)
+- [x] Log a warning when a negative/invalid cost is encountered (similar to low-confidence warning)
 
 **Tests:**
-- [ ] `parse_cost_from_output("Cost: $-10.00 ...")` returns confidence `None`, cost `None`
-- [ ] `parse_cost_from_output("Cost: $0.00 ...")` still works (zero is valid)
-- [ ] Existing cost parsing tests continue to pass
-- [ ] `just validate` clean
+- [x] `parse_cost_from_output("Cost: $-10.00 ...")` returns confidence `None`, cost `None`
+- [x] `parse_cost_from_output("Cost: $0.00 ...")` still works (zero is valid)
+- [x] Existing cost parsing tests continue to pass
+- [x] `just validate` clean
 
 ---
 

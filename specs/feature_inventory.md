@@ -125,10 +125,10 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-068 | `rings run` | I can start a new workflow execution with `rings run <workflow.toml>` | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-069 | `rings resume` | I can resume an interrupted workflow from its last completed step with `rings resume <run-id>` (requires F-048) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-070 | `rings list` | I can see all recent runs with their status and total cost in a summary table | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-071 | `rings show` | I can get a single-screen summary of any past run by its ID | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-071 | `rings show` | I can get a single-screen summary of any past run by its ID | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-072 | `rings inspect` | I can deeply inspect any run with multiple views: summary, cycles, files, costs, and raw output | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
 | F-073 | `rings lineage` | I can see the full chain of parent/child runs that led to any given run ID (requires F-058) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
-| F-074 | `rings cleanup` | I can remove old run data to free disk space | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-074 | `rings cleanup` | I can remove old run data to free disk space | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-075 | `rings completions` | I can generate shell completion scripts for bash, zsh, or fish with `rings completions <shell>` | PRIORITIZED | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 
 ## CLI Flags
@@ -139,7 +139,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-077 | `--output-dir` | I can redirect this run's output to a specific directory | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-078 | `--include-dir` | I can inject additional file-listing context into prompts for this run (requires F-025) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-079 | `--delay` | I can set or override the between-run delay for this run without editing the workflow file (requires F-041) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-080 | `--cycle-delay` | I can set or override the between-cycle delay for this run without editing the workflow file (requires F-042) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-080 | `--cycle-delay` | I can set or override the between-cycle delay for this run without editing the workflow file (requires F-042) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-081 | `--dry-run` | I can preview the full execution plan — phases, prompts, delays — without any Claude calls | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-082 | `--step` | I can pause after every individual run to inspect output before letting rings continue | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-083 | `--step-cycles` | I can pause only at cycle boundaries for a less granular step-through experience (requires F-082) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |

@@ -4,35 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-089: `--strict-parsing` CLI Flag
-
-**Spec:** `specs/cli/commands-and-flags.md` lines 65–67
-
-**Summary:** When `--strict-parsing` is set, treat cost parse confidence of `Low` or `None` as a hard error — halt execution, save state, exit code 2. Currently cost parsing failures are just warnings.
-
-### Task 1: Add flag and enforcement logic
-
-**Files:** `src/cli.rs`, `src/main.rs`, `src/engine.rs`
-
-**Steps:**
-- [x] Add `--strict-parsing` flag to `RunArgs` in `src/cli.rs`: `pub strict_parsing: bool`
-- [x] Pass it through to `EngineConfig` as `strict_parsing: bool`
-- [x] In the engine, after cost parsing for each run: if `strict_parsing` and confidence is `Low` or `None`:
-  1. Save state (same as budget cap flow)
-  2. Print error: `Strict parsing enabled: cost confidence too low ({confidence}) on run {N}. Halting.`
-  3. Set exit code to 2
-  4. Break out of the run loop
-- [x] In JSONL mode, emit a `fatal_error` event before exiting
-
-**Tests:**
-- [x] `--strict-parsing` with `Full` confidence: run continues normally
-- [x] `--strict-parsing` with `Partial` confidence: run continues (only Low/None trigger halt)
-- [x] `--strict-parsing` with `Low` confidence: run halts, state saved, exit 2
-- [x] `--strict-parsing` with `None` confidence: run halts, state saved, exit 2
-- [x] Without `--strict-parsing`: low confidence produces a warning but run continues (existing behavior)
-
----
-
 ## Tech Debt: Remove `unwrap()`/`expect()` from Production Code
 
 **Ref:** CLAUDE.md rule — "No `unwrap()` or `expect()` in production code — all errors propagate via `?` and `anyhow`"
@@ -44,12 +15,12 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`
 
 **Steps:**
-- [ ] Replace `.expect("Failed to install Ctrl+C handler")` on line 43 with proper error handling
-- [ ] Since `main()` currently returns `()`, either: (a) convert main to return `Result<()>` via `process::exit` wrapper, or (b) use an `if let Err(e)` block that prints the error to stderr and exits with code 2
-- [ ] Verify that failure to install the handler produces a clear user-facing error message, not a panic backtrace
+- [x] Replace `.expect("Failed to install Ctrl+C handler")` on line 43 with proper error handling
+- [x] Since `main()` currently returns `()`, either: (a) convert main to return `Result<()>` via `process::exit` wrapper, or (b) use an `if let Err(e)` block that prints the error to stderr and exits with code 2
+- [x] Verify that failure to install the handler produces a clear user-facing error message, not a panic backtrace
 
 **Tests:**
-- [ ] Existing tests continue to pass (`just validate`)
+- [x] Existing tests continue to pass (`just validate`)
 
 ---
 
@@ -58,12 +29,12 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`
 
 **Steps:**
-- [ ] Replace `.unwrap()` on line 170 (phase position lookup in dry-run output) with `.unwrap_or(0)` or a safe fallback that cannot panic
-- [ ] The current code iterates `plan.phases` and looks up each phase's index by name within the same collection — logically infallible, but should still be defended
+- [x] Replace `.unwrap()` on line 170 (phase position lookup in dry-run output) with `.unwrap_or(0)` or a safe fallback that cannot panic
+- [x] The current code iterates `plan.phases` and looks up each phase's index by name within the same collection — logically infallible, but should still be defended
 
 **Tests:**
-- [ ] Existing dry-run tests continue to pass
-- [ ] `just validate` clean
+- [x] Existing dry-run tests continue to pass
+- [x] `just validate` clean
 
 ---
 
@@ -226,5 +197,51 @@ Additionally, the resume cost reconstruction at lines 627-653 does not deduplica
 - [ ] Trigger `release.yml` manually via `workflow_dispatch` and confirm it detects unreleased changes, bumps version, builds, and publishes
 - [ ] Verify that if no new commits exist since the last `v*` tag, the cron/manual run exits early without bumping or building
 - [ ] Verify that multiple code pushes between cron ticks result in a single version bump (not one per push)
+
+---
+
+## Bug: JSONL Summary Event Missing on Executor Wait Error
+
+**Ref:** `specs/observability/runtime-output.md` (F-139, F-140)
+
+**Summary:** In `engine.rs` line 1124, if `handle.try_wait()` returns an `Err` (I/O error polling the subprocess), the function returns `Err(e)` directly without emitting a `SummaryEvent`. This breaks the JSONL event contract: every `StartEvent` should eventually be followed by a `SummaryEvent`. The error propagates to `cmd_run` in `main.rs` which emits a `FatalErrorEvent` with `run_id: None` (line 79-80), losing the run correlation. While rare (requires an OS-level process polling failure), JSONL consumers relying on the start/summary pairing will hang or error.
+
+### Task 1: Emit summary before returning executor wait error
+
+**Files:** `src/engine.rs`, `src/main.rs`
+
+**Steps:**
+- [ ] At line 1122-1124 in `engine.rs`, before returning `Err(e)`, emit a `SummaryEvent` via `emit_summary_if_jsonl` with status `"executor_error"` and the current run context
+- [ ] Alternatively, catch the error in `run_workflow`, emit the summary, then re-return the error
+- [ ] In `main.rs` lines 77-86 (cmd_run error handler) and lines 540-551 (cmd_resume error handler): pass the `run_id` to `FatalErrorEvent::new(Some(run_id), ...)` instead of `None` — this requires extracting and storing the run_id before calling `run_workflow`
+
+**Tests:**
+- [ ] A mock executor whose `try_wait()` returns `Err`: verify JSONL output contains both `StartEvent` and `SummaryEvent`
+- [ ] Verify `FatalErrorEvent` includes the correct `run_id` (not null)
+- [ ] `just validate` clean
+
+---
+
+## Bug: Workflow `budget_cap_usd = nan` Bypasses Budget Cap Validation
+
+**Ref:** `specs/observability/cost-tracking.md`, `specs/workflow/workflow-file-format.md`
+
+**Summary:** TOML 1.0 supports `nan`, `inf`, `+inf`, and `-inf` as float literals. The workflow validation in `src/workflow.rs` line 347-350 checks `if cap <= 0.0` to reject invalid budget caps, but `NaN <= 0.0` evaluates to `false` in IEEE 754 (all NaN comparisons return false). This means `budget_cap_usd = nan` passes validation. In the engine, `cumulative_cost >= NaN` is also always false, so the budget cap never triggers — the workflow runs with no spending limit despite having one configured. Similarly, `budget_cap_usd = inf` passes validation (inf > 0.0 is true) but provides no actual protection. The same issue exists for per-phase `budget_cap_usd` at line 406-410.
+
+### Task 1: Reject NaN and Infinity in budget cap validation
+
+**Files:** `src/workflow.rs`
+
+**Steps:**
+- [ ] In the global `budget_cap_usd` validation (line 347-350), add checks: `if cap.is_nan() || cap.is_infinite() || cap <= 0.0`
+- [ ] In the per-phase `budget_cap_usd` validation (line 406-410), add the same NaN/Infinity checks
+- [ ] Use a clear error message: `budget_cap_usd must be a finite positive number`
+
+**Tests:**
+- [ ] `budget_cap_usd = nan` in TOML is rejected at parse time
+- [ ] `budget_cap_usd = inf` in TOML is rejected at parse time
+- [ ] `budget_cap_usd = 10.0` still works (positive finite is valid)
+- [ ] Per-phase `budget_cap_usd = nan` is also rejected
+- [ ] `just validate` clean
 
 ---

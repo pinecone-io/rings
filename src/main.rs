@@ -37,10 +37,12 @@ fn main() {
     let cancel = Arc::new(CancelState::new());
     {
         let cancel_clone = Arc::clone(&cancel);
-        ctrlc::set_handler(move || {
+        if let Err(e) = ctrlc::set_handler(move || {
             cancel_clone.signal_received();
-        })
-        .expect("Failed to install Ctrl+C handler");
+        }) {
+            eprintln!("rings: failed to install Ctrl+C handler: {e}");
+            std::process::exit(2);
+        }
     }
 
     let cli = Cli::parse();
@@ -171,7 +173,7 @@ fn run_inner(
                         .phases
                         .iter()
                         .position(|p| p.name == phase.name)
-                        .unwrap()
+                        .unwrap_or(0)
                         + 1)
                     .to_string()
                 ),

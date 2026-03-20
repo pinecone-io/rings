@@ -422,6 +422,99 @@ prompt_text = "test prompt"
     );
 }
 
+/// Verify that a process which ignores SIGTERM receives SIGKILL after the 5-second grace period.
+/// This simulates a subprocess that traps SIGTERM and stays alive past the grace window.
+#[test]
+fn process_ignores_sigterm_gets_sigkill_after_grace_period() {
+    let dir = tempdir().unwrap();
+
+    // Configure mock to stay alive for 200 polls (20 seconds), far past the 5-second grace period
+    let executor = SlowMockExecutor::new(
+        200,
+        ExecutorOutput {
+            combined: "test output".to_string(),
+            exit_code: 0,
+        },
+    );
+
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test_sigkill_after_grace".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+        ..Default::default()
+    };
+
+    let workflow_str = r#"
+[workflow]
+completion_signal = "done"
+context_dir = "."
+max_cycles = 1
+
+[[phases]]
+name = "test"
+prompt_text = "test prompt"
+"#;
+
+    let workflow: Workflow = workflow_str.parse().unwrap();
+    let cancel_state = Arc::new(CancelState::new());
+    let cancel_state_clone = Arc::clone(&cancel_state);
+
+    let sigterm_flag = Arc::clone(&executor.last_sigterm_called);
+    let sigkill_flag = Arc::clone(&executor.last_sigkill_called);
+    let sigkill_flag_check = Arc::clone(&executor.last_sigkill_called);
+
+    let engine_thread = std::thread::spawn(move || {
+        let _ = run_workflow(
+            &workflow,
+            &executor,
+            &config,
+            None,
+            Some(cancel_state_clone),
+        );
+    });
+
+    // Wait for engine to start and enter the run loop
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // First Ctrl+C: transitions to Canceling → SIGTERM should be sent
+    cancel_state.signal_received();
+
+    // Wait for SIGTERM to be sent (engine polls every 100ms, so allow up to 300ms)
+    for _ in 0..30 {
+        if sigterm_flag.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    assert!(
+        sigterm_flag.load(Ordering::SeqCst),
+        "SIGTERM should have been sent after Ctrl+C"
+    );
+
+    // Process ignores SIGTERM; engine waits up to 5s then sends SIGKILL.
+    // Poll up to 8 seconds for SIGKILL to be sent.
+    for _ in 0..80 {
+        if sigkill_flag.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    let _ = engine_thread.join();
+
+    assert!(
+        sigkill_flag_check.load(Ordering::SeqCst),
+        "SIGKILL should be sent after 5-second grace period expires"
+    );
+}
+
 /// Verify that a quota backoff retry succeeds when a per-run timeout is configured.
 /// With the fix, each retry attempt gets a fresh timeout deadline. Without the fix,
 /// a retry after a backoff delay would re-use the original run_start and might

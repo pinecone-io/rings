@@ -59,17 +59,17 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/executor.rs`
 
 **Steps:**
-- [ ] When the cancel state is `Canceling` and the executor is still running: send SIGTERM to the subprocess
-- [ ] Start a 5-second timer. If the subprocess exits within 5s, proceed normally
-- [ ] If still running after 5s (or on `ForceKill` state from double Ctrl+C): send SIGKILL
-- [ ] On Unix: use `nix::sys::signal::kill(pid, Signal::SIGTERM)` and `Signal::SIGKILL`
-- [ ] Use `#[cfg(unix)]` guard — on non-Unix, fall back to immediate kill
+- [x] When the cancel state is `Canceling` and the executor is still running: send SIGTERM to the subprocess
+- [x] Start a 5-second timer. If the subprocess exits within 5s, proceed normally
+- [x] If still running after 5s (or on `ForceKill` state from double Ctrl+C): send SIGKILL
+- [x] On Unix: use `nix::sys::signal::kill(pid, Signal::SIGTERM)` and `Signal::SIGKILL`
+- [x] Use `#[cfg(unix)]` guard — on non-Unix, fall back to immediate kill
 
 **Tests:**
-- [ ] Mock executor that traps SIGTERM and exits: receives SIGTERM, exits cleanly within 5s
-- [ ] Mock executor that ignores SIGTERM: receives SIGTERM, then SIGKILL after 5s
-- [ ] Double Ctrl+C (ForceKill): SIGKILL sent immediately, no 5s wait
-- [ ] `just validate` clean
+- [x] Mock executor that traps SIGTERM and exits: receives SIGTERM, exits cleanly within 5s
+- [x] Mock executor that ignores SIGTERM: receives SIGTERM, then SIGKILL after 5s
+- [x] Double Ctrl+C (ForceKill): SIGKILL sent immediately, no 5s wait
+- [x] `just validate` clean
 
 ---
 

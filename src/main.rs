@@ -1232,6 +1232,9 @@ fn inspect_inner(args: cli::InspectArgs, output_format: cli::OutputFormat) -> Re
                     );
                 }
             }
+            cli::InspectView::ClaudeOutput => {
+                render_claude_output(&run_dir, args.cycle, args.phase.as_deref(), output_format)?;
+            }
             _ => {
                 eprintln!("View '{:?}' is not yet implemented.", view);
             }
@@ -1289,6 +1292,31 @@ fn render_cycles(
 
     let output =
         rings::inspect::render_cycles(&cost_entries, cycle_filter, signal_run, output_format);
+    print!("{}", output);
+    Ok(())
+}
+
+fn render_claude_output(
+    run_dir: &std::path::Path,
+    cycle_filter: Option<u32>,
+    phase_filter: Option<&str>,
+    output_format: cli::OutputFormat,
+) -> Result<()> {
+    let costs_path = run_dir.join("costs.jsonl");
+    let cost_entries: Vec<rings::audit::CostEntry> = if costs_path.exists() {
+        rings::audit::stream_cost_entries(&costs_path)?
+            .filter_map(|r| r.ok())
+            .collect()
+    } else {
+        vec![]
+    };
+    let output = rings::inspect::render_claude_output(
+        run_dir,
+        &cost_entries,
+        cycle_filter,
+        phase_filter,
+        output_format,
+    )?;
     print!("{}", output);
     Ok(())
 }

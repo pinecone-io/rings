@@ -23,33 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-097/F-098/F-101: Inspect Views — Summary, Cycles, Costs
-
-**Spec:** `specs/cli/inspect-command.md`
-
-**Summary:** Implement the three most useful inspect views. `--show summary` is already done (F-071). Add `--show cycles` (per-cycle breakdown) and `--show costs` (detailed per-run cost/token table).
-
-### Task 2: Implement `--show costs` view
-
-**Files:** `src/inspect.rs`
-
-**Steps:**
-- [x] In `inspect_inner`, handle `InspectView::Costs`:
-  1. Read `costs.jsonl` → display a table of all runs
-  2. Columns: Run #, Cycle, Phase, Cost USD, Input Tokens, Output Tokens, Confidence, Duration
-  3. Show totals row at bottom
-- [x] Support `--phase <NAME>` filter to show only a specific phase's costs
-- [x] In JSONL mode, emit one JSON object per run
-
-**Tests:**
-- [x] `rings inspect <id> --show costs` displays per-run cost table
-- [x] `--phase builder` filters to only builder phase runs
-- [x] Totals row sums cost and tokens correctly
-- [x] JSONL mode emits structured cost data per run
-- [x] `just validate` clean
-
----
-
 ## F-102: Inspect Claude Output View
 
 **Spec:** `specs/cli/inspect-command.md` (--show claude-output section)
@@ -61,20 +34,20 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/inspect.rs`
 
 **Steps:**
-- [ ] In `inspect_inner`, handle `InspectView::ClaudeOutput`:
+- [x] In `inspect_inner`, handle `InspectView::ClaudeOutput`:
   1. Scan the `runs/` subdirectory for log files (named like `001.log`, `002.log`, etc.)
   2. For each log file, print a header with run number, then the file contents
   3. Support `--cycle N` and `--phase NAME` filters: need to cross-reference with `costs.jsonl` to map run numbers to cycles/phases
-- [ ] In JSONL mode, emit one JSON object per run with the log content as a string field
-- [ ] Handle missing log files gracefully (print "log not found" for that run)
+- [x] In JSONL mode, emit one JSON object per run with the log content as a string field
+- [x] Handle missing log files gracefully (print "log not found" for that run)
 
 **Tests:**
-- [ ] `rings inspect <id> --show claude-output` displays log contents with run headers
-- [ ] `--cycle 1` filters to only cycle 1 runs
-- [ ] `--phase builder` filters to only builder phase runs
-- [ ] Missing log file produces a graceful message, not an error
-- [ ] JSONL mode emits structured output per run
-- [ ] `just validate` clean
+- [x] `rings inspect <id> --show claude-output` displays log contents with run headers
+- [x] `--cycle 1` filters to only cycle 1 runs
+- [x] `--phase builder` filters to only builder phase runs
+- [x] Missing log file produces a graceful message, not an error
+- [x] JSONL mode emits structured output per run
+- [x] `just validate` clean
 
 ---
 

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// One run entry within a cycle for the cycles view.
@@ -455,6 +455,129 @@ pub fn render_data_flow_actual(changes: &[ActualFileChange]) -> String {
     lines.join("\n") + "\n"
 }
 
+/// One run's claude output entry for JSONL mode.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeOutputEntry {
+    pub run: u32,
+    pub cycle: Option<u32>,
+    pub phase: Option<String>,
+    pub log: String,
+}
+
+/// Render the claude output view.
+///
+/// Scans the `runs/` subdirectory for log files (named like `001.log`, `001-retry-1.log`, etc.)
+/// and prints each with a run header. Supports `--cycle N` and `--phase NAME` filters
+/// by cross-referencing with `cost_entries`.
+///
+/// In JSONL mode, emits one JSON object per log file.
+/// Missing log files for filtered runs are reported with a placeholder message.
+pub fn render_claude_output(
+    run_dir: &Path,
+    cost_entries: &[crate::audit::CostEntry],
+    cycle_filter: Option<u32>,
+    phase_filter: Option<&str>,
+    output_format: crate::cli::OutputFormat,
+) -> Result<String> {
+    let runs_dir = run_dir.join("runs");
+
+    // Build a map from run number -> (cycle, phase) from cost entries.
+    let mut run_meta: BTreeMap<u32, (u32, String)> = BTreeMap::new();
+    for entry in cost_entries {
+        run_meta.insert(entry.run, (entry.cycle, entry.phase.clone()));
+    }
+
+    // Determine which run numbers are allowed by the active filters.
+    let filter_runs: Option<BTreeSet<u32>> = if cycle_filter.is_some() || phase_filter.is_some() {
+        let matching: BTreeSet<u32> = run_meta
+            .iter()
+            .filter(|(_, (cycle, phase))| {
+                cycle_filter.is_none_or(|c| *cycle == c) && phase_filter.is_none_or(|p| phase == p)
+            })
+            .map(|(run, _)| *run)
+            .collect();
+        Some(matching)
+    } else {
+        None
+    };
+
+    // When filters are active, iterate over allowed run numbers and check for log files.
+    // When no filters, scan the directory for all log files.
+    let mut log_files: Vec<(u32, std::path::PathBuf, bool)> = Vec::new(); // (run_num, path, exists)
+
+    if let Some(ref allowed) = filter_runs {
+        // For each allowed run number, look for its primary log file.
+        for run_num in allowed {
+            let path = runs_dir.join(format!("{run_num:03}.log"));
+            log_files.push((*run_num, path.clone(), path.exists()));
+        }
+    } else if runs_dir.exists() {
+        // Scan directory for all .log files.
+        let mut entries: Vec<(u32, std::path::PathBuf)> = std::fs::read_dir(&runs_dir)?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let fname = e.file_name();
+                let name = fname.to_string_lossy().into_owned();
+                if !name.ends_with(".log") || name.len() < 3 {
+                    return None;
+                }
+                let run_num: u32 = name[..3].parse().ok()?;
+                Some((run_num, e.path()))
+            })
+            .collect();
+        // Sort by filename for deterministic order.
+        entries.sort_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
+        for (run_num, path) in entries {
+            log_files.push((run_num, path, true));
+        }
+    }
+
+    if log_files.is_empty() {
+        if output_format == crate::cli::OutputFormat::Jsonl {
+            return Ok(String::new());
+        }
+        return Ok("No run logs found.\n".to_string());
+    }
+
+    let mut out = String::new();
+    for (run_num, log_path, exists) in &log_files {
+        let meta = run_meta.get(run_num);
+        let log_content = if *exists {
+            std::fs::read_to_string(log_path)?
+        } else {
+            "(log not found)\n".to_string()
+        };
+
+        if output_format == crate::cli::OutputFormat::Jsonl {
+            let entry = ClaudeOutputEntry {
+                run: *run_num,
+                cycle: meta.map(|(c, _)| *c),
+                phase: meta.map(|(_, p)| p.clone()),
+                log: log_content,
+            };
+            if let Ok(json) = serde_json::to_string(&entry) {
+                out.push_str(&json);
+                out.push('\n');
+            }
+        } else {
+            let header = match meta {
+                Some((cycle, phase)) => {
+                    format!("=== Run {:3} | Cycle {} | {} ===\n", run_num, cycle, phase)
+                }
+                None => format!("=== Run {:3} ===\n", run_num),
+            };
+            out.push_str(&header);
+            out.push_str(&log_content);
+            if !log_content.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push('\n');
+        }
+    }
+
+    Ok(out)
+}
+
 /// Load declared flow from `workflow_contracts.json` in `run_dir`.
 /// Returns an empty vec if the file does not exist.
 pub fn load_declared_flow(run_dir: &Path) -> Result<Vec<DeclaredFlow>> {
@@ -816,5 +939,122 @@ mod tests {
             serde_json::from_str(lines[1]).expect("line 1 should be valid JSON");
         assert_eq!(obj1["run"], 2);
         assert_eq!(obj1["confidence"], "partial");
+    }
+
+    // ── render_claude_output tests ──────────────────────────────────────────
+
+    fn make_run_dir_with_logs(dir: &std::path::Path, logs: &[(u32, &str)]) -> std::path::PathBuf {
+        let runs_dir = dir.join("runs");
+        std::fs::create_dir_all(&runs_dir).unwrap();
+        for (run_num, content) in logs {
+            let path = runs_dir.join(format!("{run_num:03}.log"));
+            std::fs::write(path, content).unwrap();
+        }
+        dir.to_path_buf()
+    }
+
+    fn cost_entry(run: u32, cycle: u32, phase: &str) -> CostEntry {
+        CostEntry {
+            run,
+            cycle,
+            phase: phase.to_string(),
+            iteration: 1,
+            cost_usd: None,
+            input_tokens: None,
+            output_tokens: None,
+            cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
+            produces_violations: vec![],
+        }
+    }
+
+    #[test]
+    fn render_claude_output_displays_log_contents_with_headers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = make_run_dir_with_logs(
+            tmp.path(),
+            &[(1, "hello from run 1"), (2, "hello from run 2")],
+        );
+        let entries = vec![cost_entry(1, 1, "builder"), cost_entry(2, 1, "reviewer")];
+        let output =
+            render_claude_output(&run_dir, &entries, None, None, OutputFormat::Human).unwrap();
+        assert!(output.contains("Run   1"), "should show run 1 header");
+        assert!(output.contains("Run   2"), "should show run 2 header");
+        assert!(output.contains("hello from run 1"), "should show run 1 log");
+        assert!(output.contains("hello from run 2"), "should show run 2 log");
+    }
+
+    #[test]
+    fn render_claude_output_cycle_filter_shows_only_matching_cycle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = make_run_dir_with_logs(tmp.path(), &[(1, "cycle 1 log"), (2, "cycle 2 log")]);
+        let entries = vec![cost_entry(1, 1, "builder"), cost_entry(2, 2, "builder")];
+        let output =
+            render_claude_output(&run_dir, &entries, Some(1), None, OutputFormat::Human).unwrap();
+        assert!(output.contains("cycle 1 log"), "should show cycle 1 log");
+        assert!(
+            !output.contains("cycle 2 log"),
+            "should not show cycle 2 log"
+        );
+    }
+
+    #[test]
+    fn render_claude_output_phase_filter_shows_only_matching_phase() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir =
+            make_run_dir_with_logs(tmp.path(), &[(1, "builder output"), (2, "reviewer output")]);
+        let entries = vec![cost_entry(1, 1, "builder"), cost_entry(2, 1, "reviewer")];
+        let output = render_claude_output(
+            &run_dir,
+            &entries,
+            None,
+            Some("builder"),
+            OutputFormat::Human,
+        )
+        .unwrap();
+        assert!(output.contains("builder output"), "should show builder log");
+        assert!(
+            !output.contains("reviewer output"),
+            "should not show reviewer log"
+        );
+    }
+
+    #[test]
+    fn render_claude_output_missing_log_file_shows_graceful_message() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Create runs dir but no log file for run 1
+        std::fs::create_dir_all(tmp.path().join("runs")).unwrap();
+        let entries = vec![cost_entry(1, 1, "builder")];
+        let output =
+            render_claude_output(tmp.path(), &entries, Some(1), None, OutputFormat::Human).unwrap();
+        assert!(
+            output.contains("log not found"),
+            "should show graceful message for missing log"
+        );
+    }
+
+    #[test]
+    fn render_claude_output_jsonl_mode_emits_structured_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = make_run_dir_with_logs(tmp.path(), &[(1, "output line 1\noutput line 2\n")]);
+        let entries = vec![cost_entry(1, 1, "builder")];
+        let output =
+            render_claude_output(&run_dir, &entries, None, None, OutputFormat::Jsonl).unwrap();
+        let line = output
+            .lines()
+            .next()
+            .expect("should emit at least one line");
+        let json: serde_json::Value = serde_json::from_str(line).expect("should be valid JSON");
+        assert_eq!(json["run"], 1);
+        assert_eq!(json["cycle"], 1);
+        assert_eq!(json["phase"], "builder");
+        assert!(
+            json["log"].as_str().unwrap().contains("output line 1"),
+            "should include log content"
+        );
     }
 }

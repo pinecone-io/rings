@@ -312,7 +312,19 @@ pub struct ActualFileChange {
     pub phase: String,
     pub cycle: u32,
     pub run: u32,
+    pub iteration: u32,
     pub change_type: ChangeType,
+}
+
+/// One file change event for JSONL output in the files-changed view.
+#[derive(Debug, Clone, Serialize)]
+pub struct FileChangeEntry {
+    pub path: String,
+    pub change_type: String,
+    pub run: u32,
+    pub cycle: u32,
+    pub phase: String,
+    pub iteration: u32,
 }
 
 /// Render the declared data-flow graph from a list of `DeclaredFlow` entries.
@@ -453,6 +465,87 @@ pub fn render_data_flow_actual(changes: &[ActualFileChange]) -> String {
     }
 
     lines.join("\n") + "\n"
+}
+
+/// Render the files-changed view, showing which runs touched each file.
+///
+/// Groups changes by file path and shows each run that touched it with
+/// tree-style connectors. Supports `--cycle N` and `--phase NAME` filters.
+/// If no manifest data is present, prints a helpful message.
+/// In JSONL mode, emits one object per file-change event.
+pub fn render_files_changed(
+    changes: &[ActualFileChange],
+    cycle_filter: Option<u32>,
+    phase_filter: Option<&str>,
+    output_format: crate::cli::OutputFormat,
+) -> String {
+    // Apply filters.
+    let filtered: Vec<&ActualFileChange> = changes
+        .iter()
+        .filter(|c| {
+            cycle_filter.is_none_or(|cy| c.cycle == cy)
+                && phase_filter.is_none_or(|ph| c.phase == ph)
+        })
+        .collect();
+
+    if output_format == crate::cli::OutputFormat::Jsonl {
+        let mut out = String::new();
+        for change in &filtered {
+            let entry = FileChangeEntry {
+                path: change.path.clone(),
+                change_type: match change.change_type {
+                    ChangeType::Added => "created".to_string(),
+                    ChangeType::Modified => "modified".to_string(),
+                    ChangeType::Deleted => "deleted".to_string(),
+                },
+                run: change.run,
+                cycle: change.cycle,
+                phase: change.phase.clone(),
+                iteration: change.iteration,
+            };
+            if let Ok(json) = serde_json::to_string(&entry) {
+                out.push_str(&json);
+                out.push('\n');
+            }
+        }
+        return out;
+    }
+
+    if filtered.is_empty() {
+        if changes.is_empty() {
+            return "No file change data available. Enable `manifest_enabled = true` in your workflow.\n".to_string();
+        }
+        return "No file changes match the specified filters.\n".to_string();
+    }
+
+    // Group by file path preserving insertion order via BTreeMap (sorted by path).
+    let mut by_path: BTreeMap<String, Vec<&ActualFileChange>> = BTreeMap::new();
+    for change in &filtered {
+        by_path.entry(change.path.clone()).or_default().push(change);
+    }
+
+    let mut out = String::new();
+    out.push_str("File change history:\n");
+
+    for (path, events) in &by_path {
+        out.push_str(&format!("  {}\n", path));
+        let n = events.len();
+        for (i, event) in events.iter().enumerate() {
+            let connector = if i + 1 == n { "└─" } else { "├─" };
+            let ct = match event.change_type {
+                ChangeType::Added => "created ",
+                ChangeType::Modified => "modified",
+                ChangeType::Deleted => "deleted ",
+            };
+            out.push_str(&format!(
+                "    {}  {}  run {:>2}  cycle {}  {}  iter {}\n",
+                connector, ct, event.run, event.cycle, event.phase, event.iteration,
+            ));
+        }
+        out.push('\n');
+    }
+
+    out
 }
 
 /// One run's claude output entry for JSONL mode.
@@ -635,6 +728,7 @@ pub fn load_actual_changes(run_dir: &Path) -> Result<Vec<ActualFileChange>> {
                     phase: entry.phase.clone(),
                     cycle: entry.cycle,
                     run: entry.run,
+                    iteration: entry.iteration,
                     change_type: ChangeType::Added,
                 });
             }
@@ -644,6 +738,7 @@ pub fn load_actual_changes(run_dir: &Path) -> Result<Vec<ActualFileChange>> {
                     phase: entry.phase.clone(),
                     cycle: entry.cycle,
                     run: entry.run,
+                    iteration: entry.iteration,
                     change_type: ChangeType::Modified,
                 });
             }
@@ -653,6 +748,7 @@ pub fn load_actual_changes(run_dir: &Path) -> Result<Vec<ActualFileChange>> {
                     phase: entry.phase.clone(),
                     cycle: entry.cycle,
                     run: entry.run,
+                    iteration: entry.iteration,
                     change_type: ChangeType::Deleted,
                 });
             }
@@ -1056,5 +1152,91 @@ mod tests {
             json["log"].as_str().unwrap().contains("output line 1"),
             "should include log content"
         );
+    }
+
+    // ── render_files_changed tests ──────────────────────────────────────────
+
+    fn make_file_change(
+        path: &str,
+        run: u32,
+        cycle: u32,
+        phase: &str,
+        iteration: u32,
+        change_type: ChangeType,
+    ) -> ActualFileChange {
+        ActualFileChange {
+            path: path.to_string(),
+            run,
+            cycle,
+            phase: phase.to_string(),
+            iteration,
+            change_type,
+        }
+    }
+
+    #[test]
+    fn render_files_changed_shows_files_attributed_to_runs() {
+        let changes = vec![
+            make_file_change("src/main.rs", 1, 1, "builder", 1, ChangeType::Modified),
+            make_file_change("src/main.rs", 5, 2, "builder", 1, ChangeType::Modified),
+            make_file_change("review.md", 4, 1, "reviewer", 1, ChangeType::Added),
+        ];
+        let output = render_files_changed(&changes, None, None, OutputFormat::Human);
+        assert!(
+            output.contains("File change history:"),
+            "should show header"
+        );
+        assert!(output.contains("src/main.rs"), "should show main.rs");
+        assert!(output.contains("review.md"), "should show review.md");
+        assert!(output.contains("modified"), "should show change type");
+        assert!(output.contains("created"), "should show added as created");
+        assert!(output.contains("run  1"), "should show run 1");
+        assert!(output.contains("run  5"), "should show run 5");
+    }
+
+    #[test]
+    fn render_files_changed_cycle_filter_shows_only_cycle_1() {
+        let changes = vec![
+            make_file_change("src/a.rs", 1, 1, "builder", 1, ChangeType::Modified),
+            make_file_change("src/a.rs", 3, 2, "builder", 1, ChangeType::Modified),
+        ];
+        let output = render_files_changed(&changes, Some(1), None, OutputFormat::Human);
+        assert!(output.contains("run  1"), "should show run 1");
+        assert!(
+            !output.contains("run  3"),
+            "should not show run 3 (cycle 2)"
+        );
+    }
+
+    #[test]
+    fn render_files_changed_no_manifest_data_shows_helpful_message() {
+        let output = render_files_changed(&[], None, None, OutputFormat::Human);
+        assert!(
+            output.contains("manifest_enabled"),
+            "should mention manifest_enabled setting"
+        );
+    }
+
+    #[test]
+    fn render_files_changed_jsonl_mode_emits_structured_output() {
+        let changes = vec![
+            make_file_change("src/lib.rs", 2, 1, "builder", 2, ChangeType::Modified),
+            make_file_change("tests/foo.rs", 4, 1, "reviewer", 1, ChangeType::Added),
+        ];
+        let output = render_files_changed(&changes, None, None, OutputFormat::Jsonl);
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 2, "should emit one line per change event");
+        let obj0: serde_json::Value =
+            serde_json::from_str(lines[0]).expect("line 0 should be valid JSON");
+        assert_eq!(obj0["path"], "src/lib.rs");
+        assert_eq!(obj0["change_type"], "modified");
+        assert_eq!(obj0["run"], 2);
+        assert_eq!(obj0["cycle"], 1);
+        assert_eq!(obj0["phase"], "builder");
+        assert_eq!(obj0["iteration"], 2);
+        let obj1: serde_json::Value =
+            serde_json::from_str(lines[1]).expect("line 1 should be valid JSON");
+        assert_eq!(obj1["change_type"], "created");
+        assert_eq!(obj1["phase"], "reviewer");
     }
 }

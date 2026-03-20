@@ -116,6 +116,7 @@ fn test_render_data_flow_actual_correct_attribution() {
             phase: "builder".to_string(),
             cycle: 1,
             run: 5,
+            iteration: 1,
             change_type: ChangeType::Modified,
         },
         ActualFileChange {
@@ -123,6 +124,7 @@ fn test_render_data_flow_actual_correct_attribution() {
             phase: "reviewer".to_string(),
             cycle: 1,
             run: 6,
+            iteration: 1,
             change_type: ChangeType::Added,
         },
     ];
@@ -149,6 +151,7 @@ fn test_render_data_flow_actual_aggregates_runs() {
             phase: "builder".to_string(),
             cycle: 2,
             run: 6,
+            iteration: 1,
             change_type: ChangeType::Modified,
         },
         ActualFileChange {
@@ -156,6 +159,7 @@ fn test_render_data_flow_actual_aggregates_runs() {
             phase: "builder".to_string(),
             cycle: 2,
             run: 7,
+            iteration: 2,
             change_type: ChangeType::Modified,
         },
     ];

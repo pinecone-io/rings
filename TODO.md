@@ -23,110 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-150: No-Files-Changed Streak Warning
-
-**Spec:** `specs/execution/engine.md` (Advisory Checks table)
-
-**Summary:** Warn after 3 consecutive runs where the executor produced no file changes in `context_dir`, suggesting the workflow may be stuck in a loop doing nothing productive.
-
-### Task 1: Add no-change streak detection
-
-**Files:** `src/engine.rs`
-
-**Steps:**
-- [x] Track a counter of consecutive runs with no file changes (use git status or manifest diff if available, else skip this check)
-- [x] After each run completes: if no files were changed, increment counter; otherwise reset to 0
-- [x] If counter reaches 3, print warning: `⚠  3 consecutive runs produced no file changes.\n   The workflow may be stuck. Consider reviewing the prompt or canceling.`
-- [x] Only warn once per streak (don't re-warn at 4, 5, etc. — only at 3)
-- [x] Only warn in human output mode
-- [x] If file manifest is not enabled, skip this check entirely (no data to compare)
-
-**Tests:**
-- [x] 3 consecutive no-change runs triggers warning
-- [x] 2 no-change runs followed by a change run: no warning
-- [x] Warning fires only once at the 3rd run, not again at 4th
-- [x] Manifest not enabled: check is skipped entirely
-- [x] `just validate` clean
-
----
-
-## F-118: File Diff Detection
-
-**Spec:** `specs/observability/file-lineage.md`
-
-**Summary:** Compare consecutive file manifests to determine which files were added, modified, or deleted by each run. The manifest infrastructure (F-117) already exists (`manifest_enabled`, SHA256 fingerprinting). This adds the diff computation and records changes in costs.jsonl and JSONL events.
-
-### Task 1: Compute manifest diffs
-
-**Files:** `src/manifest.rs`, `src/engine.rs`
-
-**Steps:**
-- [ ] Add a `compute_diff(before: &Manifest, after: &Manifest) -> ManifestDiff` function to `src/manifest.rs`
-- [ ] `ManifestDiff` struct: `added: Vec<String>`, `modified: Vec<String>`, `deleted: Vec<String>`, `files_changed: u32`
-- [ ] Compare by path and SHA256: same path + different hash = modified; path in after but not before = added; path in before but not after = deleted
-- [ ] In the engine, after each run: if manifest is enabled, compute diff between before and after manifests
-- [ ] Include diff data in `costs.jsonl` entry (`files_added`, `files_modified`, `files_deleted`, `files_changed`)
-- [ ] Include diff data in JSONL `run_end` event
-
-**Tests:**
-- [ ] Added file detected correctly
-- [ ] Modified file (same path, different hash) detected correctly
-- [ ] Deleted file detected correctly
-- [ ] Unchanged files not included in diff
-- [ ] Diff data appears in costs.jsonl entry
-- [ ] `just validate` clean
-
----
-
-## F-119: File Manifest Ignore Patterns
-
-**Spec:** `specs/observability/file-lineage.md` (Manifest Configuration section)
-
-**Summary:** Allow users to specify directories/patterns to exclude from file manifest scanning (e.g., `.git/`, `target/`, `node_modules/`).
-
-### Task 1: Add ignore patterns to manifest config
-
-**Files:** `src/workflow.rs`, `src/manifest.rs`
-
-**Steps:**
-- [ ] The `manifest_ignore` field already exists in the workflow config — verify it's wired into manifest scanning
-- [ ] When scanning `context_dir`, skip entries matching any ignore pattern (glob-style matching)
-- [ ] Default ignore patterns should include `.git/` at minimum
-- [ ] Apply ignore patterns to both the initial manifest and all subsequent manifests
-
-**Tests:**
-- [ ] `.git/` directory is excluded from manifest by default
-- [ ] Custom ignore pattern `target/` excludes that directory
-- [ ] Files outside ignore patterns are included normally
-- [ ] `just validate` clean
-
----
-
-## F-066: Default Executor Config
-
-**Spec:** `specs/state/configuration.md`
-
-**Summary:** Allow defining executor defaults in the workflow TOML `[executor]` section that apply to all phases unless overridden. The `[executor]` section already exists and works — this task is about ensuring the inheritance semantics are correct and documented when combined with per-phase overrides.
-
-### Task 1: Verify and test executor config inheritance
-
-**Files:** `src/workflow.rs`, `src/engine.rs`
-
-**Steps:**
-- [ ] Verify that when a phase has no `executor` block, it inherits the workflow-level `[executor]` config
-- [ ] Verify that per-phase `executor.binary` overrides only that field, not the entire executor config
-- [ ] Verify that per-phase `executor.args` replaces the workflow-level args (not appends — that's what `extra_args` is for)
-- [ ] Add documentation comment in workflow.rs explaining the inheritance model
-- [ ] If inheritance is already working correctly, mark as COMPLETE after verification
-
-**Tests:**
-- [ ] Phase without executor block uses workflow-level executor
-- [ ] Phase with `executor.binary = "other"` but no `args` inherits workflow-level args
-- [ ] Phase with `executor.args = [...]` replaces workflow-level args entirely
-- [ ] `just validate` clean
-
----
-
 ## F-099: Inspect Files Changed View
 
 **Spec:** `specs/cli/inspect-command.md` (--show files-changed section)
@@ -138,19 +34,118 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/inspect.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] In `inspect_inner`, handle `InspectView::FilesChanged`:
+- [x] In `inspect_inner`, handle `InspectView::FilesChanged`:
   1. Read manifest diffs from costs.jsonl or manifest files
   2. Group changes by file path, showing which run/phase/cycle modified each file
   3. Display as a file-centric table: each file with the list of runs that touched it
-- [ ] Support `--cycle N` and `--phase NAME` filters
-- [ ] If no manifest data exists, print a helpful message: "No file change data available. Enable `manifest_enabled = true` in your workflow."
-- [ ] In JSONL mode, emit structured file change data
+- [x] Support `--cycle N` and `--phase NAME` filters
+- [x] If no manifest data exists, print a helpful message: "No file change data available. Enable `manifest_enabled = true` in your workflow."
+- [x] In JSONL mode, emit structured file change data
 
 **Tests:**
-- [ ] View shows added/modified/deleted files attributed to correct runs
-- [ ] `--cycle 1` filters to only cycle 1 changes
-- [ ] Missing manifest data produces helpful message, not error
-- [ ] JSONL mode emits structured output
+- [x] View shows added/modified/deleted files attributed to correct runs
+- [x] `--cycle 1` filters to only cycle 1 changes
+- [x] Missing manifest data produces helpful message, not error
+- [x] JSONL mode emits structured output
+- [x] `just validate` clean
+
+---
+
+## F-120: Credential File Protection in Manifests
+
+**Spec:** `specs/observability/file-lineage.md`
+
+**Summary:** Always exclude credential files (`.env`, `*.key`, `*.pem`, etc.) from file manifests regardless of user ignore patterns. Prevents accidentally recording sensitive file hashes in audit logs.
+
+### Task 1: Add hardcoded credential exclusions
+
+**Files:** `src/manifest.rs`
+
+**Steps:**
+- [ ] Define a static list of credential patterns: `.env`, `.env.*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*credentials*`, `*secret*`
+- [ ] In the manifest scanning function, apply these exclusions in addition to user-specified ignore patterns
+- [ ] These patterns cannot be overridden — they are always excluded
+- [ ] Add a comment explaining the security rationale
+
+**Tests:**
+- [ ] `.env` file is excluded from manifest even with no user ignore patterns
+- [ ] `server.key` is excluded from manifest
+- [ ] Normal source files are included
+- [ ] User ignore patterns still work alongside credential exclusions
+- [ ] `just validate` clean
+
+---
+
+## F-020: Timeout Per Run
+
+**Spec:** `specs/execution/engine.md`
+
+**Summary:** Set a per-run timeout so a hung executor invocation doesn't stall the workflow indefinitely. When a timeout fires, the executor subprocess is killed, the run is logged as timed out, and execution continues to the next run.
+
+### Task 1: Add timeout configuration and enforcement
+
+**Files:** `src/workflow.rs`, `src/engine.rs`, `src/cli.rs`
+
+**Steps:**
+- [ ] The `timeout_per_run_secs` field already exists in the workflow config — verify it's wired into the engine's poll loop
+- [ ] In the executor poll loop: if `timeout_deadline` is set and `Instant::now() > timeout_deadline`, kill the subprocess and treat as a timeout error
+- [ ] Log the timeout in the run's audit entry with `failure_reason: "timeout"`
+- [ ] The `FailureReason::Timeout` variant already exists in `state.rs` — verify it's used correctly
+- [ ] If already implemented, mark as COMPLETE after verification
+
+**Tests:**
+- [ ] Run with `timeout_per_run_secs = 1` and a mock executor that sleeps 5s: executor is killed, run logged as timeout
+- [ ] Run without timeout: no timeout behavior
+- [ ] Timed-out run saves state for resume
+- [ ] `just validate` clean
+
+---
+
+## F-012: Completion Signal Modes
+
+**Spec:** `specs/execution/completion-detection.md`
+
+**Summary:** Support matching the completion signal by exact substring (default), line anchor, or full regex. Currently only substring matching is implemented. The `completion_signal_mode` field already exists in the workflow config.
+
+### Task 1: Add regex completion signal matching
+
+**Files:** `src/completion.rs`, `src/workflow.rs`
+
+**Steps:**
+- [ ] Verify the current modes: `"substring"` (default) and `"line"` — both should already work
+- [ ] Add `"regex"` mode: compile `completion_signal` as a regex at workflow parse time, match against executor output
+- [ ] Invalid regex in `completion_signal` when mode is `"regex"` produces exit 2 at parse time
+- [ ] If `"substring"` and `"line"` are already working, only the `"regex"` mode needs implementation
+
+**Tests:**
+- [ ] `completion_signal_mode = "substring"`: matches signal anywhere in output
+- [ ] `completion_signal_mode = "line"`: matches only when signal is an entire line
+- [ ] `completion_signal_mode = "regex"`: matches regex pattern (e.g., `"DONE_\\d+"` matches `"DONE_42"`)
+- [ ] Invalid regex exits 2 at parse time
+- [ ] `just validate` clean
+
+---
+
+## F-013: Completion Signal Phase Restriction
+
+**Spec:** `specs/execution/completion-detection.md`
+
+**Summary:** Limit which phases can trigger workflow completion via `completion_signal_phases`. Prevents early phases from accidentally ending the workflow.
+
+### Task 1: Add phase restriction to completion detection
+
+**Files:** `src/workflow.rs`, `src/engine.rs`
+
+**Steps:**
+- [ ] Add `completion_signal_phases: Option<Vec<String>>` to the workflow config (may already exist)
+- [ ] In the engine's completion signal check: if `completion_signal_phases` is set and non-empty, only check for the signal in output from phases listed in the array
+- [ ] If the signal is detected in a non-listed phase, log it but don't trigger completion
+- [ ] Validate at startup that all phase names in `completion_signal_phases` actually exist in the workflow
+
+**Tests:**
+- [ ] With `completion_signal_phases = ["reviewer"]`: signal in "builder" output is ignored, signal in "reviewer" triggers completion
+- [ ] With no restriction (default): any phase can trigger completion
+- [ ] Invalid phase name in restriction list exits 2 at startup
 - [ ] `just validate` clean
 
 ---

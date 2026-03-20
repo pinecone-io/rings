@@ -1423,13 +1423,26 @@ fn inspect_inner(
             cli::InspectView::ClaudeOutput => {
                 render_claude_output(&run_dir, args.cycle, args.phase.as_deref(), output_format)?;
             }
-            _ => {
-                eprintln!("View '{:?}' is not yet implemented.", view);
+            cli::InspectView::FilesChanged => {
+                render_files_changed(&run_dir, args.cycle, args.phase.as_deref(), output_format)?;
             }
         }
     }
 
     Ok(0)
+}
+
+fn render_files_changed(
+    run_dir: &std::path::Path,
+    cycle_filter: Option<u32>,
+    phase_filter: Option<&str>,
+    output_format: cli::OutputFormat,
+) -> Result<()> {
+    let changes = rings::inspect::load_actual_changes(run_dir)?;
+    let output =
+        rings::inspect::render_files_changed(&changes, cycle_filter, phase_filter, output_format);
+    print!("{}", output);
+    Ok(())
 }
 
 fn render_costs(

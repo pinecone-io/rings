@@ -923,7 +923,7 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
         since: since_filter,
         status: status_filter,
         workflow: args.workflow,
-        dir: None,
+        dir: args.dir,
         limit: args.limit,
     };
 
@@ -937,15 +937,16 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
                 eprintln!("No runs found.");
             } else {
                 eprintln!(
-                    "{:<20} {:<20} {:<40} {:<12} {:<8} {:<10}",
+                    "{:<20} {:<20} {:<32} {:<30} {:<12} {:<8} {:<10}",
                     style::bold("RUN ID"),
                     style::bold("DATE"),
+                    style::bold("DIR"),
                     style::bold("WORKFLOW"),
                     style::bold("STATUS"),
                     style::bold("CYCLES"),
                     style::bold("COST"),
                 );
-                eprintln!("{}", style::dim(&"-".repeat(110)));
+                eprintln!("{}", style::dim(&"-".repeat(134)));
                 for run in &runs {
                     let date_str = run.started_at.format("%Y-%m-%d %H:%M:%S").to_string();
                     let cost_str = run
@@ -966,10 +967,16 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
                     };
                     let styled_status = style_run_status(&run.status, &status_display);
                     let styled_cost = style::accent(&cost_str);
+                    let dir_display = run
+                        .context_dir
+                        .as_deref()
+                        .map(shorten_path)
+                        .unwrap_or_else(|| "\u{2014}".to_string());
                     eprintln!(
-                        "{:<20} {:<20} {:<40} {:<12} {:<8} {:<10}",
+                        "{:<20} {:<20} {:<32} {:<30} {:<12} {:<8} {:<10}",
                         run.run_id,
                         date_str,
+                        dir_display,
                         run.workflow,
                         styled_status,
                         run.cycles_completed,
@@ -988,6 +995,7 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
                     "status": run.status.to_string(),
                     "cycles_completed": run.cycles_completed,
                     "total_cost_usd": run.total_cost_usd,
+                    "context_dir": run.context_dir,
                 });
                 println!("{}", json);
             }
@@ -1305,6 +1313,56 @@ fn style_run_status(status: &state::RunStatus, display: &str) -> String {
     }
 }
 
+/// Shorten a path for human display: replace $HOME prefix with ~, truncate long paths.
+/// Paths longer than 30 chars are truncated with a `…/` prefix showing last components.
+fn shorten_path(path: &str) -> String {
+    // Replace $HOME prefix with ~
+    let shortened = if let Ok(home) = std::env::var("HOME") {
+        if path.starts_with(&home) {
+            format!("~{}", &path[home.len()..])
+        } else {
+            path.to_string()
+        }
+    } else {
+        path.to_string()
+    };
+
+    if shortened.len() <= 30 {
+        return shortened;
+    }
+
+    // Truncate: find suffix that fits within 30 chars with the "…/" prefix
+    // We want "…/<last components>" to fit in 30 chars total
+    // "…/" is 2 chars (using Unicode ellipsis + slash = 4 bytes but 2 display chars)
+    // So we want the suffix to be at most 28 display chars
+    let max_suffix = 28;
+    let components: Vec<&str> = shortened.split('/').collect();
+
+    let mut suffix = String::new();
+    for component in components.iter().rev() {
+        let candidate = if suffix.is_empty() {
+            component.to_string()
+        } else {
+            format!("{}/{}", component, suffix)
+        };
+        if candidate.len() <= max_suffix {
+            suffix = candidate;
+        } else {
+            break;
+        }
+    }
+
+    if suffix.is_empty() {
+        // Even the last component is too long, just truncate it
+        format!(
+            "\u{2026}/{}",
+            &shortened[shortened.len().saturating_sub(27)..]
+        )
+    } else {
+        format!("\u{2026}/{}", suffix)
+    }
+}
+
 fn generate_run_id() -> String {
     let now = chrono::Utc::now();
     let ts = now.format("%Y%m%d_%H%M%S");
@@ -1586,6 +1644,55 @@ mod tests {
         }
 
         assert_eq!(result.unwrap(), 1, "should exit 1 when bash is not on PATH");
+    }
+
+    // --- shorten_path tests ---
+
+    #[test]
+    fn shorten_path_replaces_home_with_tilde() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
+        let path = format!("{}/code/project", home);
+        let result = shorten_path(&path);
+        assert!(
+            result.starts_with("~/"),
+            "expected ~ prefix, got: {}",
+            result
+        );
+        assert!(result.contains("code/project"));
+    }
+
+    #[test]
+    fn shorten_path_short_path_unchanged() {
+        // /tmp/proj is 9 chars, well under 30, and won't match HOME
+        let result = shorten_path("/tmp/proj");
+        assert_eq!(result, "/tmp/proj");
+    }
+
+    #[test]
+    fn shorten_path_long_path_truncated_with_ellipsis() {
+        // Create a path longer than 30 chars that won't match HOME
+        let path = "/very/long/path/to/some/deeply/nested/project/dir";
+        let result = shorten_path(path);
+        assert!(
+            result.len() <= 32, // "…/" + 28 chars = 30 display chars (but ellipsis is 3 bytes)
+            "truncated path should be <= 32 bytes, got {} bytes: {}",
+            result.len(),
+            result
+        );
+        assert!(
+            result.starts_with('\u{2026}'),
+            "truncated path should start with ellipsis: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn shorten_path_exactly_30_chars_not_truncated() {
+        // Construct a path that is exactly 30 chars and doesn't match HOME
+        let path = "/tmp/aaa/bbbb/ccccc/dddddddddd"; // 30 chars
+        assert_eq!(path.len(), 30);
+        let result = shorten_path(path);
+        assert_eq!(result, path, "30-char path should not be truncated");
     }
 
     #[test]

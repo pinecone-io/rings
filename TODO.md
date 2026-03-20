@@ -287,21 +287,21 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cli.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] Add `--dir` option to `ListArgs` struct: `pub dir: Option<String>`
-- [ ] Pass `args.dir` into `ListFilters.dir`
-- [ ] In human-mode table output, add DIR column between DATE and WORKFLOW:
+- [x] Add `--dir` option to `ListArgs` struct: `pub dir: Option<String>`
+- [x] Pass `args.dir` into `ListFilters.dir`
+- [x] In human-mode table output, add DIR column between DATE and WORKFLOW:
   - Shorten paths: replace `$HOME` prefix with `~`
   - Truncate paths longer than 30 chars: show `…/<last components>`
   - For `None` values, display `—`
-- [ ] In JSONL output, add `"context_dir"` field (full absolute path, or null)
-- [ ] Adjust column widths for the new layout
+- [x] In JSONL output, add `"context_dir"` field (full absolute path, or null)
+- [x] Adjust column widths for the new layout
 
 **Tests:**
-- [ ] `rings list --dir /foo` parses correctly
-- [ ] Human output includes DIR column header and values
-- [ ] JSONL output includes `context_dir` field
-- [ ] Path shortening: `$HOME/code/project` → `~/code/project`
-- [ ] Path truncation: long paths are truncated with `…/` prefix
-- [ ] `None` context_dir displays as `—` in human mode and `null` in JSONL
+- [x] `rings list --dir /foo` parses correctly
+- [x] Human output includes DIR column header and values
+- [x] JSONL output includes `context_dir` field
+- [x] Path shortening: `$HOME/code/project` → `~/code/project`
+- [x] Path truncation: long paths are truncated with `…/` prefix
+- [x] `None` context_dir displays as `—` in human mode and `null` in JSONL
 
 ---

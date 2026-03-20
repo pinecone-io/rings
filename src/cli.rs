@@ -209,6 +209,10 @@ pub struct ListArgs {
     #[arg(long)]
     pub workflow: Option<String>,
 
+    /// Filter by context directory (substring match on stored context_dir)
+    #[arg(long)]
+    pub dir: Option<String>,
+
     /// Maximum number of runs to display
     #[arg(short = 'n', long, default_value = "20")]
     pub limit: usize,

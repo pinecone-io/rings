@@ -1,5 +1,5 @@
 use clap::Parser;
-use rings::cli::{Cli, Command, InitArgs};
+use rings::cli::{Cli, Command, InitArgs, ListArgs};
 
 #[test]
 fn parses_run_command() {
@@ -93,5 +93,27 @@ fn parses_update_command() {
     match cli.command {
         Command::Update => {}
         _ => panic!("expected Update"),
+    }
+}
+
+#[test]
+fn parses_list_with_dir_flag() {
+    let cli = Cli::try_parse_from(["rings", "list", "--dir", "/foo/bar"]).unwrap();
+    match cli.command {
+        Command::List(ListArgs { dir, .. }) => {
+            assert_eq!(dir.as_deref(), Some("/foo/bar"));
+        }
+        _ => panic!("expected List"),
+    }
+}
+
+#[test]
+fn parses_list_without_dir_flag() {
+    let cli = Cli::try_parse_from(["rings", "list"]).unwrap();
+    match cli.command {
+        Command::List(ListArgs { dir, .. }) => {
+            assert!(dir.is_none());
+        }
+        _ => panic!("expected List"),
     }
 }

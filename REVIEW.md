@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / F-195 Task 3: CLI flag and display] Added `--dir` to `ListArgs` and wired it to `ListFilters.dir`. Added `shorten_path` helper in `main.rs` that replaces `$HOME` with `~` and truncates paths >30 chars using Unicode ellipsis prefix (`…/<suffix>`). Added DIR column between DATE and WORKFLOW in the human-mode table. Column widths adjusted (total ~134 chars). JSONL output now includes `"context_dir"` field (full absolute path or null). `None` context_dir displays as `—` in human mode. Tests added in `tests/cli_args.rs` (CLI parse) and `src/main.rs` unit tests (shorten_path behavior).
+
 [2026-03-20 / F-193 Task 2: Add context_dir to RunSummary and list_runs] Added `context_dir: Option<String>` to `RunSummary` (populated from `meta.context_dir`). Added `dir: Option<String>` to `ListFilters`. The dir filter applies a substring match on `meta.context_dir`; runs with `context_dir: None` (old runs) are excluded when dir filter is set. In `main.rs`, `ListFilters.dir` is set to `None` for now — Task 3 will wire it to `args.dir` when the CLI flag is added. Three new tests: substring match, no matches, and None-exclusion + unfiltered-inclusion.
 
 [2026-03-20 / F-193 Task 1: Store context_dir in RunMeta] Added `context_dir: Option<String>` with `#[serde(default)]` to `RunMeta`. In `run_inner`, populated via `std::fs::canonicalize(&workflow.context_dir)`. In `resume_inner`, `context_dir` is set to `None` initially and updated after the workflow is reloaded (since workflow must be loaded before the context_dir can be canonicalized). Existing run.toml files without the field load with `None` via serde default.

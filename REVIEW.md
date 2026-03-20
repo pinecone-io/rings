@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / F-189 Task 1: Styled Dry Run Output] Dry-run output was already using `style::bold` for headers and `style::dim` for labels. The ✓ signal-found marker already used `style::success`. However, the ✗ signal-not-found marker was using `style::error` (red) instead of `style::warn` (yellow). Changed to `style::warn` because a missing completion signal is advisory (the user should add it) not a hard error. Updated test `dry_run_cross_mark_uses_error_styling` → `dry_run_cross_mark_uses_warn_styling` to match. No cost estimates are shown in dry-run output, so `style::accent` is not needed there.
+
 [2026-03-20 / F-187 Task 1: Verify styled cycle boundaries] `format_cycle_boundary` was already fully implemented using `style::dim` for dashes, `style::bold` for cycle number, and `style::accent` for cost — matching the spec exactly. Added two missing tests: one verifying ANSI codes are present when color is enabled, and one verifying `NO_COLOR=1` env var suppresses all ANSI codes.
 
 [2026-03-20 / F-054 Task 1: SIGTERM→SIGKILL escalation] The SIGTERM→SIGKILL escalation, 5-second grace period, and double Ctrl+C ForceKill bypass were already fully implemented in `engine.rs` (lines 1109-1188). The `send_sigterm`/`send_sigkill` methods on `RunHandle` use a `#[cfg(unix)]` guarded `send_signal` helper using `nix::sys::signal::kill`. Added the missing integration test `process_ignores_sigterm_gets_sigkill_after_grace_period` which verifies that a subprocess that stays alive past the 5-second grace period receives SIGKILL. The test necessarily takes ~5 real seconds as there is no time-injection mechanism.

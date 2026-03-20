@@ -261,7 +261,7 @@ fn run_inner(
             } else {
                 println!(
                     "    {} \"{}\" not found in {}",
-                    style::error("✗"),
+                    style::warn("✗"),
                     workflow.completion_signal,
                     phase.prompt_source
                 );
@@ -3148,15 +3148,24 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_cross_mark_uses_error_styling() {
+    fn dry_run_cross_mark_uses_warn_styling() {
+        // Dry-run ✗ (signal not found) uses warn styling (yellow), not error (red),
+        // because a missing signal is advisory, not a hard failure.
+        let _guard = style::COLOR_TEST_LOCK.lock().unwrap();
+        style::set_color_enabled();
         std::env::set_var("NO_COLOR", "1");
-        let plain = style::error("✗");
+        let plain = style::warn("✗");
         std::env::remove_var("NO_COLOR");
 
-        assert_eq!(plain, "✗");
-        let styled = style::error("✗");
-        assert_ne!(styled, "✗", "error crossmark should include ANSI styling");
+        assert_eq!(plain, "✗", "NO_COLOR=1 produces plain ✗ in dry-run output");
+        style::set_color_enabled();
+        let styled = style::warn("✗");
+        assert_ne!(
+            styled, "✗",
+            "warn crossmark should include ANSI styling on TTY"
+        );
         assert!(styled.contains('✗'));
+        style::set_color_enabled();
     }
 
     // --- dry-run JSONL output tests ---

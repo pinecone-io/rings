@@ -23,29 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-187: Styled Cycle Transitions
-
-**Spec:** `specs/observability/runtime-output.md`
-
-**Summary:** Cycle boundaries show a horizontal rule with the cycle number and previous cycle cost embedded. The `format_cycle_boundary` function already exists — verify it uses the style system.
-
-### Task 1: Verify styled cycle boundaries
-
-**Files:** `src/display.rs`
-
-**Steps:**
-- [x] Verify `format_cycle_boundary` uses `style::dim` for dashes, `style::bold` for cycle number, `style::accent` for cost
-- [x] Verify the output matches the spec format: `── Cycle N ──── $X.XX prev ──`
-- [x] If already working, mark as COMPLETE
-
-**Tests:**
-- [x] Cycle boundary line contains styled cycle number and cost
-- [x] First cycle has no cost suffix
-- [x] `NO_COLOR=1` produces plain text
-- [x] `just validate` clean
-
----
-
 ## F-189: Styled Dry Run Output
 
 **Spec:** `specs/observability/runtime-output.md`
@@ -57,15 +34,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (dry-run output section)
 
 **Steps:**
-- [ ] Verify dry-run output uses semantic colors: `style::bold` for headers, `style::accent` for cost estimates, `style::dim` for structural elements
-- [ ] Verify completion signal check results use `style::success` (✓) and `style::warn` (✗)
-- [ ] Verify `--no-color` disables styling in dry-run output
-- [ ] If already working, mark as COMPLETE
+- [x] Verify dry-run output uses semantic colors: `style::bold` for headers, `style::accent` for cost estimates, `style::dim` for structural elements
+- [x] Verify completion signal check results use `style::success` (✓) and `style::warn` (✗)
+- [x] Verify `--no-color` disables styling in dry-run output
+- [x] If already working, mark as COMPLETE
 
 **Tests:**
-- [ ] Dry-run output is styled with colors on TTY
-- [ ] `NO_COLOR=1` produces plain dry-run output
-- [ ] `just validate` clean
+- [x] Dry-run output is styled with colors on TTY
+- [x] `NO_COLOR=1` produces plain dry-run output
+- [x] `just validate` clean
 
 ---
 

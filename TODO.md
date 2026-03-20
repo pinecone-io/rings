@@ -23,29 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Bug: Custom Cost Parser Bypasses Negative/NaN/Infinity Validation
-
-**Ref:** `specs/execution/output-parsing.md`
-
-**Summary:** The built-in cost parser validates parsed costs via `is_valid_cost()` (rejects negative, NaN, Infinity — added in commit f35a280). However, the custom cost parser path (`CompiledCostParser::Custom` in `cost.rs:233-269`) parses `cost_usd` with a raw `.parse::<f64>().ok()` at line 238, bypassing this validation. A custom regex like `(?P<cost_usd>[-\d.]+)` matching executor output `"Total: $-5.00"` would produce `cost_usd: Some(-5.0)`, which subtracts from cumulative cost and can bypass budget caps — the same class of bug that was fixed for the built-in parser.
-
-### Task 1: Apply cost validation to custom parser path
-
-**Files:** `src/cost.rs`
-
-**Steps:**
-- [x] After parsing `cost_usd` at line 238, apply the same `is_valid_cost()` check used in the built-in paths
-- [x] If the parsed value fails validation (negative, NaN, Infinity): set `cost_usd = None` and `confidence = ParseConfidence::None`, same as the built-in parser behavior
-- [x] Reuse the existing `validated_cost()` helper or call `is_valid_cost()` directly
-
-**Tests:**
-- [x] Custom parser matching `"-5.00"` returns `confidence: None`, `cost_usd: None`
-- [x] Custom parser matching `"NaN"` returns `confidence: None`, `cost_usd: None`
-- [x] Custom parser matching `"1.23"` (valid) still works normally
-- [x] `just validate` clean
-
----
-
 ## F-097/F-098/F-101: Inspect Views — Summary, Cycles, Costs
 
 **Spec:** `specs/cli/inspect-command.md`
@@ -57,18 +34,110 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/inspect.rs`
 
 **Steps:**
-- [ ] In `inspect_inner`, handle `InspectView::Costs`:
+- [x] In `inspect_inner`, handle `InspectView::Costs`:
   1. Read `costs.jsonl` → display a table of all runs
   2. Columns: Run #, Cycle, Phase, Cost USD, Input Tokens, Output Tokens, Confidence, Duration
   3. Show totals row at bottom
-- [ ] Support `--phase <NAME>` filter to show only a specific phase's costs
-- [ ] In JSONL mode, emit one JSON object per run
+- [x] Support `--phase <NAME>` filter to show only a specific phase's costs
+- [x] In JSONL mode, emit one JSON object per run
 
 **Tests:**
-- [ ] `rings inspect <id> --show costs` displays per-run cost table
+- [x] `rings inspect <id> --show costs` displays per-run cost table
+- [x] `--phase builder` filters to only builder phase runs
+- [x] Totals row sums cost and tokens correctly
+- [x] JSONL mode emits structured cost data per run
+- [x] `just validate` clean
+
+---
+
+## F-102: Inspect Claude Output View
+
+**Spec:** `specs/cli/inspect-command.md` (--show claude-output section)
+
+**Summary:** `rings inspect <RUN_ID> --show claude-output` prints the captured stdout/stderr from each executor invocation, with run headers. Supports `--cycle N` and `--phase NAME` filters.
+
+### Task 1: Implement `--show claude-output` view
+
+**Files:** `src/inspect.rs`
+
+**Steps:**
+- [ ] In `inspect_inner`, handle `InspectView::ClaudeOutput`:
+  1. Scan the `runs/` subdirectory for log files (named like `001.log`, `002.log`, etc.)
+  2. For each log file, print a header with run number, then the file contents
+  3. Support `--cycle N` and `--phase NAME` filters: need to cross-reference with `costs.jsonl` to map run numbers to cycles/phases
+- [ ] In JSONL mode, emit one JSON object per run with the log content as a string field
+- [ ] Handle missing log files gracefully (print "log not found" for that run)
+
+**Tests:**
+- [ ] `rings inspect <id> --show claude-output` displays log contents with run headers
+- [ ] `--cycle 1` filters to only cycle 1 runs
 - [ ] `--phase builder` filters to only builder phase runs
-- [ ] Totals row sums cost and tokens correctly
-- [ ] JSONL mode emits structured cost data per run
+- [ ] Missing log file produces a graceful message, not an error
+- [ ] JSONL mode emits structured output per run
+- [ ] `just validate` clean
+
+---
+
+## F-073: `rings lineage` — Ancestry Chain Display
+
+**Spec:** `specs/cli/inspect-command.md` (rings lineage section)
+
+**Summary:** `rings lineage <RUN_ID>` traverses the ancestry chain (parent_run_id links) and displays the full history of related runs with aggregate totals. Currently a stub.
+
+### Task 1: Implement lineage traversal and display
+
+**Files:** `src/main.rs`, `src/list.rs` (or new `src/lineage.rs`)
+
+**Steps:**
+- [ ] In `cmd_lineage`, replace the stub with real implementation:
+  1. Load `run.toml` for the given run ID
+  2. Walk backwards via `parent_run_id` / `continuation_of` to find the root run
+  3. Walk forwards from root: scan all run directories for runs whose `parent_run_id` or `continuation_of` matches each chain member
+  4. For each run in the chain, load status, cycles, cost from `run.toml` and `state.json`
+- [ ] Display the chain as a numbered table (see spec for format): `#, RUN_ID, DATE, STATUS, CYCLES, COST` with relationship indicators
+- [ ] Show chain totals at bottom: total wall time, total cycles, total runs, total cost
+- [ ] In JSONL mode: emit one JSON object per run, then a `chain_summary` object
+- [ ] Handle broken chains gracefully (missing parent run directory → show "parent not found" and stop traversal)
+
+**Tests:**
+- [ ] Single run with no parent shows just itself
+- [ ] Chain of 3 runs (root → resumed → resumed) displays all 3 with correct relationships
+- [ ] Chain totals sum correctly across all runs
+- [ ] Broken chain (missing parent dir) shows partial chain with warning
+- [ ] JSONL mode emits correct structured output
+- [ ] `just validate` clean
+
+---
+
+## F-061/F-062: User and Project Config Files
+
+**Spec:** `specs/state/configuration.md`
+
+**Summary:** Load user-level defaults from `~/.config/rings/config.toml` and project-level defaults from `.rings-config.toml` in the current directory. These provide defaults that CLI flags and workflow TOML override.
+
+### Task 1: Config file loading
+
+**Files:** `src/config.rs` (new), `src/main.rs`, `src/lib.rs`
+
+**Steps:**
+- [ ] Create `src/config.rs` with a `RingsConfig` struct containing optional fields for all configurable defaults:
+  - `default_output_dir: Option<String>`
+  - `color: Option<bool>`
+  - Additional fields can be added later
+- [ ] Implement `RingsConfig::load() -> Result<RingsConfig>` that:
+  1. Checks for `.rings-config.toml` in the current directory
+  2. Checks for `~/.config/rings/config.toml` (or `$XDG_CONFIG_HOME/rings/config.toml`)
+  3. First found wins (project config takes precedence over user config)
+  4. If neither exists, return empty defaults
+- [ ] Register `pub mod config;` in `src/lib.rs`
+- [ ] In `main.rs`, load config early and apply defaults before CLI flag processing
+
+**Tests:**
+- [ ] `.rings-config.toml` in current dir is loaded
+- [ ] `~/.config/rings/config.toml` is loaded when no project config exists
+- [ ] Project config takes precedence over user config
+- [ ] Missing both config files returns empty defaults (no error)
+- [ ] Invalid TOML in config file produces clear error
 - [ ] `just validate` clean
 
 ---

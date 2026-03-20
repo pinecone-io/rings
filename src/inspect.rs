@@ -22,6 +22,138 @@ pub struct CycleSummary {
     pub total_cost_usd: f64,
 }
 
+/// One row entry for the costs view (used for JSONL output).
+#[derive(Debug, Clone, Serialize)]
+pub struct CostRowEntry {
+    pub run: u32,
+    pub cycle: u32,
+    pub phase: String,
+    pub iteration: u32,
+    pub cost_usd: Option<f64>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub confidence: String,
+}
+
+/// Render the per-run cost breakdown view.
+///
+/// Displays a table with columns: Run, Cycle, Phase, Iter, Input Tok, Output Tok, Confidence, Cost.
+/// A totals row is shown at the bottom.
+/// If `phase_filter` is Some(name), only runs for that phase are shown.
+/// In JSONL mode, emits one JSON object per run.
+pub fn render_costs(
+    cost_entries: &[crate::audit::CostEntry],
+    phase_filter: Option<&str>,
+    output_format: crate::cli::OutputFormat,
+) -> String {
+    let filtered: Vec<&crate::audit::CostEntry> = cost_entries
+        .iter()
+        .filter(|e| phase_filter.is_none_or(|p| e.phase == p))
+        .collect();
+
+    if output_format == crate::cli::OutputFormat::Jsonl {
+        let mut out = String::new();
+        for entry in &filtered {
+            let row = CostRowEntry {
+                run: entry.run,
+                cycle: entry.cycle,
+                phase: entry.phase.clone(),
+                iteration: entry.iteration,
+                cost_usd: entry.cost_usd,
+                input_tokens: entry.input_tokens,
+                output_tokens: entry.output_tokens,
+                confidence: entry.cost_confidence.clone(),
+            };
+            if let Ok(json) = serde_json::to_string(&row) {
+                out.push_str(&json);
+                out.push('\n');
+            }
+        }
+        return out;
+    }
+
+    // Human-readable table output.
+    if filtered.is_empty() {
+        return "No cost data found.\n".to_string();
+    }
+
+    let sep = "─".repeat(70);
+    let mut out = String::new();
+    out.push_str("Cost breakdown:\n");
+    out.push_str(&format!(
+        "  {:>4}  {:>5}  {:<10}  {:>4}  {:>11}  {:>11}  {:>10}  {:<10}\n",
+        "Run", "Cycle", "Phase", "Iter", "Input Tok", "Output Tok", "Cost", "Confidence"
+    ));
+    out.push_str(&format!("  {}\n", sep));
+
+    let mut total_cost: f64 = 0.0;
+    let mut total_input_tokens: u64 = 0;
+    let mut total_output_tokens: u64 = 0;
+
+    for entry in &filtered {
+        let cost_str = match entry.cost_usd {
+            Some(c) => {
+                total_cost += c;
+                format!("${:.3}", c)
+            }
+            None => "—".to_string(),
+        };
+        let input_str = match entry.input_tokens {
+            Some(t) => {
+                total_input_tokens += t;
+                format_tokens(t)
+            }
+            None => "—".to_string(),
+        };
+        let output_str = match entry.output_tokens {
+            Some(t) => {
+                total_output_tokens += t;
+                format_tokens(t)
+            }
+            None => "—".to_string(),
+        };
+
+        out.push_str(&format!(
+            "  {:>4}  {:>5}  {:<10}  {:>4}  {:>11}  {:>11}  {:>10}  {:<10}\n",
+            entry.run,
+            entry.cycle,
+            entry.phase,
+            entry.iteration,
+            input_str,
+            output_str,
+            cost_str,
+            entry.cost_confidence,
+        ));
+    }
+
+    out.push_str(&format!("  {}\n", sep));
+    out.push_str(&format!(
+        "  {:>4}  {:>5}  {:<10}  {:>4}  {:>11}  {:>11}  {:>10}\n",
+        "Total",
+        "",
+        "",
+        "",
+        format_tokens(total_input_tokens),
+        format_tokens(total_output_tokens),
+        format!("${:.3}", total_cost),
+    ));
+
+    out
+}
+
+/// Format a token count with comma separators (e.g. 1234 → "1,234").
+fn format_tokens(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, ch) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(ch);
+    }
+    result.chars().rev().collect()
+}
+
 /// Render the per-cycle breakdown view.
 ///
 /// Groups cost entries by cycle, then renders each cycle with its runs.
@@ -516,5 +648,173 @@ mod tests {
             },
             "should not show SIGNAL on non-signal run"
         );
+    }
+
+    fn make_entry_with_tokens(
+        run: u32,
+        cycle: u32,
+        phase: &str,
+        iteration: u32,
+        cost: Option<f64>,
+        input_tokens: Option<u64>,
+        output_tokens: Option<u64>,
+        confidence: &str,
+    ) -> CostEntry {
+        CostEntry {
+            run,
+            cycle,
+            phase: phase.to_string(),
+            iteration,
+            cost_usd: cost,
+            input_tokens,
+            output_tokens,
+            cost_confidence: confidence.to_string(),
+            files_added: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_changed: 0,
+            event: None,
+            produces_violations: vec![],
+        }
+    }
+
+    #[test]
+    fn render_costs_displays_per_run_table() {
+        let entries = vec![
+            make_entry_with_tokens(
+                1,
+                1,
+                "builder",
+                1,
+                Some(0.092),
+                Some(1234),
+                Some(567),
+                "full",
+            ),
+            make_entry_with_tokens(
+                2,
+                1,
+                "builder",
+                2,
+                Some(0.088),
+                Some(1198),
+                Some(534),
+                "full",
+            ),
+        ];
+        let output = render_costs(&entries, None, OutputFormat::Human);
+        assert!(output.contains("Cost breakdown:"), "should show header");
+        assert!(output.contains("$0.092"), "should show run 1 cost");
+        assert!(output.contains("$0.088"), "should show run 2 cost");
+        assert!(output.contains("builder"), "should show phase name");
+        assert!(output.contains("Total"), "should show totals row");
+        assert!(output.contains("$0.180"), "should show total cost");
+    }
+
+    #[test]
+    fn render_costs_phase_filter_shows_only_matching_phase() {
+        let entries = vec![
+            make_entry_with_tokens(
+                1,
+                1,
+                "builder",
+                1,
+                Some(0.089),
+                Some(1000),
+                Some(500),
+                "full",
+            ),
+            make_entry_with_tokens(
+                2,
+                1,
+                "reviewer",
+                1,
+                Some(0.105),
+                Some(900),
+                Some(400),
+                "full",
+            ),
+        ];
+        let output = render_costs(&entries, Some("builder"), OutputFormat::Human);
+        assert!(output.contains("builder"), "should show builder phase");
+        assert!(
+            !output.contains("reviewer"),
+            "should not show reviewer phase"
+        );
+        assert!(output.contains("$0.089"), "should show builder cost");
+        assert!(!output.contains("$0.105"), "should not show reviewer cost");
+    }
+
+    #[test]
+    fn render_costs_totals_row_sums_correctly() {
+        let entries = vec![
+            make_entry_with_tokens(
+                1,
+                1,
+                "builder",
+                1,
+                Some(0.100),
+                Some(1000),
+                Some(500),
+                "full",
+            ),
+            make_entry_with_tokens(
+                2,
+                1,
+                "builder",
+                2,
+                Some(0.200),
+                Some(2000),
+                Some(1000),
+                "full",
+            ),
+        ];
+        let output = render_costs(&entries, None, OutputFormat::Human);
+        assert!(
+            output.contains("$0.300"),
+            "totals should sum cost correctly"
+        );
+        // Total input tokens = 3000
+        assert!(output.contains("3,000"), "totals should sum input tokens");
+        // Total output tokens = 1500
+        assert!(output.contains("1,500"), "totals should sum output tokens");
+    }
+
+    #[test]
+    fn render_costs_jsonl_mode_emits_one_object_per_run() {
+        let entries = vec![
+            make_entry_with_tokens(
+                1,
+                1,
+                "builder",
+                1,
+                Some(0.092),
+                Some(1234),
+                Some(567),
+                "full",
+            ),
+            make_entry_with_tokens(
+                2,
+                1,
+                "reviewer",
+                1,
+                Some(0.104),
+                Some(900),
+                Some(400),
+                "partial",
+            ),
+        ];
+        let output = render_costs(&entries, None, OutputFormat::Jsonl);
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 2, "should emit one JSON line per run");
+        let obj0: serde_json::Value =
+            serde_json::from_str(lines[0]).expect("line 0 should be valid JSON");
+        assert_eq!(obj0["run"], 1);
+        assert_eq!(obj0["phase"], "builder");
+        assert_eq!(obj0["confidence"], "full");
+        let obj1: serde_json::Value =
+            serde_json::from_str(lines[1]).expect("line 1 should be valid JSON");
+        assert_eq!(obj1["run"], 2);
+        assert_eq!(obj1["confidence"], "partial");
     }
 }

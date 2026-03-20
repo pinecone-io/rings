@@ -1217,6 +1217,9 @@ fn inspect_inner(args: cli::InspectArgs, output_format: cli::OutputFormat) -> Re
             cli::InspectView::Cycles => {
                 render_cycles(&run_dir, args.cycle, output_format)?;
             }
+            cli::InspectView::Costs => {
+                render_costs(&run_dir, args.phase.as_deref(), output_format)?;
+            }
             cli::InspectView::DataFlow => {
                 let declared = rings::inspect::load_declared_flow(&run_dir)?;
                 print!("{}", rings::inspect::render_data_flow_declared(&declared));
@@ -1236,6 +1239,24 @@ fn inspect_inner(args: cli::InspectArgs, output_format: cli::OutputFormat) -> Re
     }
 
     Ok(0)
+}
+
+fn render_costs(
+    run_dir: &std::path::Path,
+    phase_filter: Option<&str>,
+    output_format: cli::OutputFormat,
+) -> Result<()> {
+    let costs_path = run_dir.join("costs.jsonl");
+    let cost_entries: Vec<rings::audit::CostEntry> = if costs_path.exists() {
+        rings::audit::stream_cost_entries(&costs_path)?
+            .filter_map(|r| r.ok())
+            .collect()
+    } else {
+        vec![]
+    };
+    let output = rings::inspect::render_costs(&cost_entries, phase_filter, output_format);
+    print!("{}", output);
+    Ok(())
 }
 
 fn render_cycles(

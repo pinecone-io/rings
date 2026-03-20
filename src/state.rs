@@ -200,6 +200,8 @@ pub struct RunMeta {
     pub continuation_of: Option<String>,
     #[serde(default)]
     pub ancestry_depth: u32,
+    #[serde(default)]
+    pub context_dir: Option<String>,
 }
 
 impl RunMeta {
@@ -228,5 +230,64 @@ impl RunMeta {
     pub fn update_status(&mut self, path: &Path, status: RunStatus) -> Result<()> {
         self.status = status;
         self.write(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_meta(context_dir: Option<String>) -> RunMeta {
+        RunMeta {
+            run_id: "test-run".to_string(),
+            workflow_file: "/tmp/workflow.rings.toml".to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+            rings_version: "0.1.0".to_string(),
+            status: RunStatus::Completed,
+            phase_fingerprint: None,
+            parent_run_id: None,
+            continuation_of: None,
+            ancestry_depth: 0,
+            context_dir,
+        }
+    }
+
+    #[test]
+    fn run_meta_serializes_context_dir_when_set() {
+        let meta = minimal_meta(Some("/home/user/project".to_string()));
+        let serialized = toml::to_string_pretty(&meta).unwrap();
+        assert!(
+            serialized.contains("context_dir"),
+            "expected context_dir in serialized output: {serialized}"
+        );
+        assert!(
+            serialized.contains("/home/user/project"),
+            "expected context_dir value in serialized output: {serialized}"
+        );
+    }
+
+    #[test]
+    fn run_meta_deserializes_without_context_dir() {
+        let toml_str = r#"
+run_id = "test-run"
+workflow_file = "/tmp/workflow.rings.toml"
+started_at = "2026-01-01T00:00:00Z"
+rings_version = "0.1.0"
+status = "completed"
+ancestry_depth = 0
+"#;
+        let meta: RunMeta = toml::from_str(toml_str).unwrap();
+        assert_eq!(meta.context_dir, None);
+    }
+
+    #[test]
+    fn run_meta_round_trips_context_dir() {
+        let meta = minimal_meta(Some("/absolute/path/to/project".to_string()));
+        let serialized = toml::to_string_pretty(&meta).unwrap();
+        let deserialized: RunMeta = toml::from_str(&serialized).unwrap();
+        assert_eq!(
+            deserialized.context_dir,
+            Some("/absolute/path/to/project".to_string())
+        );
     }
 }

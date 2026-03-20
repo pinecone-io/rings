@@ -45,6 +45,7 @@ fn test_runmeta_with_phase_fingerprint() {
         parent_run_id: None,
         continuation_of: None,
         ancestry_depth: 0,
+        context_dir: None,
     };
 
     let toml_str = toml::to_string(&meta).unwrap();

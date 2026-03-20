@@ -46,6 +46,7 @@ fn run_meta_roundtrip() {
         parent_run_id: None,
         continuation_of: None,
         ancestry_depth: 0,
+        context_dir: None,
     };
 
     meta.write(&path).unwrap();

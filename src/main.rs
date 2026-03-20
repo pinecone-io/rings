@@ -271,6 +271,9 @@ fn run_inner(
         parent_run_id: None, // parent_run_id is only set on resume, not on fresh run
         continuation_of: continuation_of.clone(),
         ancestry_depth,
+        context_dir: std::fs::canonicalize(&workflow.context_dir)
+            .ok()
+            .map(|p| p.to_string_lossy().to_string()),
     };
     meta.write(&run_dir.join("run.toml"))?;
 
@@ -579,12 +582,17 @@ fn resume_inner(
         parent_run_id: Some(args.run_id.clone()),
         continuation_of: None,
         ancestry_depth: 1,
+        context_dir: None,
     };
 
     // Reload workflow
     let toml_content = std::fs::read_to_string(&meta.workflow_file)
         .with_context(|| format!("Cannot read workflow file: {}", meta.workflow_file))?;
     let mut workflow = workflow::Workflow::from_str(&toml_content)?;
+
+    meta.context_dir = std::fs::canonicalize(&workflow.context_dir)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
 
     if let Some(max_cycles) = args.max_cycles {
         workflow.max_cycles = max_cycles;

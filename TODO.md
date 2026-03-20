@@ -242,3 +242,66 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [x] Human mode produces zero bytes on stdout
 
 ---
+
+## F-193/F-194/F-195: Context Dir in Run Metadata, List Display, and Filtering
+
+**Spec:** `specs/cli/commands-and-flags.md` (rings list section)
+
+**Summary:** Store `context_dir` in `run.toml` metadata at run start. Add a DIR column to `rings list` output and a `--dir` filter flag so users can distinguish and filter runs by project.
+
+### Task 1: Store context_dir in RunMeta
+
+**Files:** `src/state.rs`, `src/engine.rs`
+
+**Steps:**
+- [x] Add `context_dir: Option<String>` field (with `#[serde(default)]`) to `RunMeta` struct
+- [x] When constructing `RunMeta` at run start in engine.rs, populate `context_dir` with the canonicalized absolute path of the workflow's `context_dir`
+- [x] Ensure `run.toml` round-trips correctly with the new field (existing run.toml files without the field load with `None`)
+
+**Tests:**
+- [x] `RunMeta` serialization includes `context_dir` when set
+- [x] `RunMeta` deserialization of old run.toml (without `context_dir`) succeeds with `None`
+- [x] `context_dir` value is an absolute path (canonicalized)
+
+---
+
+### Task 2: Add context_dir to RunSummary and list_runs
+
+**Files:** `src/list.rs`
+
+**Steps:**
+- [ ] Add `context_dir: Option<String>` field to `RunSummary`
+- [ ] Populate it from `RunMeta.context_dir` in `list_runs`
+- [ ] Add `dir: Option<String>` field to `ListFilters`
+- [ ] Apply dir filter as substring match on `meta.context_dir` (same pattern as workflow filter)
+
+**Tests:**
+- [ ] `list_runs` with `dir` filter returns only runs whose context_dir contains the substring
+- [ ] `list_runs` with `dir` filter and no matching runs returns empty vec
+- [ ] Runs with `context_dir: None` (old runs) are excluded by dir filter but included when no filter is set
+
+---
+
+### Task 3: CLI flag and display
+
+**Files:** `src/cli.rs`, `src/main.rs`
+
+**Steps:**
+- [ ] Add `--dir` option to `ListArgs` struct: `pub dir: Option<String>`
+- [ ] Pass `args.dir` into `ListFilters.dir`
+- [ ] In human-mode table output, add DIR column between DATE and WORKFLOW:
+  - Shorten paths: replace `$HOME` prefix with `~`
+  - Truncate paths longer than 30 chars: show `…/<last components>`
+  - For `None` values, display `—`
+- [ ] In JSONL output, add `"context_dir"` field (full absolute path, or null)
+- [ ] Adjust column widths for the new layout
+
+**Tests:**
+- [ ] `rings list --dir /foo` parses correctly
+- [ ] Human output includes DIR column header and values
+- [ ] JSONL output includes `context_dir` field
+- [ ] Path shortening: `$HOME/code/project` → `~/code/project`
+- [ ] Path truncation: long paths are truncated with `…/` prefix
+- [ ] `None` context_dir displays as `—` in human mode and `null` in JSONL
+
+---

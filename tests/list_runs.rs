@@ -29,6 +29,7 @@ fn create_test_run(
         parent_run_id: None,
         continuation_of: None,
         ancestry_depth: 0,
+        context_dir: None,
     };
     meta.write(&run_dir.join("run.toml")).unwrap();
 
@@ -78,6 +79,7 @@ fn test_runstatus_roundtrip() {
             parent_run_id: None,
             continuation_of: None,
             ancestry_depth: 0,
+            context_dir: None,
         };
 
         let toml_str = toml::to_string_pretty(&meta).unwrap();
@@ -417,6 +419,7 @@ fn test_list_runs_missing_state_json() {
         parent_run_id: None,
         continuation_of: None,
         ancestry_depth: 0,
+        context_dir: None,
     };
     let run_dir = dir.path().join("run_no_state");
     fs::create_dir_all(&run_dir).unwrap();

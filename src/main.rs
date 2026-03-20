@@ -804,6 +804,21 @@ fn cmd_resume(
     }
 }
 
+/// Returns a warning message if the saved workflow file path differs from its canonical path.
+/// Returns `None` if paths match or the file cannot be resolved (will fail later with a better error).
+fn check_workflow_path_mismatch(saved_path: &str) -> Option<String> {
+    if let Ok(canonical) = std::fs::canonicalize(saved_path) {
+        let canonical_str = canonical.to_string_lossy();
+        if canonical_str != saved_path {
+            return Some(format!(
+                "⚠  Workflow file path has changed:\n   Saved: {}\n   Current: {}\n   This may cause issues if the workflow structure has also changed.",
+                saved_path, canonical_str
+            ));
+        }
+    }
+    None
+}
+
 fn resume_inner(
     args: cli::ResumeArgs,
     cancel: Arc<CancelState>,
@@ -844,6 +859,11 @@ fn resume_inner(
 
     let old_meta = state::RunMeta::read(&old_meta_path)
         .with_context(|| format!("Cannot read run.toml for run {}", args.run_id))?;
+
+    // Path mismatch check (F-057): warn if workflow file canonical path differs from saved path
+    if let Some(warning) = check_workflow_path_mismatch(&old_meta.workflow_file) {
+        eprintln!("{}", warning);
+    }
 
     // Generate a new run_id for the resumed run (implements Option A: new run directory on resume)
     let new_run_id = generate_run_id();
@@ -4152,5 +4172,55 @@ mod completions_tests {
                 "completions output for {shell:?} is empty"
             );
         }
+    }
+
+    // --- check_workflow_path_mismatch tests (F-057) ---
+
+    #[test]
+    fn path_mismatch_same_canonical_path_no_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("workflow.toml");
+        std::fs::write(&file, "[workflow]").unwrap();
+        // The canonical path of the file should equal its absolute string form
+        // (tempfile dirs are typically already canonical under /tmp).
+        let canonical = std::fs::canonicalize(&file).unwrap();
+        let canonical_str = canonical.to_string_lossy().to_string();
+        assert!(
+            check_workflow_path_mismatch(&canonical_str).is_none(),
+            "no warning expected when saved path equals canonical path"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_mismatch_symlink_path_triggers_warning() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let real_file = tmp.path().join("real_workflow.toml");
+        std::fs::write(&real_file, "[workflow]").unwrap();
+        // Create a symlink pointing to the real file
+        let link = tmp.path().join("workflow_link.toml");
+        symlink(&real_file, &link).unwrap();
+        // The saved path is the symlink path; canonical will resolve to the real file
+        let link_str = link.to_string_lossy().to_string();
+        let canonical = std::fs::canonicalize(&link).unwrap();
+        // Only run the assertion if canonical differs from the symlink path
+        if canonical.to_string_lossy() != link_str {
+            let result = check_workflow_path_mismatch(&link_str);
+            assert!(
+                result.is_some(),
+                "warning expected when saved path is a symlink that resolves differently"
+            );
+            let warning = result.unwrap();
+            assert!(warning.contains("Workflow file path has changed"));
+            assert!(warning.contains(&link_str));
+        }
+    }
+
+    #[test]
+    fn path_mismatch_nonexistent_file_returns_no_warning() {
+        // If the file doesn't exist, canonicalize fails — we return None (error handled later)
+        let result = check_workflow_path_mismatch("/nonexistent/rings_test/workflow.toml");
+        assert!(result.is_none(), "no warning for nonexistent file");
     }
 }

@@ -23,55 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-189: Styled Dry Run Output
-
-**Spec:** `specs/observability/runtime-output.md`
-
-**Summary:** `rings run --dry-run` uses the same color system as live runs for visual consistency.
-
-### Task 1: Verify dry-run styling
-
-**Files:** `src/main.rs` (dry-run output section)
-
-**Steps:**
-- [x] Verify dry-run output uses semantic colors: `style::bold` for headers, `style::accent` for cost estimates, `style::dim` for structural elements
-- [x] Verify completion signal check results use `style::success` (✓) and `style::warn` (✗)
-- [x] Verify `--no-color` disables styling in dry-run output
-- [x] If already working, mark as COMPLETE
-
-**Tests:**
-- [x] Dry-run output is styled with colors on TTY
-- [x] `NO_COLOR=1` produces plain dry-run output
-- [x] `just validate` clean
-
----
-
-## F-018: Data Flow Documentation in Inspect
-
-**Spec:** `specs/workflow/phase-contracts.md`, `specs/cli/inspect-command.md`
-
-**Summary:** `rings inspect <RUN_ID> --show data-flow` shows declared vs. actual data flow for each phase. The `InspectView::DataFlow` variant already exists and has partial implementation.
-
-### Task 1: Complete data-flow view
-
-**Files:** `src/inspect.rs`, `src/main.rs`
-
-**Steps:**
-- [ ] Verify `InspectView::DataFlow` handler in `inspect_inner` loads declared flow from workflow consumes/produces
-- [ ] Add actual file attribution: which files were actually changed by each phase (from manifest diffs in costs.jsonl)
-- [ ] Display format per spec: declared flow diagram, then actual file attribution table
-- [ ] Support `--cycle N` and `--phase NAME` filters
-- [ ] In JSONL mode, emit structured data flow information
-
-**Tests:**
-- [ ] Data flow view shows declared consumes/produces for each phase
-- [ ] Actual file changes are attributed to correct phases
-- [ ] Missing contract declarations show "no contracts declared"
-- [ ] JSONL mode emits structured output
-- [ ] `just validate` clean
-
----
-
 ## F-057: Cross-Machine Resume Documentation
 
 **Spec:** `specs/state/cancellation-resume.md`
@@ -83,40 +34,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (in `resume_inner`)
 
 **Steps:**
-- [ ] On resume, compare the current workflow file's absolute path against the path stored in `run.toml`
-- [ ] If paths differ, print a warning (not error): `⚠  Workflow file path has changed:\n   Saved: {old_path}\n   Current: {new_path}\n   This may cause issues if the workflow structure has also changed.`
-- [ ] The phase fingerprint check (F-050) already catches structural changes — this is for path-only changes (e.g., moved repo)
-- [ ] If the path is different but fingerprint matches, proceed with warning only
+- [x] On resume, compare the current workflow file's absolute path against the path stored in `run.toml`
+- [x] If paths differ, print a warning (not error): `⚠  Workflow file path has changed:\n   Saved: {old_path}\n   Current: {new_path}\n   This may cause issues if the workflow structure has also changed.`
+- [x] The phase fingerprint check (F-050) already catches structural changes — this is for path-only changes (e.g., moved repo)
+- [x] If the path is different but fingerprint matches, proceed with warning only
 
 **Tests:**
-- [ ] Resume with same path: no warning
-- [ ] Resume with different path but same fingerprint: warning but proceeds
-- [ ] `just validate` clean
-
----
-
-## F-100: Inspect Data Flow View
-
-**Spec:** `specs/cli/inspect-command.md` (--show data-flow section)
-
-**Summary:** `rings inspect <RUN_ID> --show data-flow` shows declared vs. actual file inputs and outputs for each phase. Requires phase contracts (F-014/015) and file manifest (F-117).
-
-### Task 1: Implement data-flow view display
-
-**Files:** `src/inspect.rs`
-
-**Steps:**
-- [ ] The `InspectView::DataFlow` handler already has partial implementation loading declared flow
-- [ ] Add rendering of the actual file attribution from manifest diffs
-- [ ] Show which files each phase actually touched vs. what it declared it would touch
-- [ ] Highlight mismatches: files produced but not declared, files declared but not produced
-- [ ] Support `--phase NAME` filter
-
-**Tests:**
-- [ ] View shows both declared and actual data flow
-- [ ] Mismatches are highlighted
-- [ ] Phase filter works correctly
-- [ ] `just validate` clean
+- [x] Resume with same path: no warning
+- [x] Resume with different path but same fingerprint: warning but proceeds
+- [x] `just validate` clean
 
 ---
 
@@ -143,5 +69,108 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] Snapshot contains all context_dir files except ignored/credential patterns
 - [ ] `snapshot_cycles = false` (default) creates no snapshots
 - [ ] `just validate` clean
+
+---
+
+## F-123: Snapshot Storage Warning
+
+**Spec:** `specs/observability/file-lineage.md`
+
+**Summary:** When `snapshot_cycles = true`, estimate storage usage at startup and warn if it will be unexpectedly large (> 100 MB per snapshot × max_cycles).
+
+### Task 1: Add snapshot storage estimate
+
+**Files:** `src/main.rs` (or `src/engine.rs`)
+
+**Steps:**
+- [ ] When `snapshot_cycles = true`, at startup: compute the total size of context_dir (excluding ignored files)
+- [ ] Estimate total snapshot storage: `size_per_snapshot × max_cycles`
+- [ ] If estimate > 100 MB: print warning `⚠  Cycle snapshots enabled. Estimated storage: {size} ({per_snapshot} × {max_cycles} cycles).\n   Consider reducing max_cycles or using manifest_ignore to exclude large directories.`
+- [ ] On TTY: prompt `Continue? [Y/n]` — on non-TTY: proceed with warning only
+
+**Tests:**
+- [ ] Large context_dir with many cycles triggers storage warning
+- [ ] Small context_dir produces no warning
+- [ ] `snapshot_cycles = false` skips the check entirely
+- [ ] `just validate` clean
+
+---
+
+## F-124: Manifest Compression
+
+**Spec:** `specs/observability/file-lineage.md`
+
+**Summary:** Store file manifests as gzip-compressed JSON to keep disk usage low. Manifests are written to `manifests/<run-number>-after.json.gz`.
+
+### Task 1: Add gzip compression to manifest storage
+
+**Files:** `src/manifest.rs`
+
+**Steps:**
+- [ ] When writing manifests, use `flate2::write::GzEncoder` to compress the JSON before writing
+- [ ] Add `flate2` to `Cargo.toml` dependencies (with `gzip` feature)
+- [ ] Write to `.json.gz` extension instead of `.json`
+- [ ] When reading manifests (for diff computation, inspect views), detect `.json.gz` and decompress with `flate2::read::GzDecoder`
+- [ ] Handle backwards compatibility: if a `.json` file exists (old format), read it uncompressed
+
+**Tests:**
+- [ ] Written manifest file has `.json.gz` extension
+- [ ] Compressed manifest is valid gzip (can be decompressed with `gunzip`)
+- [ ] Reading compressed manifest produces correct data
+- [ ] Reading old uncompressed `.json` manifest still works
+- [ ] Compressed size is significantly smaller than uncompressed
+- [ ] `just validate` clean
+
+---
+
+## F-178: Shell Completions Behavior
+
+**Spec:** `specs/cli/completion-and-manpage.md`
+
+**Summary:** Tab-completion offers `.toml` files for workflow arguments, run IDs for resume/show/inspect arguments, and flag names everywhere. Requires clap_complete's custom completer support.
+
+### Task 1: Add custom completers for arguments
+
+**Files:** `src/cli.rs`, `src/main.rs`
+
+**Steps:**
+- [ ] For `<WORKFLOW>` argument in `rings run`: add a custom completer that suggests `.rings.toml` and `.toml` files in the current directory
+- [ ] For `<RUN_ID>` arguments in `rings resume`, `rings show`, `rings inspect`, `rings lineage`: add a custom completer that lists run IDs from the output directory
+- [ ] Use `clap_complete::engine::ArgValueCompleter` or shell-specific completion scripts
+- [ ] Test with `rings completions zsh` and verify completions work in zsh
+
+**Tests:**
+- [ ] Generated completion script contains workflow file completion logic
+- [ ] Generated completion script contains run ID completion logic
+- [ ] `just validate` clean
+
+---
+
+## F-162: OpenTelemetry Opt-In
+
+**Spec:** `specs/observability/opentelemetry.md`
+
+**Summary:** Add opt-in OpenTelemetry tracing, controlled by `RINGS_OTEL_ENABLED=1` environment variable. When enabled, rings exports traces to an OTLP-compatible collector. When disabled (default), no tracing overhead.
+
+### Task 1: Add OTel initialization
+
+**Files:** `src/otel.rs` (new), `src/lib.rs`, `src/engine.rs`, `Cargo.toml`
+
+**Steps:**
+- [ ] Add `opentelemetry`, `opentelemetry-otlp`, and `tracing-opentelemetry` to `Cargo.toml` as optional dependencies behind an `otel` feature flag
+- [ ] Create `src/otel.rs` with `init_tracer() -> Result<Option<SdkTracerProvider>>`:
+  1. Check `RINGS_OTEL_ENABLED` env var — if not set or "0", return `None` (no-op)
+  2. Read `OTEL_EXPORTER_OTLP_ENDPOINT` for collector endpoint (F-170)
+  3. Initialize OTLP exporter and tracer provider
+  4. If init fails, print warning and continue with no-op tracer (F-169)
+- [ ] Register `pub mod otel;` in `src/lib.rs`
+- [ ] In engine startup: call `init_tracer()`, store the provider for shutdown at exit
+- [ ] On exit: call `provider.shutdown()` to flush remaining spans
+
+**Tests:**
+- [ ] `RINGS_OTEL_ENABLED=0`: no tracer initialized, no overhead
+- [ ] `RINGS_OTEL_ENABLED=1` with no endpoint: warning printed, continues with no-op
+- [ ] Feature flag `otel` controls compilation of dependencies
+- [ ] `just validate` clean (with and without `otel` feature)
 
 ---

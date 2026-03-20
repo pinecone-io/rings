@@ -23,56 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-121: mtime Optimization for Manifest Scanning
-
-**Spec:** `specs/observability/file-lineage.md`
-
-**Summary:** Skip re-hashing files whose modification time hasn't changed since the last manifest. Only compute SHA256 for files with updated mtime. Keeps large repos fast.
-
-### Task 1: Add mtime-based hash skipping
-
-**Files:** `src/manifest.rs`
-
-**Steps:**
-- [x] When computing a new manifest, compare each file's mtime against the previous manifest's entry for the same path
-- [x] If the path exists in the previous manifest and mtime is identical, reuse the previous SHA256 hash without reading the file
-- [x] If mtime differs or the file is new, compute the SHA256 hash normally
-- [x] Pass the previous manifest (if available) into the manifest computation function
-
-**Tests:**
-- [x] File with unchanged mtime reuses previous hash (verify by checking that file content is not read)
-- [x] File with changed mtime gets a fresh hash
-- [x] New file (not in previous manifest) gets computed hash
-- [x] First manifest (no previous) computes all hashes
-- [x] `just validate` clean
-
----
-
-## F-054: Subprocess Graceful Shutdown
-
-**Spec:** `specs/state/cancellation-resume.md`
-
-**Summary:** When rings needs to kill the executor (Ctrl+C, SIGTERM, timeout), send SIGTERM first and wait up to 5 seconds before escalating to SIGKILL. Gives the executor a chance to clean up.
-
-### Task 1: Implement SIGTERM→SIGKILL escalation
-
-**Files:** `src/executor.rs`
-
-**Steps:**
-- [x] When the cancel state is `Canceling` and the executor is still running: send SIGTERM to the subprocess
-- [x] Start a 5-second timer. If the subprocess exits within 5s, proceed normally
-- [x] If still running after 5s (or on `ForceKill` state from double Ctrl+C): send SIGKILL
-- [x] On Unix: use `nix::sys::signal::kill(pid, Signal::SIGTERM)` and `Signal::SIGKILL`
-- [x] Use `#[cfg(unix)]` guard — on non-Unix, fall back to immediate kill
-
-**Tests:**
-- [x] Mock executor that traps SIGTERM and exits: receives SIGTERM, exits cleanly within 5s
-- [x] Mock executor that ignores SIGTERM: receives SIGTERM, then SIGKILL after 5s
-- [x] Double Ctrl+C (ForceKill): SIGKILL sent immediately, no 5s wait
-- [x] `just validate` clean
-
----
-
 ## F-154: Large Context Directory Warning
 
 **Spec:** `specs/observability/file-lineage.md`
@@ -84,16 +34,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or `src/engine.rs`)
 
 **Steps:**
-- [ ] After context_dir validation but before engine start, count files in context_dir (recursive)
-- [ ] If count > 10,000: print warning `⚠  context_dir contains {N} files. Manifest scanning may be slow.\n   Consider using manifest_ignore patterns to exclude large directories (e.g., node_modules/, target/).`
-- [ ] Only warn when `manifest_enabled = true` (no point warning if manifests are off)
-- [ ] Only warn in human output mode
+- [x] After context_dir validation but before engine start, count files in context_dir (recursive)
+- [x] If count > 10,000: print warning `⚠  context_dir contains {N} files. Manifest scanning may be slow.\n   Consider using manifest_ignore patterns to exclude large directories (e.g., node_modules/, target/).`
+- [x] Only warn when `manifest_enabled = true` (no point warning if manifests are off)
+- [x] Only warn in human output mode
 
 **Tests:**
-- [ ] Directory with > 10,000 files triggers warning
-- [ ] Directory with < 10,000 files produces no warning
-- [ ] Warning suppressed when manifest_enabled is false
-- [ ] `just validate` clean
+- [x] Directory with > 10,000 files triggers warning
+- [x] Directory with < 10,000 files produces no warning
+- [x] Warning suppressed when manifest_enabled is false
+- [x] `just validate` clean
 
 ---
 

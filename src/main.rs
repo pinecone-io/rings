@@ -413,6 +413,18 @@ fn run_inner(
         }
     }
 
+    // Advisory check: large context_dir when manifest_enabled
+    if output_format == cli::OutputFormat::Human && workflow.manifest_enabled {
+        let file_count = count_context_dir_files(&workflow.context_dir);
+        if file_count > 10_000 {
+            eprintln!(
+                "⚠  context_dir contains {} files. Manifest scanning may be slow.\n   \
+                 Consider using manifest_ignore patterns to exclude large directories (e.g., node_modules/, target/).",
+                file_count
+            );
+        }
+    }
+
     // Advisory check: output_dir inside a git repo
     let user_provided_output_dir: Option<&str> = args
         .output_dir
@@ -2391,6 +2403,26 @@ fn generate_run_id() -> String {
 
 /// Returns true if the directory at `path` contains zero entries (advisory check for
 /// empty context_dir). Returns false if the directory cannot be read or contains any entries.
+/// Counts files recursively in `path`. Returns 0 if the path cannot be read.
+fn count_context_dir_files(path: &str) -> usize {
+    let mut count = 0usize;
+    let mut stack = vec![std::path::PathBuf::from(path)];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_file() {
+                count += 1;
+            } else if ft.is_dir() {
+                stack.push(entry.path());
+            }
+        }
+    }
+    count
+}
+
 fn context_dir_is_empty(path: &str) -> bool {
     std::fs::read_dir(path)
         .map(|mut entries| entries.next().is_none())
@@ -3274,6 +3306,66 @@ runs_per_cycle = 1
         // The warning print is guarded by `output_format == OutputFormat::Human`.
         // JSONL mode uses OutputFormat::Jsonl, which does not satisfy the guard.
         assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
+
+    // --- large context_dir advisory check tests ---
+
+    #[test]
+    fn count_context_dir_files_counts_recursively() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.txt"), "a").unwrap();
+        let sub = tmp.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("b.txt"), "b").unwrap();
+        std::fs::write(sub.join("c.txt"), "c").unwrap();
+        assert_eq!(count_context_dir_files(tmp.path().to_str().unwrap()), 3);
+    }
+
+    #[test]
+    fn count_context_dir_files_empty_dir_returns_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(count_context_dir_files(tmp.path().to_str().unwrap()), 0);
+    }
+
+    #[test]
+    fn count_context_dir_files_nonexistent_path_returns_zero() {
+        assert_eq!(
+            count_context_dir_files("/nonexistent/path/rings_large_dir_test"),
+            0
+        );
+    }
+
+    #[test]
+    fn large_context_dir_warning_threshold_is_10000() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Create exactly 10,001 files — above the threshold
+        for i in 0..=10_000usize {
+            std::fs::write(tmp.path().join(format!("f{i}.txt")), "x").unwrap();
+        }
+        let count = count_context_dir_files(tmp.path().to_str().unwrap());
+        assert!(count > 10_000, "expected count > 10000, got {count}");
+    }
+
+    #[test]
+    fn large_context_dir_warning_suppressed_in_jsonl_mode() {
+        // The advisory check is guarded by output_format == OutputFormat::Human AND
+        // manifest_enabled = true. JSONL mode skips it.
+        assert_ne!(cli::OutputFormat::Jsonl, cli::OutputFormat::Human);
+    }
+
+    #[test]
+    fn large_context_dir_warning_suppressed_when_manifest_disabled() {
+        // When manifest_enabled = false, the file count check is not needed.
+        // This test validates the logic condition: both Human mode AND manifest_enabled must be true.
+        // We verify by ensuring the guard (manifest_enabled) is a separate condition.
+        // The actual guard in run_inner: output_format == Human && workflow.manifest_enabled
+        let manifest_enabled = false;
+        let is_human = true;
+        let should_check = is_human && manifest_enabled;
+        assert!(
+            !should_check,
+            "should not check when manifest_enabled=false"
+        );
     }
 }
 

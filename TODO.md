@@ -4,29 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Bug: Timeout Deadline Not Reset After Quota Backoff Retry
-
-**Ref:** `specs/execution/engine.md`, `specs/execution/rate-limiting.md`
-
-**Summary:** In `engine.rs`, the per-run timeout deadline is computed from `run_start` (line 874), which is set once before the retry loop. After a quota backoff wait (which could be 300+ seconds), the retry re-enters the loop but the deadline is already expired, causing the retry to immediately timeout without executing. This effectively breaks `timeout_per_run_secs` when combined with quota backoff.
-
-### Task 1: Reset timeout deadline on retry
-
-**Files:** `src/engine.rs`
-
-**Steps:**
-- [x] Move `run_start = std::time::Instant::now()` inside the `'retry_loop` (before line 940), so each retry attempt gets a fresh timeout deadline
-- [x] Alternatively, recompute `timeout_deadline` at the top of each retry iteration (after the `continue 'retry_loop` at line 1190 re-enters)
-- [x] Ensure `elapsed_secs` at line 1198 still reflects total wall-clock time (for display purposes), so keep the original `run_start` for display and add a separate `attempt_start` for timeout
-
-**Tests:**
-- [x] A run with `timeout_per_run_secs = 10` and quota backoff delay of 5s: retry attempt gets a fresh 10s timeout, not an expired one
-- [x] A run with no timeout: retry behavior unchanged
-- [x] A run with timeout and no retries: timeout still fires correctly
-- [x] `just validate` clean
-
----
-
 ## Bug: Cost Entry Written Too Late in Success Path — Crash Window
 
 **Ref:** `specs/observability/audit-logs.md`, `specs/state/cancellation-resume.md`
@@ -40,25 +17,25 @@ Additionally, the resume cost reconstruction at lines 627-653 does not deduplica
 **Files:** `src/engine.rs`
 
 **Steps:**
-- [ ] Move the `append_cost_entry()` call (currently at line 1594-1612) to immediately after `state.write_atomic(&state_path)?` (line 1503), before manifest computation
-- [ ] The cost entry will need `files_added/modified/deleted/changed` set to 0 initially, then updated if manifest info is computed later — OR collect manifest data before writing cost (less desirable since it widens the state-before-costs gap)
-- [ ] Simpler approach: accept that the cost entry written early won't have file counts, and emit a separate `manifest_diff` entry or update later — OR split the cost entry write to happen early (with cost data) and keep file counts in the JSONL event only
-- [ ] Verify the error path (lines 1459-1478) still follows the same pattern
+- [x] Move the `append_cost_entry()` call (currently at line 1594-1612) to immediately after `state.write_atomic(&state_path)?` (line 1503), before manifest computation
+- [x] The cost entry will need `files_added/modified/deleted/changed` set to 0 initially, then updated if manifest info is computed later — OR collect manifest data before writing cost (less desirable since it widens the state-before-costs gap)
+- [x] Simpler approach: accept that the cost entry written early won't have file counts, and emit a separate `manifest_diff` entry or update later — OR split the cost entry write to happen early (with cost data) and keep file counts in the JSONL event only
+- [x] Verify the error path (lines 1459-1478) still follows the same pattern
 
 ### Task 2: Deduplicate cost entries on resume reconstruction
 
 **Files:** `src/engine.rs`
 
 **Steps:**
-- [ ] In the resume cost reconstruction loop (lines 627-653), track seen run numbers in a `HashSet<u32>`
-- [ ] If a run number has already been seen, skip the duplicate entry (use the first occurrence)
-- [ ] This handles the edge case where cost was appended but state write failed, causing a re-execution that appends a second entry for the same run
+- [x] In the resume cost reconstruction loop (lines 627-653), track seen run numbers in a `HashSet<u32>`
+- [x] If a run number has already been seen, skip the duplicate entry (use the first occurrence)
+- [x] This handles the edge case where cost was appended but state write failed, causing a re-execution that appends a second entry for the same run
 
 **Tests:**
-- [ ] Resume with a costs.jsonl containing duplicate run entries: cumulative cost counts each run only once
-- [ ] Resume with clean costs.jsonl: behavior unchanged
-- [ ] Cost entry is appended immediately after state write (no crash window for manifest computation)
-- [ ] `just validate` clean
+- [x] Resume with a costs.jsonl containing duplicate run entries: cumulative cost counts each run only once
+- [x] Resume with clean costs.jsonl: behavior unchanged
+- [x] Cost entry is appended immediately after state write (no crash window for manifest computation)
+- [x] `just validate` clean
 
 ---
 
@@ -162,6 +139,28 @@ Additionally, the resume cost reconstruction at lines 627-653 does not deduplica
 - [ ] `budget_cap_usd = inf` in TOML is rejected at parse time
 - [ ] `budget_cap_usd = 10.0` still works (positive finite is valid)
 - [ ] Per-phase `budget_cap_usd = nan` is also rejected
+- [ ] `just validate` clean
+
+---
+
+## Bug: Executor Output Reader Drops All Data After First Non-UTF8 Line
+
+**Ref:** `specs/execution/executor-integration.md`
+
+**Summary:** In `executor.rs` lines 231 and 246, the stdout/stderr reader threads use `reader.lines().map_while(Result::ok)` to iterate over output lines. `map_while` stops iteration on the first `Err` — meaning if one line contains invalid UTF-8 bytes, ALL subsequent lines are silently dropped. This is catastrophic for reliability: cost data, completion signals, response text, and resume commands appearing after the bad line are all lost. The workflow would continue running (no completion signal detected) and cost tracking would be incorrect. While Claude Code always outputs valid UTF-8, custom executors (F-022) may not, and even a single corrupted byte from I/O issues would trigger complete data loss.
+
+### Task 1: Replace `map_while` with `filter_map` in reader threads
+
+**Files:** `src/executor.rs`
+
+**Steps:**
+- [ ] On line 231, change `reader.lines().map_while(Result::ok)` to `reader.lines().filter_map(Result::ok)`
+- [ ] On line 246, make the same change for the stderr reader thread
+- [ ] `filter_map(Result::ok)` skips individual bad lines but continues processing subsequent lines, preserving all valid output after the error
+- [ ] Optionally: log a warning to stderr when a line is skipped due to UTF-8 decode failure (helps users debug custom executor issues)
+
+**Tests:**
+- [ ] Existing verbose rendering and output accumulation tests continue to pass
 - [ ] `just validate` clean
 
 ---

@@ -1,6 +1,7 @@
 // Run with: cargo test --features testing
+use rings::audit::CostEntry;
 use rings::cancel::CancelState;
-use rings::engine::{run_workflow, EngineConfig};
+use rings::engine::{run_workflow, EngineConfig, ResumePoint};
 use rings::executor::{ExecutorOutput, MockExecutor};
 use rings::state;
 use rings::workflow::{CompiledErrorProfile, CompletionSignalMode, PhaseConfig, Workflow};
@@ -907,5 +908,176 @@ fn without_strict_parsing_low_confidence_continues() {
         result.parse_warnings.len(),
         1,
         "should record parse warning"
+    );
+}
+
+#[test]
+fn cost_entry_written_after_each_successful_run() {
+    // Verify that costs.jsonl is populated on success — this confirms the cost
+    // append happens (timing is validated structurally in engine.rs).
+    let dir = tempdir().unwrap();
+    let workflow = make_workflow("DONE", &[("builder", 1)], 5);
+    let executor = MockExecutor::new(vec![
+        ExecutorOutput {
+            combined: "Cost: $0.05\nno signal".to_string(),
+            exit_code: 0,
+        },
+        ExecutorOutput {
+            combined: "Cost: $0.07\nDONE".to_string(),
+            exit_code: 0,
+        },
+    ]);
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-cost-timing".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0);
+
+    let costs_path = dir.path().join("costs.jsonl");
+    assert!(costs_path.exists(), "costs.jsonl must exist");
+    let content = std::fs::read_to_string(&costs_path).unwrap();
+    let entries: Vec<CostEntry> = content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    // Two runs, so two cost entries.
+    assert_eq!(entries.len(), 2, "expected two cost entries");
+    assert_eq!(entries[0].run, 1);
+    assert_eq!(entries[1].run, 2);
+}
+
+#[test]
+fn resume_deduplicates_duplicate_cost_entries() {
+    // Simulate the crash scenario: cost was appended for run 1, but the process
+    // was killed before the next state write. On resume, run 1 is re-executed
+    // and a second cost entry for run 1 is appended. The reconstruction must
+    // count run 1 only once.
+    let dir = tempdir().unwrap();
+
+    // Pre-populate costs.jsonl with run 1 appearing twice (duplicate).
+    let costs_path = dir.path().join("costs.jsonl");
+    let run1_cost = 0.05_f64;
+    let dup_entry = CostEntry {
+        run: 1,
+        cycle: 1,
+        phase: "builder".to_string(),
+        iteration: 1,
+        cost_usd: Some(run1_cost),
+        input_tokens: Some(1000),
+        output_tokens: Some(200),
+        cost_confidence: "full".to_string(),
+        files_added: 0,
+        files_modified: 0,
+        files_deleted: 0,
+        files_changed: 0,
+        event: None,
+        produces_violations: vec![],
+    };
+    let line = serde_json::to_string(&dup_entry).unwrap();
+    // Write the same entry twice to simulate a duplicate.
+    std::fs::write(&costs_path, format!("{}\n{}\n", line, line)).unwrap();
+
+    // The workflow has 2 runs_per_cycle; we resume after run 1.
+    let workflow = make_workflow("DONE", &[("builder", 2)], 1);
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: format!("Cost: ${:.2}\nDONE", run1_cost),
+        exit_code: 0,
+    }]);
+    let resume_point = ResumePoint {
+        last_completed_run: 1,
+        last_completed_cycle: 1,
+        last_completed_phase_index: 0,
+        last_completed_iteration: 1,
+    };
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-dedup".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, Some(resume_point), None).unwrap();
+    // total_cost_usd should be ~run1_cost (dedup) + run2_cost (~run1_cost from mock).
+    // It must NOT be ~3 * run1_cost (which would happen if the duplicate was counted).
+    assert!(
+        result.total_cost_usd < run1_cost * 2.5,
+        "duplicate cost entry should not be double-counted; got total_cost_usd = {}",
+        result.total_cost_usd
+    );
+}
+
+#[test]
+fn resume_with_clean_costs_jsonl_accumulates_correctly() {
+    // Normal resume (no duplicates): cumulative cost should be prior cost + new run cost.
+    let dir = tempdir().unwrap();
+
+    let costs_path = dir.path().join("costs.jsonl");
+    let prior_cost = 0.05_f64;
+    let prior_entry = CostEntry {
+        run: 1,
+        cycle: 1,
+        phase: "builder".to_string(),
+        iteration: 1,
+        cost_usd: Some(prior_cost),
+        input_tokens: Some(1000),
+        output_tokens: Some(200),
+        cost_confidence: "full".to_string(),
+        files_added: 0,
+        files_modified: 0,
+        files_deleted: 0,
+        files_changed: 0,
+        event: None,
+        produces_violations: vec![],
+    };
+    let line = serde_json::to_string(&prior_entry).unwrap();
+    std::fs::write(&costs_path, format!("{}\n", line)).unwrap();
+
+    let run2_cost = 0.07_f64;
+    let workflow = make_workflow("DONE", &[("builder", 2)], 1);
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: format!("Cost: ${:.2}\nDONE", run2_cost),
+        exit_code: 0,
+    }]);
+    let resume_point = ResumePoint {
+        last_completed_run: 1,
+        last_completed_cycle: 1,
+        last_completed_phase_index: 0,
+        last_completed_iteration: 1,
+    };
+    let config = EngineConfig {
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        output_dir: dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-clean-resume".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, Some(resume_point), None).unwrap();
+    // Total cost = prior_cost (0.05) + run2_cost (0.07) ≈ 0.12, within float tolerance.
+    let expected = prior_cost + run2_cost;
+    assert!(
+        (result.total_cost_usd - expected).abs() < 0.01,
+        "expected total ~{}, got {}",
+        expected,
+        result.total_cost_usd
     );
 }

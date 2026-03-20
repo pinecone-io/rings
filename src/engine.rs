@@ -634,10 +634,18 @@ pub fn run_workflow(
 
     // Restore cumulative cost from resume point if provided.
     if let Some(ref _r) = resume_from {
-        // Reconstruct cumulative_cost and token totals from costs.jsonl
+        // Reconstruct cumulative_cost and token totals from costs.jsonl.
+        // Deduplicate by run number: if a cost entry was appended but the subsequent
+        // state write failed, re-execution on resume appends a second entry for the
+        // same run. Use the first occurrence and skip duplicates.
         if let Ok(content) = std::fs::read_to_string(&costs_path) {
+            let mut seen_runs: std::collections::HashSet<u32> = std::collections::HashSet::new();
             for line in content.lines() {
                 if let Ok(entry) = serde_json::from_str::<crate::audit::CostEntry>(line.trim()) {
+                    if !seen_runs.insert(entry.run) {
+                        // Duplicate run number — skip to avoid double-counting.
+                        continue;
+                    }
                     // Accumulate token counts
                     if let Some(t) = entry.input_tokens {
                         ctx.budget.cumulative_input_tokens += t;
@@ -1556,12 +1564,31 @@ pub fn run_workflow(
         state.claude_resume_commands = resume_commands.clone();
         state.write_atomic(&state_path)?;
 
-        // Compute after-manifest and diff if manifests are enabled.
-        let mut files_added = 0u32;
-        let mut files_modified = 0u32;
-        let mut files_deleted = 0u32;
-        let mut files_changed = 0u32;
+        // Append cost entry immediately after state write to close the crash window.
+        // File counts are not yet available (manifest computation happens below), so they
+        // are recorded as 0 here. File-level diff data is still present in JSONL run_end
+        // events for consumers that need it.
+        append_cost_entry(
+            &costs_path,
+            &CostEntry {
+                run: run_spec.global_run_number,
+                cycle: run_spec.cycle,
+                phase: run_spec.phase_name.clone(),
+                iteration: run_spec.phase_iteration,
+                cost_usd: cost.cost_usd,
+                input_tokens: cost.input_tokens,
+                output_tokens: cost.output_tokens,
+                cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
+                files_added: 0,
+                files_modified: 0,
+                files_deleted: 0,
+                files_changed: 0,
+                event: None,
+                produces_violations: vec![],
+            },
+        )?;
 
+        // Compute after-manifest and diff if manifests are enabled.
         // Retain diff paths for produces contract check.
         let mut diff_added_paths: Vec<String> = vec![];
         let mut diff_modified_paths: Vec<String> = vec![];
@@ -1583,10 +1610,6 @@ pub fn run_workflow(
                 // Diff with previous manifest if it exists
                 if let Some(ref prev_manifest) = current_manifest {
                     let diff = diff_manifests(prev_manifest, &after_manifest);
-                    files_added = diff.added.len() as u32;
-                    files_modified = diff.modified.len() as u32;
-                    files_deleted = diff.deleted.len() as u32;
-                    files_changed = files_added + files_modified;
                     // Retain paths for produces contract check.
                     diff_added_paths = diff.added;
                     diff_modified_paths = diff.modified;
@@ -1643,27 +1666,6 @@ pub fn run_workflow(
                 run_spec.phase_total_iterations as u64,
             ));
         }
-
-        // Append cost entry after state is safely checkpointed.
-        append_cost_entry(
-            &costs_path,
-            &CostEntry {
-                run: run_spec.global_run_number,
-                cycle: run_spec.cycle,
-                phase: run_spec.phase_name.clone(),
-                iteration: run_spec.phase_iteration,
-                cost_usd: cost.cost_usd,
-                input_tokens: cost.input_tokens,
-                output_tokens: cost.output_tokens,
-                cost_confidence: format!("{:?}", cost.confidence).to_lowercase(),
-                files_added,
-                files_modified,
-                files_deleted,
-                files_changed,
-                event: None,
-                produces_violations: produces_violations.clone(),
-            },
-        )?;
 
         // Hard exit if produces_required and violations found.
         if phase_produces_required && !produces_violations.is_empty() {

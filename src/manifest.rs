@@ -41,7 +41,17 @@ pub struct FileDiff {
     pub files_changed: u32,
 }
 
-/// Hardcoded credential file patterns that are never included in manifests.
+/// Hardcoded credential file patterns that are never included in manifests,
+/// regardless of user-specified `manifest_ignore` settings.
+///
+/// # Security rationale
+///
+/// These files commonly contain private keys, TLS certificates, and secrets that
+/// must never appear in audit logs or be transmitted to external systems. Excluding
+/// them unconditionally prevents accidental exposure even when a user's ignore list
+/// is misconfigured or overridden. This exclusion cannot be removed via workflow
+/// configuration — if you need to track changes to a key file, use a naming
+/// convention that does not match these patterns.
 const CREDENTIAL_PATTERNS: &[&str] = &[
     "**/.env",
     "**/.env.*",
@@ -342,6 +352,60 @@ mod tests {
         // Only normal.txt should be in the manifest
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(manifest.files[0].path, "normal.txt");
+    }
+
+    #[test]
+    fn test_key_file_excluded() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+
+        fs::write(context.join("server.key"), "private key").unwrap();
+        fs::write(context.join("main.rs"), "fn main() {}").unwrap();
+
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        let manifest = compute_manifest(&context, &output, 1, 1, "test", 1, &[], false).unwrap();
+
+        // server.key is a credential file and must be excluded
+        let paths: Vec<&str> = manifest.files.iter().map(|e| e.path.as_str()).collect();
+        assert!(
+            !paths.contains(&"server.key"),
+            "server.key should be excluded"
+        );
+        assert!(paths.contains(&"main.rs"), "main.rs should be included");
+    }
+
+    #[test]
+    fn test_user_ignore_patterns_work_alongside_credential_exclusions() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+
+        fs::write(context.join(".env"), "SECRET=value").unwrap();
+        fs::write(context.join("build.log"), "log content").unwrap();
+        fs::write(context.join("main.rs"), "fn main() {}").unwrap();
+
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        // Exclude .log files via user patterns
+        let user_patterns = vec!["**/*.log".to_string()];
+        let manifest =
+            compute_manifest(&context, &output, 1, 1, "test", 1, &user_patterns, false).unwrap();
+
+        // .env excluded by credential patterns, build.log excluded by user pattern
+        let paths: Vec<&str> = manifest.files.iter().map(|e| e.path.as_str()).collect();
+        assert!(
+            !paths.contains(&".env"),
+            ".env should be excluded by credential patterns"
+        );
+        assert!(
+            !paths.contains(&"build.log"),
+            "build.log should be excluded by user patterns"
+        );
+        assert!(paths.contains(&"main.rs"), "main.rs should be included");
     }
 
     #[test]

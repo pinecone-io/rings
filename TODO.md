@@ -23,34 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-099: Inspect Files Changed View
-
-**Spec:** `specs/cli/inspect-command.md` (--show files-changed section)
-
-**Summary:** `rings inspect <RUN_ID> --show files-changed` shows which files were added/modified/deleted in each run, attributed by phase and cycle. Requires manifest data (F-117/F-118).
-
-### Task 1: Implement `--show files-changed` view
-
-**Files:** `src/inspect.rs`, `src/main.rs`
-
-**Steps:**
-- [x] In `inspect_inner`, handle `InspectView::FilesChanged`:
-  1. Read manifest diffs from costs.jsonl or manifest files
-  2. Group changes by file path, showing which run/phase/cycle modified each file
-  3. Display as a file-centric table: each file with the list of runs that touched it
-- [x] Support `--cycle N` and `--phase NAME` filters
-- [x] If no manifest data exists, print a helpful message: "No file change data available. Enable `manifest_enabled = true` in your workflow."
-- [x] In JSONL mode, emit structured file change data
-
-**Tests:**
-- [x] View shows added/modified/deleted files attributed to correct runs
-- [x] `--cycle 1` filters to only cycle 1 changes
-- [x] Missing manifest data produces helpful message, not error
-- [x] JSONL mode emits structured output
-- [x] `just validate` clean
-
----
-
 ## F-120: Credential File Protection in Manifests
 
 **Spec:** `specs/observability/file-lineage.md`
@@ -62,17 +34,17 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/manifest.rs`
 
 **Steps:**
-- [ ] Define a static list of credential patterns: `.env`, `.env.*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*credentials*`, `*secret*`
-- [ ] In the manifest scanning function, apply these exclusions in addition to user-specified ignore patterns
-- [ ] These patterns cannot be overridden — they are always excluded
-- [ ] Add a comment explaining the security rationale
+- [x] Define a static list of credential patterns: `.env`, `.env.*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*credentials*`, `*secret*`
+- [x] In the manifest scanning function, apply these exclusions in addition to user-specified ignore patterns
+- [x] These patterns cannot be overridden — they are always excluded
+- [x] Add a comment explaining the security rationale
 
 **Tests:**
-- [ ] `.env` file is excluded from manifest even with no user ignore patterns
-- [ ] `server.key` is excluded from manifest
-- [ ] Normal source files are included
-- [ ] User ignore patterns still work alongside credential exclusions
-- [ ] `just validate` clean
+- [x] `.env` file is excluded from manifest even with no user ignore patterns
+- [x] `server.key` is excluded from manifest
+- [x] Normal source files are included
+- [x] User ignore patterns still work alongside credential exclusions
+- [x] `just validate` clean
 
 ---
 

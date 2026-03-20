@@ -23,30 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Bug: Workflow `budget_cap_usd = nan` Bypasses Budget Cap Validation
-
-**Ref:** `specs/observability/cost-tracking.md`, `specs/workflow/workflow-file-format.md`
-
-**Summary:** TOML 1.0 supports `nan`, `inf`, `+inf`, and `-inf` as float literals. The workflow validation in `src/workflow.rs` line 347-350 checks `if cap <= 0.0` to reject invalid budget caps, but `NaN <= 0.0` evaluates to `false` in IEEE 754 (all NaN comparisons return false). This means `budget_cap_usd = nan` passes validation.
-
-### Task 1: Reject NaN and Infinity in budget cap validation
-
-**Files:** `src/workflow.rs`
-
-**Steps:**
-- [x] In the global `budget_cap_usd` validation, add checks: `if cap.is_nan() || cap.is_infinite() || cap <= 0.0`
-- [x] In the per-phase `budget_cap_usd` validation, add the same NaN/Infinity checks
-- [x] Use a clear error message: `budget_cap_usd must be a finite positive number`
-
-**Tests:**
-- [x] `budget_cap_usd = nan` in TOML is rejected at parse time
-- [x] `budget_cap_usd = inf` in TOML is rejected at parse time
-- [x] `budget_cap_usd = 10.0` still works (positive finite is valid)
-- [x] Per-phase `budget_cap_usd = nan` is also rejected
-- [x] `just validate` clean
-
----
-
 ## Bug: Executor Output Reader Drops All Data After First Non-UTF8 Line
 
 **Ref:** `specs/execution/executor-integration.md`
@@ -58,13 +34,13 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/executor.rs`
 
 **Steps:**
-- [ ] On line 231, change `reader.lines().map_while(Result::ok)` to `reader.lines().filter_map(Result::ok)`
-- [ ] On line 246, make the same change for the stderr reader thread
-- [ ] `filter_map(Result::ok)` skips individual bad lines but continues processing subsequent lines, preserving all valid output after the error
-- [ ] Optionally: log a warning to stderr when a line is skipped due to UTF-8 decode failure (helps users debug custom executor issues)
+- [x] On line 231, change `reader.lines().map_while(Result::ok)` to `reader.lines().filter_map(Result::ok)`
+- [x] On line 246, make the same change for the stderr reader thread
+- [x] `filter_map(Result::ok)` skips individual bad lines but continues processing subsequent lines, preserving all valid output after the error
+- [x] Optionally: log a warning to stderr when a line is skipped due to UTF-8 decode failure (helps users debug custom executor issues)
 
 **Tests:**
-- [ ] Existing verbose rendering and output accumulation tests continue to pass
-- [ ] `just validate` clean
+- [x] Existing verbose rendering and output accumulation tests continue to pass
+- [x] `just validate` clean
 
 ---

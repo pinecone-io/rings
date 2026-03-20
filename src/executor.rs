@@ -227,29 +227,59 @@ fn spawn_child(
     let stderr_accum = Arc::clone(&stderr_output);
 
     let stdout_thread = std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines().map_while(Result::ok) {
-            if verbose {
-                if let Some(formatted) = verbose::format_stream_event(&line) {
-                    eprintln!("{}", formatted);
+        let mut reader = BufReader::new(stdout);
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            match reader.read_until(b'\n', &mut buf) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if buf.ends_with(b"\n") {
+                        buf.pop();
+                        if buf.ends_with(b"\r") {
+                            buf.pop();
+                        }
+                    }
+                    let line = String::from_utf8_lossy(&buf);
+                    if verbose {
+                        if let Some(formatted) = verbose::format_stream_event(&line) {
+                            eprintln!("{}", formatted);
+                        }
+                    }
+                    if let Ok(mut acc) = stdout_accum.lock() {
+                        acc.push_str(&line);
+                        acc.push('\n');
+                    }
                 }
-            }
-            if let Ok(mut acc) = stdout_accum.lock() {
-                acc.push_str(&line);
-                acc.push('\n');
+                Err(_) => break,
             }
         }
     });
 
     let stderr_thread = std::thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines().map_while(Result::ok) {
-            if verbose {
-                eprintln!("{}", line);
-            }
-            if let Ok(mut acc) = stderr_accum.lock() {
-                acc.push_str(&line);
-                acc.push('\n');
+        let mut reader = BufReader::new(stderr);
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            match reader.read_until(b'\n', &mut buf) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if buf.ends_with(b"\n") {
+                        buf.pop();
+                        if buf.ends_with(b"\r") {
+                            buf.pop();
+                        }
+                    }
+                    let line = String::from_utf8_lossy(&buf);
+                    if verbose {
+                        eprintln!("{}", line);
+                    }
+                    if let Ok(mut acc) = stderr_accum.lock() {
+                        acc.push_str(&line);
+                        acc.push('\n');
+                    }
+                }
+                Err(_) => break,
             }
         }
     });

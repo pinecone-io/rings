@@ -3,7 +3,7 @@
 // making the security regression visible in review.
 #[cfg(test)]
 mod tests {
-    use rings::executor::ClaudeExecutor;
+    use rings::executor::{ClaudeExecutor, ConfigurableExecutor, Executor, Invocation};
 
     #[test]
     fn claude_executor_never_puts_prompt_in_args() {
@@ -31,5 +31,48 @@ mod tests {
             );
             assert!(!arg.contains('%'), "arg contains format placeholder: {arg}");
         }
+    }
+
+    /// Verify that the executor subprocess inherits the parent environment.
+    ///
+    /// rings must NOT call env_clear() on the subprocess command — API keys and
+    /// other credentials in the caller's environment must be visible to the executor.
+    /// This test pins that invariant by setting a unique env var in the test process
+    /// and asserting the spawned subprocess can read it.
+    #[test]
+    fn executor_inherits_parent_environment() {
+        // Use a unique name to avoid collisions with other env vars.
+        let var_name = "RINGS_TEST_ENV_PASSTHROUGH";
+        let var_value = "rings_env_passthrough_ok";
+
+        // Safety: test-only env mutation; tests that touch env vars should run
+        // single-threaded (cargo test runs each integration test binary as its
+        // own process, so this is safe here).
+        unsafe { std::env::set_var(var_name, var_value) };
+
+        let executor = ConfigurableExecutor {
+            binary: "sh".to_string(),
+            args: vec!["-c".to_string(), format!("printenv {var_name}")],
+        };
+
+        let tmp = std::env::temp_dir();
+        let inv = Invocation {
+            prompt: String::new(),
+            context_dir: tmp,
+        };
+
+        let output = executor.run(&inv, false).expect("sh subprocess failed");
+        // printenv exits 0 when the var is found; a missing var causes exit 1.
+        assert_eq!(
+            output.exit_code, 0,
+            "printenv exited non-zero — env var not inherited"
+        );
+        assert!(
+            output.combined.contains(var_value),
+            "expected env var value '{var_value}' in subprocess output, got: {:?}",
+            output.combined
+        );
+
+        unsafe { std::env::remove_var(var_name) };
     }
 }

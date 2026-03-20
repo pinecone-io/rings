@@ -194,6 +194,10 @@ fn spawn_child(
     verbose: bool,
 ) -> Result<ClaudeRunHandle> {
     let mut cmd = Command::new(binary);
+    // Intentional: no .env_clear() call. rings passes through the full parent
+    // environment so that API keys, executor-specific config vars, and shell
+    // integrations are available to the subprocess. This is the default behavior
+    // of std::process::Command.
     cmd.args(args)
         .current_dir(context_dir)
         .stdin(Stdio::piped())

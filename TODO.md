@@ -34,13 +34,13 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/executor.rs`, tests
 
 **Steps:**
-- [ ] Verify that `Command::new(binary)` in `spawn_child` does NOT call `.env_clear()` — the default behavior inherits the parent environment
-- [ ] Add an explicit test that sets an env var, runs the executor, and verifies the var is visible in the subprocess
-- [ ] Document in code comment that env pass-through is intentional (not accidental default)
+- [x] Verify that `Command::new(binary)` in `spawn_child` does NOT call `.env_clear()` — the default behavior inherits the parent environment
+- [x] Add an explicit test that sets an env var, runs the executor, and verifies the var is visible in the subprocess
+- [x] Document in code comment that env pass-through is intentional (not accidental default)
 
 **Tests:**
-- [ ] Set `RINGS_TEST_ENV=1` in the test, verify it appears in the mock executor's environment
-- [ ] `just validate` clean
+- [x] Set `RINGS_TEST_ENV=1` in the test, verify it appears in the mock executor's environment
+- [x] `just validate` clean
 
 ---
 

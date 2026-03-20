@@ -923,6 +923,7 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
         since: since_filter,
         status: status_filter,
         workflow: args.workflow,
+        dir: None,
         limit: args.limit,
     };
 

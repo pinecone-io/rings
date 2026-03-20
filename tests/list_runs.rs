@@ -161,6 +161,7 @@ fn test_list_runs_empty_directory() {
         since: None,
         status: None,
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -174,6 +175,7 @@ fn test_list_runs_nonexistent_directory() {
             since: None,
             status: None,
             workflow: None,
+            dir: None,
             limit: 20,
         },
         std::path::Path::new("/nonexistent/path"),
@@ -206,6 +208,7 @@ fn test_list_runs_basic_listing() {
         since: None,
         status: None,
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -248,6 +251,7 @@ fn test_list_runs_status_filter() {
         since: None,
         status: Some(RunStatus::Completed),
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -279,6 +283,7 @@ fn test_list_runs_workflow_filter() {
         since: None,
         status: None,
         workflow: Some("001".to_string()),
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -303,6 +308,7 @@ fn test_list_runs_limit() {
         since: None,
         status: None,
         workflow: None,
+        dir: None,
         limit: 5,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -341,6 +347,7 @@ fn test_list_runs_since_filter_relative() {
         since: Some(SinceSpec::from_str("7d").unwrap()),
         status: None,
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -372,6 +379,7 @@ fn test_list_runs_since_filter_absolute() {
         since: Some(SinceSpec::from_str("2024-03-15").unwrap()),
         status: None,
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -399,6 +407,7 @@ fn test_list_runs_skips_corrupt_run_toml() {
         since: None,
         status: None,
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -429,6 +438,7 @@ fn test_list_runs_missing_state_json() {
         since: None,
         status: None,
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -453,6 +463,7 @@ fn test_list_runs_status_incomplete() {
         since: None,
         status: Some(RunStatus::Incomplete),
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
@@ -476,9 +487,132 @@ fn test_list_runs_status_stopped() {
         since: None,
         status: Some(RunStatus::Stopped),
         workflow: None,
+        dir: None,
         limit: 20,
     };
     let runs = list_runs(&filters, dir.path()).unwrap();
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].status, RunStatus::Stopped);
+}
+
+fn create_test_run_with_context_dir(
+    base_dir: &std::path::Path,
+    run_id: &str,
+    started_at: &str,
+    context_dir: Option<&str>,
+) -> PathBuf {
+    let run_dir = base_dir.join(run_id);
+    fs::create_dir_all(&run_dir).unwrap();
+
+    let meta = RunMeta {
+        run_id: run_id.to_string(),
+        workflow_file: format!("/path/to/workflow-{}.toml", run_id),
+        started_at: started_at.to_string(),
+        rings_version: "0.1.0".to_string(),
+        status: RunStatus::Completed,
+        phase_fingerprint: None,
+        parent_run_id: None,
+        continuation_of: None,
+        ancestry_depth: 0,
+        context_dir: context_dir.map(|s| s.to_string()),
+    };
+    meta.write(&run_dir.join("run.toml")).unwrap();
+    run_dir
+}
+
+#[test]
+fn test_list_runs_dir_filter_matches_substring() {
+    let dir = tempdir().unwrap();
+    create_test_run_with_context_dir(
+        dir.path(),
+        "run_001",
+        "2024-03-15T14:30:22Z",
+        Some("/home/user/my-project/src"),
+    );
+    create_test_run_with_context_dir(
+        dir.path(),
+        "run_002",
+        "2024-03-14T10:00:00Z",
+        Some("/home/user/other-project/src"),
+    );
+
+    let filters = ListFilters {
+        since: None,
+        status: None,
+        workflow: None,
+        dir: Some("my-project".to_string()),
+        limit: 20,
+    };
+    let runs = list_runs(&filters, dir.path()).unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].run_id, "run_001");
+    assert_eq!(
+        runs[0].context_dir.as_deref(),
+        Some("/home/user/my-project/src")
+    );
+}
+
+#[test]
+fn test_list_runs_dir_filter_no_matches_returns_empty() {
+    let dir = tempdir().unwrap();
+    create_test_run_with_context_dir(
+        dir.path(),
+        "run_001",
+        "2024-03-15T14:30:22Z",
+        Some("/home/user/my-project"),
+    );
+
+    let filters = ListFilters {
+        since: None,
+        status: None,
+        workflow: None,
+        dir: Some("nonexistent-project".to_string()),
+        limit: 20,
+    };
+    let runs = list_runs(&filters, dir.path()).unwrap();
+    assert!(runs.is_empty());
+}
+
+#[test]
+fn test_list_runs_dir_filter_excludes_none_context_dir() {
+    let dir = tempdir().unwrap();
+    // Run with context_dir set
+    create_test_run_with_context_dir(
+        dir.path(),
+        "run_001",
+        "2024-03-15T14:30:22Z",
+        Some("/home/user/project"),
+    );
+    // Old run without context_dir
+    create_test_run(
+        dir.path(),
+        "run_002",
+        "2024-03-14T10:00:00Z",
+        RunStatus::Completed,
+        1,
+        0.1,
+    );
+
+    // With dir filter: old runs (context_dir: None) are excluded
+    let filters = ListFilters {
+        since: None,
+        status: None,
+        workflow: None,
+        dir: Some("project".to_string()),
+        limit: 20,
+    };
+    let runs = list_runs(&filters, dir.path()).unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].run_id, "run_001");
+
+    // Without dir filter: all runs are included
+    let filters_no_dir = ListFilters {
+        since: None,
+        status: None,
+        workflow: None,
+        dir: None,
+        limit: 20,
+    };
+    let all_runs = list_runs(&filters_no_dir, dir.path()).unwrap();
+    assert_eq!(all_runs.len(), 2);
 }

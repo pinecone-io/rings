@@ -270,15 +270,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/list.rs`
 
 **Steps:**
-- [ ] Add `context_dir: Option<String>` field to `RunSummary`
-- [ ] Populate it from `RunMeta.context_dir` in `list_runs`
-- [ ] Add `dir: Option<String>` field to `ListFilters`
-- [ ] Apply dir filter as substring match on `meta.context_dir` (same pattern as workflow filter)
+- [x] Add `context_dir: Option<String>` field to `RunSummary`
+- [x] Populate it from `RunMeta.context_dir` in `list_runs`
+- [x] Add `dir: Option<String>` field to `ListFilters`
+- [x] Apply dir filter as substring match on `meta.context_dir` (same pattern as workflow filter)
 
 **Tests:**
-- [ ] `list_runs` with `dir` filter returns only runs whose context_dir contains the substring
-- [ ] `list_runs` with `dir` filter and no matching runs returns empty vec
-- [ ] Runs with `context_dir: None` (old runs) are excluded by dir filter but included when no filter is set
+- [x] `list_runs` with `dir` filter returns only runs whose context_dir contains the substring
+- [x] `list_runs` with `dir` filter and no matching runs returns empty vec
+- [x] Runs with `context_dir: None` (old runs) are excluded by dir filter but included when no filter is set
 
 ---
 

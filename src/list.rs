@@ -15,6 +15,7 @@ pub struct RunSummary {
     pub status: RunStatus,
     pub cycles_completed: u32,
     pub total_cost_usd: Option<f64>,
+    pub context_dir: Option<String>,
 }
 
 /// Filters for list_runs.
@@ -23,6 +24,7 @@ pub struct ListFilters {
     pub since: Option<SinceSpec>,
     pub status: Option<RunStatus>,
     pub workflow: Option<String>,
+    pub dir: Option<String>,
     pub limit: usize,
 }
 
@@ -100,6 +102,14 @@ pub fn list_runs(filters: &ListFilters, base_dir: &Path) -> Result<Vec<RunSummar
             }
         }
 
+        // Apply dir filter (substring match on context_dir)
+        if let Some(ref target_dir) = filters.dir {
+            match &meta.context_dir {
+                Some(cd) if cd.contains(target_dir.as_str()) => {}
+                _ => continue,
+            }
+        }
+
         // Extract workflow name from path (last component)
         let workflow = meta
             .workflow_file
@@ -122,6 +132,7 @@ pub fn list_runs(filters: &ListFilters, base_dir: &Path) -> Result<Vec<RunSummar
             status: meta.status,
             cycles_completed,
             total_cost_usd,
+            context_dir: meta.context_dir,
         });
     }
 

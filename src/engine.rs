@@ -853,15 +853,19 @@ pub fn run_workflow(
                 &prompt_text,
             ) {
                 Ok(warnings) => {
-                    for w in warnings {
-                        eprintln!("{}", w.format_message());
+                    if config.output_format == crate::cli::OutputFormat::Human {
+                        for w in warnings {
+                            eprintln!("{}", w.format_message());
+                        }
                     }
                 }
                 Err(e) => {
-                    eprintln!(
-                        "⚠  Error checking consumes for phase \"{}\": {}",
-                        phase.name, e
-                    );
+                    if config.output_format == crate::cli::OutputFormat::Human {
+                        eprintln!(
+                            "⚠  Error checking consumes for phase \"{}\": {}",
+                            phase.name, e
+                        );
+                    }
                 }
             }
         }
@@ -1022,15 +1026,19 @@ pub fn run_workflow(
                     run_spec.global_run_number,
                 ) {
                     Ok(warnings) => {
-                        for w in warnings {
-                            eprintln!("{}", w.format_message());
+                        if config.output_format == crate::cli::OutputFormat::Human {
+                            for w in warnings {
+                                eprintln!("{}", w.format_message());
+                            }
                         }
                     }
                     Err(e) => {
-                        eprintln!(
-                            "⚠  Error checking consumes for phase \"{}\": {}",
-                            phase.name, e
-                        );
+                        if config.output_format == crate::cli::OutputFormat::Human {
+                            eprintln!(
+                                "⚠  Error checking consumes for phase \"{}\": {}",
+                                phase.name, e
+                            );
+                        }
                     }
                 }
             }

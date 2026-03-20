@@ -15,6 +15,44 @@ fn default_error_profile() -> CompiledErrorProfile {
     }
 }
 
+fn make_workflow_with_consumes(context_dir: &str, consumes: Vec<String>) -> Workflow {
+    Workflow {
+        completion_signal: "DONE".to_string(),
+        continue_signal: None,
+        completion_signal_phases: vec![],
+        completion_signal_mode: CompletionSignalMode::Substring,
+        context_dir: context_dir.to_string(),
+        max_cycles: 1,
+        output_dir: None,
+        delay_between_runs: 0,
+        delay_between_cycles: 0,
+        executor: None,
+        budget_cap_usd: None,
+        timeout_per_run_secs: None,
+        compiled_error_profile: default_error_profile(),
+        quota_backoff: false,
+        quota_backoff_delay: 0,
+        quota_backoff_max_retries: 0,
+        manifest_enabled: false,
+        manifest_ignore: vec![],
+        manifest_mtime_optimization: false,
+        snapshot_cycles: false,
+        compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        phases: vec![PhaseConfig {
+            name: "reviewer".to_string(),
+            prompt: None,
+            prompt_text: Some("do some review work".to_string()),
+            runs_per_cycle: 1,
+            budget_cap_usd: None,
+            timeout_per_run_secs: None,
+            consumes,
+            produces: vec![],
+            produces_required: false,
+            executor: None,
+        }],
+    }
+}
+
 fn make_workflow_with_contracts(
     context_dir: &str,
     produces: Vec<String>,
@@ -545,4 +583,114 @@ fn engine_no_completion_check_does_not_suppress_contract_warnings() {
         violations.is_empty(),
         "produces_violations in costs.jsonl is empty (cost written before produces check)"
     );
+}
+
+// --- Engine integration tests for startup consumes validation ---
+
+// Startup consumes check is advisory: engine exits 0 even when consumes patterns match nothing.
+#[test]
+fn engine_startup_consumes_no_match_exits_zero() {
+    let context_dir = tempdir().unwrap();
+    let output_dir = tempdir().unwrap();
+
+    // No files in context_dir matching "src/**/*.rs"
+    let workflow = make_workflow_with_consumes(
+        context_dir.path().to_str().unwrap(),
+        vec!["src/**/*.rs".to_string()],
+    );
+
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "DONE".to_string(),
+        exit_code: 0,
+    }]);
+
+    let config = EngineConfig {
+        output_dir: output_dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-consumes-startup-no-match".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    // Advisory warning only — engine must still exit 0
+    assert_eq!(result.exit_code, 0);
+}
+
+// When matching files exist in context_dir, startup consumes check fires no warning.
+#[test]
+fn engine_startup_consumes_matching_files_no_warning_path() {
+    let context_dir = tempdir().unwrap();
+    let output_dir = tempdir().unwrap();
+
+    // Create a file matching the consumes pattern
+    let src_dir = context_dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("main.rs"), "fn main() {}").unwrap();
+
+    let workflow = make_workflow_with_consumes(
+        context_dir.path().to_str().unwrap(),
+        vec!["src/**/*.rs".to_string()],
+    );
+
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "DONE".to_string(),
+        exit_code: 0,
+    }]);
+
+    let config = EngineConfig {
+        output_dir: output_dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-consumes-startup-match".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        no_contract_check: false,
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    assert_eq!(result.exit_code, 0);
+}
+
+// --no-contract-check suppresses the startup consumes check entirely.
+#[test]
+fn engine_no_contract_check_suppresses_startup_consumes() {
+    let context_dir = tempdir().unwrap();
+    let output_dir = tempdir().unwrap();
+
+    // No matching files — would trigger warning without --no-contract-check
+    let workflow = make_workflow_with_consumes(
+        context_dir.path().to_str().unwrap(),
+        vec!["src/**/*.rs".to_string()],
+    );
+
+    let executor = MockExecutor::new(vec![ExecutorOutput {
+        combined: "DONE".to_string(),
+        exit_code: 0,
+    }]);
+
+    let config = EngineConfig {
+        output_dir: output_dir.path().to_path_buf(),
+        verbose: false,
+        run_id: "test-consumes-no-contract-check".to_string(),
+        workflow_file: "test.rings.toml".to_string(),
+        ancestry_continuation_of: None,
+        ancestry_depth: 0,
+        no_contract_check: true, // suppresses all contract checks
+        output_format: rings::cli::OutputFormat::Human,
+        strict_parsing: false,
+        ..Default::default()
+    };
+
+    let result = run_workflow(&workflow, &executor, &config, None, None).unwrap();
+    // Check is suppressed — engine still exits 0
+    assert_eq!(result.exit_code, 0);
 }

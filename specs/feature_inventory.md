@@ -44,8 +44,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-022 | Executor Abstraction | I can swap out the default `claude` binary for any other tool that accepts prompts over stdin | PRIORITIZED | [executor-integration.md](execution/executor-integration.md) |
 | F-023 | Per-Phase Executors | I can use a different executor binary for individual phases within the same workflow | PRIORITIZED | [executor-integration.md](execution/executor-integration.md) |
 | F-024 | Executor Binary Check | rings tells me before starting if the configured executor binary can't be found on PATH | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
-| F-025 | Include Directory | I can pass additional context directories whose file listings get prepended to each prompt | PRIORITIZED | [executor-integration.md](execution/executor-integration.md) |
-| F-026 | Environment Variable Pass-Through | My shell environment variables are automatically available to the executor subprocess | PRIORITIZED | [executor-integration.md](execution/executor-integration.md) |
+| F-025 | Include Directory | I can pass additional context directories whose file listings get prepended to each prompt | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
+| F-026 | Environment Variable Pass-Through | My shell environment variables are automatically available to the executor subprocess | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
 
 ## Prompt Templating
 
@@ -53,19 +53,19 @@ Summaries are written from the user's perspective. Features with dependencies no
 |---|---------|---------|--------|------|
 | F-027 | Prompt Templating | I can embed `{{variables}}` in my prompts that rings substitutes with live run context before each invocation | COMPLETE | [prompt-templating.md](execution/prompt-templating.md) |
 | F-028 | Template Variables | I have access to `{{phase_name}}`, `{{cycle}}`, `{{max_cycles}}`, `{{iteration}}`, `{{run}}`, and `{{cost_so_far_usd}}` in prompts | COMPLETE | [prompt-templating.md](execution/prompt-templating.md) |
-| F-029 | Unknown Variable Warnings | rings warns me at startup if my prompts reference variables it doesn't recognize, before any Claude calls happen | PRIORITIZED | [prompt-templating.md](execution/prompt-templating.md) |
+| F-029 | Unknown Variable Warnings | rings warns me at startup if my prompts reference variables it doesn't recognize, before any Claude calls happen | COMPLETE | [prompt-templating.md](execution/prompt-templating.md) |
 
 ## Output Parsing
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-030 | Cost Extraction | rings automatically parses cost information from Claude's output so I can track spend without manual inspection | COMPLETE | [output-parsing.md](execution/output-parsing.md) |
-| F-031 | Custom Cost Parser | I can provide a custom regex to extract cost from non-standard executor output formats | PRIORITIZED | [output-parsing.md](execution/output-parsing.md) |
+| F-031 | Custom Cost Parser | I can provide a custom regex to extract cost from non-standard executor output formats | COMPLETE | [output-parsing.md](execution/output-parsing.md) |
 | F-032 | Token Counting | rings extracts input and output token counts from each run so I can see detailed usage | COMPLETE | [output-parsing.md](execution/output-parsing.md) |
 | F-033 | Parse Confidence Levels | rings tells me how confident it is in each parsed cost value (Full, Partial, Low, or None) so I know when to distrust numbers | COMPLETE | [output-parsing.md](execution/output-parsing.md) |
 | F-034 | Resume Command Extraction | rings captures any `claude resume` command from executor output so I can manually restart a Claude session if needed | COMPLETE | [output-parsing.md](execution/output-parsing.md) |
-| F-035 | Parse Warning Summary | At the end of a run, I see a consolidated summary of any cost parsing failures with raw output snippets | PRIORITIZED | [output-parsing.md](execution/output-parsing.md) |
-| F-036 | Warning Deduplication | Repeated parse failures for the same pattern are collapsed into one warning instead of flooding my terminal (requires F-035) | PRIORITIZED | [output-parsing.md](execution/output-parsing.md) |
+| F-035 | Parse Warning Summary | At the end of a run, I see a consolidated summary of any cost parsing failures with raw output snippets | COMPLETE | [output-parsing.md](execution/output-parsing.md) |
+| F-036 | Warning Deduplication | Repeated parse failures for the same pattern are collapsed into one warning instead of flooding my terminal (requires F-035) | COMPLETE | [output-parsing.md](execution/output-parsing.md) |
 
 ## Error Handling
 
@@ -82,7 +82,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 |---|---------|---------|--------|------|
 | F-041 | Run-to-Run Delay | I can add a fixed pause between individual phase runs to stay within API rate limits | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
 | F-042 | Cycle-to-Cycle Delay | I can add a fixed pause between full cycles to spread out API usage over time | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
-| F-043 | Duration String Parsing | I can write delays as human-readable strings like "30s", "5m", or "1h" instead of raw milliseconds | PRIORITIZED | [rate-limiting.md](execution/rate-limiting.md) |
+| F-043 | Duration String Parsing | I can write delays as human-readable strings like "30s", "5m", or "1h" instead of raw milliseconds | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
 | F-044 | Quota Backoff | I can tell rings to automatically wait and retry when it hits a quota error instead of stopping (requires F-038) | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
 | F-045 | Quota Backoff Max Retries | I can set a cap on how many times rings will retry after quota errors before giving up (requires F-044) | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
 
@@ -94,7 +94,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-047 | Atomic State Writes | rings writes state atomically so a crash mid-write can't leave me with a corrupted position file | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-048 | Resumable Runs | I can press Ctrl+C to stop a workflow and later resume from exactly where it left off (requires F-046) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-049 | Resume State Recovery | If my state file is corrupted, rings can reconstruct my position from audit logs (requires F-046, F-068) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
-| F-050 | Workflow File Change Detection | rings refuses to resume if I've made structural changes to the workflow since the last run, protecting me from mismatched state | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-050 | Workflow File Change Detection | rings refuses to resume if I've made structural changes to the workflow since the last run, protecting me from mismatched state | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-051 | SIGINT Handling | Pressing Ctrl+C gracefully saves state and prints a resume command before exiting (requires F-046) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-052 | SIGTERM Handling | rings treats SIGTERM like Ctrl+C so process managers can stop it cleanly (requires F-051) | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-053 | Double Ctrl+C | A second Ctrl+C while rings is waiting skips the graceful shutdown and force-kills the subprocess immediately (requires F-051) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
@@ -141,8 +141,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-079 | `--delay` | I can set or override the between-run delay for this run without editing the workflow file (requires F-041) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-080 | `--cycle-delay` | I can set or override the between-cycle delay for this run without editing the workflow file (requires F-042) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-081 | `--dry-run` | I can preview the full execution plan — phases, prompts, delays — without any Claude calls | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-082 | `--step` | I can pause after every individual run to inspect output before letting rings continue | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-083 | `--step-cycles` | I can pause only at cycle boundaries for a less granular step-through experience (requires F-082) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-082 | `--step` | I can pause after every individual run to inspect output before letting rings continue | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-083 | `--step-cycles` | I can pause only at cycle boundaries for a less granular step-through experience (requires F-082) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-084 | `--verbose` | I can stream the executor's live output to my terminal alongside rings' status display | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-085 | `--quota-backoff` | I can enable automatic quota-error retry at the command line without changing the workflow file (requires F-044) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-086 | `--quota-backoff-delay` | I can set how long rings waits before retrying after a quota error (requires F-044) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
@@ -162,7 +162,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-097 | Summary View | I can see a one-screen overview of a run: total cycles, cost, and files changed (requires F-072) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
-| F-098 | Cycles View | I can drill into a per-cycle breakdown showing each run's status and whether the completion signal fired (requires F-072) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
+| F-098 | Cycles View | I can drill into a per-cycle breakdown showing each run's status and whether the completion signal fired (requires F-072) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 | F-099 | Files Changed View | I can see exactly which files changed in each run, attributed by phase and cycle (requires F-072, F-117) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
 | F-100 | Data Flow View | I can see declared vs. actual file inputs and outputs for each phase (requires F-072, F-014, F-015, F-117) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
 | F-101 | Costs View | I can see a detailed cost and token breakdown for every individual run (requires F-072, F-030) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
@@ -237,7 +237,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-145 | Sensitive Files Warning | rings warns me if context_dir contains credentials (`.env`, `*.key`, `*.pem`) that could be exposed to the model | COMPLETE | [engine.md](execution/engine.md) |
 | F-146 | Output Directory Inside Repo Warning | rings warns me if my output_dir is inside a git repo and would get committed accidentally | COMPLETE | [engine.md](execution/engine.md) |
 | F-147 | Disk Space Check | rings warns at < 100 MB free and aborts at < 10 MB so I don't silently lose run data | PRIORITIZED | [engine.md](execution/engine.md) |
-| F-148 | Delay Sanity Warning | rings warns me if `delay_between_runs` exceeds 600 seconds, since that's likely a units mistake | PRIORITIZED | [engine.md](execution/engine.md) |
+| F-148 | Delay Sanity Warning | rings warns me if `delay_between_runs` exceeds 600 seconds, since that's likely a units mistake | COMPLETE | [engine.md](execution/engine.md) |
 | F-149 | Cost Spike Detection | rings warns me mid-run when a single run costs 5× more than the rolling 5-run average | PRIORITIZED | [engine.md](execution/engine.md) |
 | F-150 | No-Files-Changed Streak Warning | rings warns me after 3 consecutive runs where the declared produces files weren't changed, suggesting the workflow is stuck | PRIORITIZED | [engine.md](execution/engine.md) |
 | F-151 | Completion Signal Presence Check | rings warns at startup if my completion signal string doesn't appear in any prompt, so I catch typos before spending money (requires F-011) | COMPLETE | [completion-detection.md](execution/completion-detection.md) |

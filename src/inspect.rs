@@ -3,6 +3,160 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+/// One run entry within a cycle for the cycles view.
+#[derive(Debug, Clone, Serialize)]
+pub struct CycleRunEntry {
+    pub run: u32,
+    pub phase: String,
+    pub iteration: u32,
+    pub cost_usd: Option<f64>,
+    pub files_changed: u32,
+    pub signal_detected: bool,
+}
+
+/// Summary of one cycle for the cycles view.
+#[derive(Debug, Clone, Serialize)]
+pub struct CycleSummary {
+    pub cycle: u32,
+    pub runs: Vec<CycleRunEntry>,
+    pub total_cost_usd: f64,
+}
+
+/// Render the per-cycle breakdown view.
+///
+/// Groups cost entries by cycle, then renders each cycle with its runs.
+/// If `cycle_filter` is Some(n), only that cycle is shown.
+/// If `signal_run` is Some(run_number), that run gets "✓ SIGNAL" marker.
+pub fn render_cycles(
+    cost_entries: &[crate::audit::CostEntry],
+    cycle_filter: Option<u32>,
+    signal_run: Option<u32>,
+    output_format: crate::cli::OutputFormat,
+) -> String {
+    // Group entries by cycle using BTreeMap for sorted output.
+    let mut cycles: BTreeMap<u32, Vec<&crate::audit::CostEntry>> = BTreeMap::new();
+    for entry in cost_entries {
+        cycles.entry(entry.cycle).or_default().push(entry);
+    }
+
+    if output_format == crate::cli::OutputFormat::Jsonl {
+        let mut out = String::new();
+        for (cycle_num, entries) in &cycles {
+            if let Some(f) = cycle_filter {
+                if *cycle_num != f {
+                    continue;
+                }
+            }
+            let cycle_summary = build_cycle_summary(*cycle_num, entries, signal_run);
+            if let Ok(json) = serde_json::to_string(&cycle_summary) {
+                out.push_str(&json);
+                out.push('\n');
+            }
+        }
+        return out;
+    }
+
+    // Human-readable output
+    let mut out = String::new();
+    for (cycle_num, entries) in &cycles {
+        if let Some(f) = cycle_filter {
+            if *cycle_num != f {
+                continue;
+            }
+        }
+
+        let cycle_summary = build_cycle_summary(*cycle_num, entries, signal_run);
+
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&format!("Cycle {}:\n", cycle_num));
+
+        // Determine column widths for alignment.
+        let max_run_digits = cycle_summary
+            .runs
+            .iter()
+            .map(|r| r.run.to_string().len())
+            .max()
+            .unwrap_or(1);
+        let max_phase_len = cycle_summary
+            .runs
+            .iter()
+            .map(|r| r.phase.len())
+            .max()
+            .unwrap_or(4);
+
+        for run_entry in &cycle_summary.runs {
+            let cost_str = match run_entry.cost_usd {
+                Some(c) => format!("${:.3}", c),
+                None => "—".to_string(),
+            };
+            let files_str = match run_entry.files_changed {
+                0 => "no files changed".to_string(),
+                1 => "1 file changed".to_string(),
+                n => format!("{} files changed", n),
+            };
+            let signal_str = if run_entry.signal_detected {
+                "  ✓ SIGNAL"
+            } else {
+                ""
+            };
+            out.push_str(&format!(
+                "  Run {:>rw$}  {:<pw$}  iter {:>3}   {:>8}   {:<20}{}\n",
+                run_entry.run,
+                run_entry.phase,
+                run_entry.iteration,
+                cost_str,
+                files_str,
+                signal_str,
+                rw = max_run_digits,
+                pw = max_phase_len,
+            ));
+        }
+
+        if cycle_summary.total_cost_usd > 0.0 {
+            out.push_str(&format!(
+                "  Subtotal: ${:.3}\n",
+                cycle_summary.total_cost_usd
+            ));
+        }
+    }
+
+    if out.is_empty() {
+        "No cycle data found.\n".to_string()
+    } else {
+        out
+    }
+}
+
+fn build_cycle_summary(
+    cycle_num: u32,
+    entries: &[&crate::audit::CostEntry],
+    signal_run: Option<u32>,
+) -> CycleSummary {
+    let mut runs: Vec<CycleRunEntry> = entries
+        .iter()
+        .map(|e| CycleRunEntry {
+            run: e.run,
+            phase: e.phase.clone(),
+            iteration: e.iteration,
+            cost_usd: e.cost_usd,
+            files_changed: e.files_changed,
+            signal_detected: signal_run == Some(e.run),
+        })
+        .collect();
+    // Sort by run number for consistent display.
+    runs.sort_by_key(|r| r.run);
+
+    let total_cost_usd: f64 = runs.iter().filter_map(|r| r.cost_usd).sum();
+
+    CycleSummary {
+        cycle: cycle_num,
+        runs,
+        total_cost_usd,
+    }
+}
+
 /// Declared data flow for a single phase (sourced from workflow_contracts.json).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredFlow {
@@ -253,4 +407,114 @@ pub fn load_actual_changes(run_dir: &Path) -> Result<Vec<ActualFileChange>> {
     }
 
     Ok(changes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audit::CostEntry;
+    use crate::cli::OutputFormat;
+
+    fn make_entry(
+        run: u32,
+        cycle: u32,
+        phase: &str,
+        iteration: u32,
+        cost: Option<f64>,
+        files_changed: u32,
+    ) -> CostEntry {
+        CostEntry {
+            run,
+            cycle,
+            phase: phase.to_string(),
+            iteration,
+            cost_usd: cost,
+            input_tokens: None,
+            output_tokens: None,
+            cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: files_changed,
+            files_deleted: 0,
+            files_changed,
+            event: None,
+            produces_violations: vec![],
+        }
+    }
+
+    #[test]
+    fn render_cycles_shows_per_cycle_breakdown() {
+        let entries = vec![
+            make_entry(1, 1, "builder", 1, Some(0.092), 3),
+            make_entry(2, 1, "builder", 2, Some(0.088), 2),
+            make_entry(3, 2, "builder", 1, Some(0.087), 4),
+        ];
+        let output = render_cycles(&entries, None, None, OutputFormat::Human);
+        assert!(output.contains("Cycle 1:"), "should show Cycle 1 header");
+        assert!(output.contains("Cycle 2:"), "should show Cycle 2 header");
+        assert!(output.contains("builder"), "should show phase name");
+        assert!(output.contains("$0.092"), "should show run cost");
+        assert!(output.contains("3 files changed"), "should show file count");
+    }
+
+    #[test]
+    fn render_cycles_cycle_filter_shows_only_requested_cycle() {
+        let entries = vec![
+            make_entry(1, 1, "builder", 1, Some(0.092), 3),
+            make_entry(2, 2, "builder", 1, Some(0.087), 4),
+        ];
+        let output = render_cycles(&entries, Some(2), None, OutputFormat::Human);
+        assert!(!output.contains("Cycle 1:"), "should not show Cycle 1");
+        assert!(output.contains("Cycle 2:"), "should show Cycle 2");
+        assert!(output.contains("$0.087"), "should show cycle 2 cost");
+    }
+
+    #[test]
+    fn render_cycles_no_cost_shows_dash() {
+        let entries = vec![make_entry(1, 1, "builder", 1, None, 0)];
+        let output = render_cycles(&entries, None, None, OutputFormat::Human);
+        assert!(output.contains("—"), "should show dash for missing cost");
+    }
+
+    #[test]
+    fn render_cycles_jsonl_mode_emits_structured_data() {
+        let entries = vec![
+            make_entry(1, 1, "builder", 1, Some(0.092), 3),
+            make_entry(2, 1, "reviewer", 1, Some(0.104), 1),
+        ];
+        let output = render_cycles(&entries, None, None, OutputFormat::Jsonl);
+        let line = output
+            .lines()
+            .next()
+            .expect("should emit at least one line");
+        let json: serde_json::Value = serde_json::from_str(line).expect("should be valid JSON");
+        assert_eq!(json["cycle"], 1);
+        assert!(json["runs"].is_array(), "should have runs array");
+        assert!(
+            json["total_cost_usd"].is_number(),
+            "should have total_cost_usd"
+        );
+    }
+
+    #[test]
+    fn render_cycles_signal_run_shows_signal_marker() {
+        let entries = vec![
+            make_entry(1, 1, "builder", 1, Some(0.090), 2),
+            make_entry(2, 1, "builder", 2, Some(0.091), 1),
+        ];
+        let output = render_cycles(&entries, None, Some(2), OutputFormat::Human);
+        assert!(
+            output.contains("✓ SIGNAL"),
+            "should show SIGNAL marker on signal run"
+        );
+        // Run 1 should not have the signal marker
+        assert!(
+            !output.contains("Run  1") || {
+                let lines: Vec<&str> = output.lines().collect();
+                !lines
+                    .iter()
+                    .any(|l| l.contains("Run  1") && l.contains("SIGNAL"))
+            },
+            "should not show SIGNAL on non-signal run"
+        );
+    }
 }

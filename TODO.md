@@ -23,30 +23,26 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-031: Custom Cost Parser
+## Bug: Custom Cost Parser Bypasses Negative/NaN/Infinity Validation
 
-**Spec:** `specs/execution/output-parsing.md`
+**Ref:** `specs/execution/output-parsing.md`
 
-**Summary:** Allow users to provide a custom regex to extract cost from non-standard executor output formats. This enables cost tracking for executors that don't use Claude Code's JSON format.
+**Summary:** The built-in cost parser validates parsed costs via `is_valid_cost()` (rejects negative, NaN, Infinity — added in commit f35a280). However, the custom cost parser path (`CompiledCostParser::Custom` in `cost.rs:233-269`) parses `cost_usd` with a raw `.parse::<f64>().ok()` at line 238, bypassing this validation. A custom regex like `(?P<cost_usd>[-\d.]+)` matching executor output `"Total: $-5.00"` would produce `cost_usd: Some(-5.0)`, which subtracts from cumulative cost and can bypass budget caps — the same class of bug that was fixed for the built-in parser.
 
-### Task 1: Add custom cost_parser support
+### Task 1: Apply cost validation to custom parser path
 
-**Files:** `src/workflow.rs`, `src/cost.rs`
+**Files:** `src/cost.rs`
 
 **Steps:**
-- [x] In the `[executor]` config, the `cost_parser` field already accepts `"claude-code"` and `"none"` — add support for a custom regex string
-- [x] When `cost_parser` is a string that is not `"claude-code"` or `"none"`, treat it as a regex pattern with a named capture group `cost` (e.g., `"Cost: \\$(?P<cost>[\\d.]+)"`)
-- [x] Compile the regex at workflow parse time; emit exit 2 if invalid
-- [x] In `parse_cost_from_output`, if a custom parser is configured, try it before the built-in patterns
-- [x] Custom parser match → `ParseConfidence::Full` if `cost` group captured, `ParseConfidence::Partial` otherwise
+- [ ] After parsing `cost_usd` at line 238, apply the same `is_valid_cost()` check used in the built-in paths
+- [ ] If the parsed value fails validation (negative, NaN, Infinity): set `cost_usd = None` and `confidence = ParseConfidence::None`, same as the built-in parser behavior
+- [ ] Reuse the existing `validated_cost()` helper or call `is_valid_cost()` directly
 
 **Tests:**
-- [x] Custom regex `"Total: \\$(?P<cost>[\\d.]+)"` extracts cost from `"Total: $1.23"` output
-- [x] Invalid regex in `cost_parser` exits 2 at workflow parse time
-- [x] `cost_parser = "none"` still returns zero cost with no parsing
-- [x] `cost_parser = "claude-code"` (or absent) still uses built-in parser
-- [x] Custom parser with no match falls through to built-in patterns
-- [x] `just validate` clean
+- [ ] Custom parser matching `"-5.00"` returns `confidence: None`, `cost_usd: None`
+- [ ] Custom parser matching `"NaN"` returns `confidence: None`, `cost_usd: None`
+- [ ] Custom parser matching `"1.23"` (valid) still works normally
+- [ ] `just validate` clean
 
 ---
 
@@ -61,19 +57,19 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/inspect.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] In `inspect_inner`, handle `InspectView::Cycles`:
+- [x] In `inspect_inner`, handle `InspectView::Cycles`:
   1. Read `costs.jsonl` → group entries by cycle number
   2. For each cycle, show: cycle number, runs in that cycle (phase name, cost, duration, completion signal status)
   3. Show cycle subtotal cost
-- [ ] Support `--cycle <N>` filter to show only a specific cycle
-- [ ] In JSONL mode, emit one JSON object per cycle
+- [x] Support `--cycle <N>` filter to show only a specific cycle
+- [x] In JSONL mode, emit one JSON object per cycle
 
 **Tests:**
-- [ ] `rings inspect <id> --show cycles` displays per-cycle breakdown
-- [ ] `--cycle 2` filters to only cycle 2
-- [ ] Cycles with no cost data show "—" for cost
-- [ ] JSONL mode emits structured cycle data
-- [ ] `just validate` clean
+- [x] `rings inspect <id> --show cycles` displays per-cycle breakdown
+- [x] `--cycle 2` filters to only cycle 2
+- [x] Cycles with no cost data show "—" for cost
+- [x] JSONL mode emits structured cycle data
+- [x] `just validate` clean
 
 ---
 

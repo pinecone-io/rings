@@ -1214,6 +1214,9 @@ fn inspect_inner(args: cli::InspectArgs, output_format: cli::OutputFormat) -> Re
             cli::InspectView::Summary => {
                 render_summary(&run_dir, output_format)?;
             }
+            cli::InspectView::Cycles => {
+                render_cycles(&run_dir, args.cycle, output_format)?;
+            }
             cli::InspectView::DataFlow => {
                 let declared = rings::inspect::load_declared_flow(&run_dir)?;
                 print!("{}", rings::inspect::render_data_flow_declared(&declared));
@@ -1233,6 +1236,40 @@ fn inspect_inner(args: cli::InspectArgs, output_format: cli::OutputFormat) -> Re
     }
 
     Ok(0)
+}
+
+fn render_cycles(
+    run_dir: &std::path::Path,
+    cycle_filter: Option<u32>,
+    output_format: cli::OutputFormat,
+) -> Result<()> {
+    // Read costs.jsonl
+    let costs_path = run_dir.join("costs.jsonl");
+    let cost_entries: Vec<rings::audit::CostEntry> = if costs_path.exists() {
+        rings::audit::stream_cost_entries(&costs_path)?
+            .filter_map(|r| r.ok())
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // Determine signal_run: if the run status is "completed", the last run in
+    // costs.jsonl is the one that triggered the completion signal.
+    let run_toml_path = run_dir.join("run.toml");
+    let signal_run: Option<u32> = if let Ok(meta) = state::RunMeta::read(&run_toml_path) {
+        if matches!(meta.status, state::RunStatus::Completed) {
+            cost_entries.iter().map(|e| e.run).max()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let output =
+        rings::inspect::render_cycles(&cost_entries, cycle_filter, signal_run, output_format);
+    print!("{}", output);
+    Ok(())
 }
 
 fn render_summary(run_dir: &std::path::Path, output_format: cli::OutputFormat) -> Result<()> {
@@ -2950,6 +2987,97 @@ mod show_tests {
         assert!(
             result.is_ok(),
             "should succeed even without state.json: {:?}",
+            result
+        );
+    }
+
+    fn make_cost_entry_with_cycle(
+        run: u32,
+        cycle: u32,
+        phase: &str,
+        iteration: u32,
+        cost_usd: f64,
+        files_changed: u32,
+    ) -> CostEntry {
+        CostEntry {
+            run,
+            cycle,
+            phase: phase.to_string(),
+            iteration,
+            cost_usd: Some(cost_usd),
+            input_tokens: None,
+            output_tokens: None,
+            cost_confidence: "full".to_string(),
+            files_added: 0,
+            files_modified: files_changed,
+            files_deleted: 0,
+            files_changed,
+            event: None,
+            produces_violations: vec![],
+        }
+    }
+
+    #[test]
+    fn render_cycles_view_displays_per_cycle_breakdown() {
+        let tmp = TempDir::new().unwrap();
+        let run_dir = make_run_dir(tmp.path(), "run_cycles_001", RunStatus::Completed);
+        write_cost_entries(
+            &run_dir,
+            &[
+                make_cost_entry_with_cycle(1, 1, "builder", 1, 0.092, 3),
+                make_cost_entry_with_cycle(2, 1, "reviewer", 1, 0.104, 1),
+                make_cost_entry_with_cycle(3, 2, "builder", 1, 0.087, 2),
+            ],
+        );
+        let result = render_cycles(&run_dir, None, cli::OutputFormat::Human);
+        assert!(result.is_ok(), "render_cycles should succeed: {:?}", result);
+    }
+
+    #[test]
+    fn render_cycles_view_cycle_filter_works() {
+        let tmp = TempDir::new().unwrap();
+        let run_dir = make_run_dir(tmp.path(), "run_cycles_002", RunStatus::Completed);
+        write_cost_entries(
+            &run_dir,
+            &[
+                make_cost_entry_with_cycle(1, 1, "builder", 1, 0.092, 3),
+                make_cost_entry_with_cycle(2, 2, "builder", 1, 0.087, 2),
+            ],
+        );
+        // Should succeed with cycle filter
+        let result = render_cycles(&run_dir, Some(2), cli::OutputFormat::Human);
+        assert!(
+            result.is_ok(),
+            "render_cycles with filter should succeed: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn render_cycles_jsonl_mode_succeeds() {
+        let tmp = TempDir::new().unwrap();
+        let run_dir = make_run_dir(tmp.path(), "run_cycles_003", RunStatus::Completed);
+        write_cost_entries(
+            &run_dir,
+            &[make_cost_entry_with_cycle(1, 1, "builder", 1, 0.092, 3)],
+        );
+        let result = render_cycles(&run_dir, None, cli::OutputFormat::Jsonl);
+        assert!(
+            result.is_ok(),
+            "render_cycles jsonl should succeed: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn render_cycles_no_costs_file_succeeds() {
+        let tmp = TempDir::new().unwrap();
+        let run_dir = make_run_dir(tmp.path(), "run_cycles_nocosts", RunStatus::Completed);
+        // No costs.jsonl
+        let result = render_cycles(&run_dir, None, cli::OutputFormat::Human);
+        assert!(
+            result.is_ok(),
+            "render_cycles with no costs should succeed: {:?}",
             result
         );
     }

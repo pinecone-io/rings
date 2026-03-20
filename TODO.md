@@ -4,52 +4,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## Verbose Streaming: Human-Friendly Output with Pinned Status Bar (continued)
-
-**Spec:** `specs/cli/commands-and-flags.md` (verbose mode), `specs/observability/runtime-output.md`
-
-### Task 3: Wire renderer into executor reader threads
-
-**Files:** `src/executor.rs`
-
-**Steps:**
-- [ ] In the stdout reader thread (line ~227-238), when `verbose == true`: call `verbose::format_stream_event(&line)` instead of printing raw line
-- [ ] If the formatter returns `Some(formatted)`, print `formatted` via `eprintln!`
-- [ ] If the formatter returns `None` (suppressed events), skip printing
-- [ ] Keep the stderr reader thread unchanged — stderr from Claude Code is already human-readable diagnostic output, print as-is when verbose
-- [ ] Raw output is still accumulated in the `Arc<Mutex<String>>` regardless of rendering (needed for cost parsing, log files)
-
-**Tests:**
-- [ ] Verbose mode with stream-json events: suppressed events (`system`, `result`) do not appear in stderr output
-- [ ] Verbose mode with non-JSON executor output: lines pass through unchanged
-- [ ] Non-verbose mode: no output to stderr from reader threads (unchanged behavior)
-
----
-
-### Task 4: Pinned status bar for verbose mode
-
-**Files:** `src/display.rs`, `src/engine.rs`
-
-**Steps:**
-- [x] Add `setup_scroll_region()` function to `display.rs`: detect terminal height, set ANSI scroll region `\x1b[1;{rows-2}r` to exclude bottom 2 lines
-- [x] Add `teardown_scroll_region()` function: reset scroll region `\x1b[r` and clear the status bar area
-- [x] Add `draw_pinned_status(line: &str)` function: save cursor `\x1b[s`, move to pinned row, clear line, draw status, restore cursor `\x1b[u`
-- [x] In `engine.rs`: when `verbose == true && is_stderr_tty()`, call `setup_scroll_region()` before the first executor spawn
-- [x] Modify `print_run_elapsed` to use `draw_pinned_status` when verbose+TTY instead of `\r\x1b[K` overwrite
-- [x] On cycle boundaries and run completion: temporarily reset scroll region, print rings chrome (cycle dividers, summaries), re-establish scroll region
-- [x] On all exit paths (normal completion, Ctrl+C, error, budget cap): call `teardown_scroll_region()` to leave terminal clean
-- [x] Hook into the existing SIGINT handler in `src/cancel.rs` to ensure scroll region is reset on Ctrl+C
-- [x] Non-TTY or non-verbose: behavior completely unchanged (current code path)
-
-**Tests:**
-- [x] `setup_scroll_region` emits correct ANSI escape sequence
-- [x] `teardown_scroll_region` emits reset sequence `\x1b[r`
-- [x] `draw_pinned_status` saves/restores cursor and draws at the correct row
-- [x] Non-TTY mode skips scroll region setup entirely
-- [x] Non-verbose mode skips scroll region setup entirely
-
----
-
 ## F-074: `rings cleanup` — Remove Old Run Data
 
 **Spec:** `specs/cli/commands-and-flags.md` lines 146–158
@@ -222,5 +176,85 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] `--strict-parsing` with `Low` confidence: run halts, state saved, exit 2
 - [ ] `--strict-parsing` with `None` confidence: run halts, state saved, exit 2
 - [ ] Without `--strict-parsing`: low confidence produces a warning but run continues (existing behavior)
+
+---
+
+## Tech Debt: Remove `unwrap()`/`expect()` from Production Code
+
+**Ref:** CLAUDE.md rule — "No `unwrap()` or `expect()` in production code — all errors propagate via `?` and `anyhow`"
+
+**Summary:** Audit found two `unwrap()`/`expect()` calls in production code paths that could cause hard panics instead of graceful errors.
+
+### Task 1: Replace `.expect()` in Ctrl+C handler setup
+
+**Files:** `src/main.rs`
+
+**Steps:**
+- [ ] Replace `.expect("Failed to install Ctrl+C handler")` on line 43 with proper error handling
+- [ ] Since `main()` currently returns `()`, either: (a) convert main to return `Result<()>` via `process::exit` wrapper, or (b) use an `if let Err(e)` block that prints the error to stderr and exits with code 2
+- [ ] Verify that failure to install the handler produces a clear user-facing error message, not a panic backtrace
+
+**Tests:**
+- [ ] Existing tests continue to pass (`just validate`)
+
+---
+
+### Task 2: Replace `.unwrap()` in dry-run phase position lookup
+
+**Files:** `src/main.rs`
+
+**Steps:**
+- [ ] Replace `.unwrap()` on line 170 (phase position lookup in dry-run output) with `.unwrap_or(0)` or a safe fallback that cannot panic
+- [ ] The current code iterates `plan.phases` and looks up each phase's index by name within the same collection — logically infallible, but should still be defended
+
+**Tests:**
+- [ ] Existing dry-run tests continue to pass
+- [ ] `just validate` clean
+
+---
+
+## Tech Debt: Harden `costs.jsonl` Append Against Partial Writes
+
+**Ref:** `specs/observability/audit-logs.md`
+
+**Summary:** `append_cost_entry()` in `src/audit.rs` opens the file in append mode and writes a JSON line. If the process is killed mid-write (e.g., SIGKILL, OOM kill), the file can be left with a truncated JSON line. On resume, `recover_last_run_from_costs()` already skips malformed lines, but a partial line could still corrupt the next append if it doesn't end with a newline.
+
+### Task 1: Atomic-ish cost entry append
+
+**Files:** `src/audit.rs`
+
+**Steps:**
+- [ ] Serialize the full line (JSON + newline) to a `String` first (already done)
+- [ ] Write the entire serialized bytes in a single `write_all()` call instead of `writeln!()` (which may split the write into data + newline)
+- [ ] Call `file.sync_data()` after the write to flush to disk before returning
+- [ ] Add a recovery safeguard: when reading `costs.jsonl` for resume, if the last line does not end with `\n`, truncate the file to remove the partial line before appending
+
+**Tests:**
+- [ ] Existing cost parsing and state recovery tests continue to pass
+- [ ] Test that a costs.jsonl with a truncated last line (no trailing newline) is handled gracefully on read
+- [ ] `just validate` clean
+
+---
+
+## Tech Debt: Validate Parsed Cost Values Are Non-Negative
+
+**Ref:** `specs/observability/cost-tracking.md`, `specs/execution/output-parsing.md`
+
+**Summary:** `parse_cost_from_output()` in `src/cost.rs` accepts any dollar amount matched by the regex, including negative values. A malformed or adversarial executor output like `Cost: $-10.00` would parse as `cost_usd: Some(-10.0)`, which would subtract from cumulative cost and could allow budget cap bypass.
+
+### Task 1: Add non-negative validation to cost parser
+
+**Files:** `src/cost.rs`
+
+**Steps:**
+- [ ] After extracting `cost_usd` from any regex match, clamp or reject negative values: if `cost < 0.0`, treat as `ParseConfidence::None` with `cost_usd: None`
+- [ ] Also reject `NaN` and `Infinity` values (defense in depth against malformed f64 parsing)
+- [ ] Log a warning when a negative/invalid cost is encountered (similar to low-confidence warning)
+
+**Tests:**
+- [ ] `parse_cost_from_output("Cost: $-10.00 ...")` returns confidence `None`, cost `None`
+- [ ] `parse_cost_from_output("Cost: $0.00 ...")` still works (zero is valid)
+- [ ] Existing cost parsing tests continue to pass
+- [ ] `just validate` clean
 
 ---

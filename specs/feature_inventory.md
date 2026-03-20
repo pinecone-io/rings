@@ -71,20 +71,20 @@ Summaries are written from the user's perspective. Features with dependencies no
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-037 | Error Classification | rings categorizes executor failures as Quota, Auth, or Unknown so I know whether the problem is recoverable | PRIORITIZED | [error-handling.md](execution/error-handling.md) |
-| F-038 | Quota Error Detection | rings automatically recognizes quota exhaustion messages from the executor output (requires F-037) | PRIORITIZED | [error-handling.md](execution/error-handling.md) |
-| F-039 | Auth Error Detection | rings automatically recognizes authentication failure messages so I know to check my credentials (requires F-037) | PRIORITIZED | [error-handling.md](execution/error-handling.md) |
-| F-040 | Custom Error Profiles | I can define my own patterns for what counts as a quota or auth error when using a custom executor (requires F-037) | PRIORITIZED | [error-handling.md](execution/error-handling.md) |
+| F-037 | Error Classification | rings categorizes executor failures as Quota, Auth, or Unknown so I know whether the problem is recoverable | COMPLETE | [error-handling.md](execution/error-handling.md) |
+| F-038 | Quota Error Detection | rings automatically recognizes quota exhaustion messages from the executor output (requires F-037) | COMPLETE | [error-handling.md](execution/error-handling.md) |
+| F-039 | Auth Error Detection | rings automatically recognizes authentication failure messages so I know to check my credentials (requires F-037) | COMPLETE | [error-handling.md](execution/error-handling.md) |
+| F-040 | Custom Error Profiles | I can define my own patterns for what counts as a quota or auth error when using a custom executor (requires F-037) | COMPLETE | [error-handling.md](execution/error-handling.md) |
 
 ## Rate Limiting
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-041 | Run-to-Run Delay | I can add a fixed pause between individual phase runs to stay within API rate limits | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
-| F-042 | Cycle-to-Cycle Delay | I can add a fixed pause between full cycles to spread out API usage over time | PRIORITIZED | [rate-limiting.md](execution/rate-limiting.md) |
+| F-042 | Cycle-to-Cycle Delay | I can add a fixed pause between full cycles to spread out API usage over time | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
 | F-043 | Duration String Parsing | I can write delays as human-readable strings like "30s", "5m", or "1h" instead of raw milliseconds | PRIORITIZED | [rate-limiting.md](execution/rate-limiting.md) |
-| F-044 | Quota Backoff | I can tell rings to automatically wait and retry when it hits a quota error instead of stopping (requires F-038) | PRIORITIZED | [rate-limiting.md](execution/rate-limiting.md) |
-| F-045 | Quota Backoff Max Retries | I can set a cap on how many times rings will retry after quota errors before giving up (requires F-044) | PRIORITIZED | [rate-limiting.md](execution/rate-limiting.md) |
+| F-044 | Quota Backoff | I can tell rings to automatically wait and retry when it hits a quota error instead of stopping (requires F-038) | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
+| F-045 | Quota Backoff Max Retries | I can set a cap on how many times rings will retry after quota errors before giving up (requires F-044) | COMPLETE | [rate-limiting.md](execution/rate-limiting.md) |
 
 ## State & Resumability
 
@@ -97,7 +97,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-050 | Workflow File Change Detection | rings refuses to resume if I've made structural changes to the workflow since the last run, protecting me from mismatched state | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-051 | SIGINT Handling | Pressing Ctrl+C gracefully saves state and prints a resume command before exiting (requires F-046) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-052 | SIGTERM Handling | rings treats SIGTERM like Ctrl+C so process managers can stop it cleanly (requires F-051) | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
-| F-053 | Double Ctrl+C | A second Ctrl+C while rings is waiting skips the graceful shutdown and force-kills the subprocess immediately (requires F-051) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-053 | Double Ctrl+C | A second Ctrl+C while rings is waiting skips the graceful shutdown and force-kills the subprocess immediately (requires F-051) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-054 | Subprocess Graceful Shutdown | rings sends SIGTERM to the executor and waits 5 seconds before escalating to SIGKILL | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-055 | Context Directory Lock | rings prevents two instances from running against the same context_dir at the same time | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-056 | Stale Lock Detection | rings automatically removes a lock from a process that is no longer running (requires F-055) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
@@ -124,7 +124,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 |---|---------|---------|--------|------|
 | F-068 | `rings run` | I can start a new workflow execution with `rings run <workflow.toml>` | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-069 | `rings resume` | I can resume an interrupted workflow from its last completed step with `rings resume <run-id>` (requires F-048) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-070 | `rings list` | I can see all recent runs with their status and total cost in a summary table | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-070 | `rings list` | I can see all recent runs with their status and total cost in a summary table | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-071 | `rings show` | I can get a single-screen summary of any past run by its ID | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-072 | `rings inspect` | I can deeply inspect any run with multiple views: summary, cycles, files, costs, and raw output | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
 | F-073 | `rings lineage` | I can see the full chain of parent/child runs that led to any given run ID (requires F-058) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
@@ -140,21 +140,21 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-078 | `--include-dir` | I can inject additional file-listing context into prompts for this run (requires F-025) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-079 | `--delay` | I can set or override the between-run delay for this run without editing the workflow file (requires F-041) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-080 | `--cycle-delay` | I can set or override the between-cycle delay for this run without editing the workflow file (requires F-042) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-081 | `--dry-run` | I can preview the full execution plan — phases, prompts, delays — without any Claude calls | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-081 | `--dry-run` | I can preview the full execution plan — phases, prompts, delays — without any Claude calls | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-082 | `--step` | I can pause after every individual run to inspect output before letting rings continue | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-083 | `--step-cycles` | I can pause only at cycle boundaries for a less granular step-through experience (requires F-082) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-084 | `--verbose` | I can stream the executor's live output to my terminal alongside rings' status display | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-085 | `--quota-backoff` | I can enable automatic quota-error retry at the command line without changing the workflow file (requires F-044) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-086 | `--quota-backoff-delay` | I can set how long rings waits before retrying after a quota error (requires F-044) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-087 | `--quota-backoff-max-retries` | I can cap how many quota retries rings will attempt before giving up (requires F-044, F-045) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-088 | `--budget-cap` | I can set a spending limit for this run so rings stops and saves state if cost exceeds it (requires F-112) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-085 | `--quota-backoff` | I can enable automatic quota-error retry at the command line without changing the workflow file (requires F-044) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-086 | `--quota-backoff-delay` | I can set how long rings waits before retrying after a quota error (requires F-044) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-087 | `--quota-backoff-max-retries` | I can cap how many quota retries rings will attempt before giving up (requires F-044, F-045) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-088 | `--budget-cap` | I can set a spending limit for this run so rings stops and saves state if cost exceeds it (requires F-112) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-089 | `--strict-parsing` | I can make rings treat any cost parsing failure as a hard error that stops the run (requires F-033) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-090 | `--parent-run` | I can explicitly link this run to a prior one for ancestry tracking without resuming its state (requires F-058) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-090 | `--parent-run` | I can explicitly link this run to a prior one for ancestry tracking without resuming its state (requires F-058) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-091 | `--force-lock` | I can override the context_dir lock check when I know the previous process is truly gone (requires F-055) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-092 | `--no-completion-check` | I can suppress the startup warning about missing completion signals in prompts (requires F-011) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-093 | `--no-contract-check` | I can suppress phase contract violation warnings for a run (requires F-014, F-015) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-094 | `--no-color` | I can disable colored terminal output | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-095 | `--output-format` | I can switch between human-readable and JSONL output for the same run | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-095 | `--output-format` | I can switch between human-readable and JSONL output for the same run | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-096 | `--no-sensitive-files-check` | I can suppress the warning about credential files in context_dir when I know they're intentionally there | PRIORITIZED | [engine.md](execution/engine.md) |
 
 ## Inspect Command Views
@@ -186,11 +186,11 @@ Summaries are written from the user's perspective. Features with dependencies no
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-111 | Real-Time Cost Accumulation | I can see cumulative cost grow in real time as each run completes, both per-phase and globally | COMPLETE | [cost-tracking.md](observability/cost-tracking.md) |
-| F-112 | Budget Cap | I can set a spending ceiling so rings automatically stops and saves state when the cost limit is hit (requires F-046) | PLANNED | [cost-tracking.md](observability/cost-tracking.md) |
-| F-113 | Budget Warning Thresholds | rings warns me when I've reached 80% and 90% of my budget cap so I'm not surprised by a stop (requires F-112) | PRIORITIZED | [cost-tracking.md](observability/cost-tracking.md) |
-| F-114 | Per-Phase Budget Caps | I can set independent spending limits on individual phases to protect against a runaway single phase (requires F-112) | PRIORITIZED | [cost-tracking.md](observability/cost-tracking.md) |
-| F-115 | Low-Confidence Cost Warning | rings warns me any time it can only partially or not at all parse cost from executor output (requires F-033) | PLANNED | [cost-tracking.md](observability/cost-tracking.md) |
-| F-116 | No Budget Cap Warning | rings warns me at startup if I haven't set any budget cap, so I don't accidentally run an unbounded workflow | PLANNED | [cost-tracking.md](observability/cost-tracking.md) |
+| F-112 | Budget Cap | I can set a spending ceiling so rings automatically stops and saves state when the cost limit is hit (requires F-046) | COMPLETE | [cost-tracking.md](observability/cost-tracking.md) |
+| F-113 | Budget Warning Thresholds | rings warns me when I've reached 80% and 90% of my budget cap so I'm not surprised by a stop (requires F-112) | COMPLETE | [cost-tracking.md](observability/cost-tracking.md) |
+| F-114 | Per-Phase Budget Caps | I can set independent spending limits on individual phases to protect against a runaway single phase (requires F-112) | COMPLETE | [cost-tracking.md](observability/cost-tracking.md) |
+| F-115 | Low-Confidence Cost Warning | rings warns me any time it can only partially or not at all parse cost from executor output (requires F-033) | COMPLETE | [cost-tracking.md](observability/cost-tracking.md) |
+| F-116 | No Budget Cap Warning | rings warns me at startup if I haven't set any budget cap, so I don't accidentally run an unbounded workflow | COMPLETE | [cost-tracking.md](observability/cost-tracking.md) |
 
 ## File Lineage
 
@@ -210,8 +210,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-125 | Human Output Mode | I see colored, spinner-animated terminal output that shows what rings is doing at a glance | PLANNED | [runtime-output.md](observability/runtime-output.md) |
-| F-126 | JSONL Output Mode | I can switch to newline-delimited JSON events for scripting, CI, or piping into other tools | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
-| F-127 | stderr/stdout Separation | Human-readable output goes to stderr; JSONL events go to stdout so I can pipe them cleanly | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
+| F-126 | JSONL Output Mode | I can switch to newline-delimited JSON events for scripting, CI, or piping into other tools | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-127 | stderr/stdout Separation | Human-readable output goes to stderr; JSONL events go to stdout so I can pipe them cleanly | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 | F-128 | Status Line Display | I see a single updating line showing current cycle, phase name, and running cost | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 | F-129 | Animated Spinner | A spinner next to the status line confirms rings is alive even during long Claude invocations | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 | F-130 | Phase Transition Lines | rings prints a clear line whenever it moves to a new phase or cycle, including per-cycle cost | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
@@ -223,8 +223,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-136 | Step-Through Mode | With `--step`, I'm prompted after each run and can continue, skip a cycle, view output, or quit | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
 | F-137 | Step-Cycles Mode | With `--step-cycles`, I'm only prompted at cycle boundaries rather than after every run (requires F-136) | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
 | F-138 | Step Summary Display | At each step-through pause, rings shows cost so far, files changed, and whether the completion signal was detected (requires F-136) | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
-| F-139 | JSONL Event Envelope | Every JSONL event includes `run_id` and `timestamp` so I can correlate events across tools (requires F-126) | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
-| F-140 | JSONL Event Types | rings emits structured events for start, run_start, run_end, completion_signal, executor_error, delays, budget_cap, and summary (requires F-126) | PRIORITIZED | [runtime-output.md](observability/runtime-output.md) |
+| F-139 | JSONL Event Envelope | Every JSONL event includes `run_id` and `timestamp` so I can correlate events across tools (requires F-126) | PLANNED | [runtime-output.md](observability/runtime-output.md) |
+| F-140 | JSONL Event Types | rings emits structured events for start, run_start, run_end, completion_signal, executor_error, delays, budget_cap, and summary (requires F-126) | PLANNED | [runtime-output.md](observability/runtime-output.md) |
 
 ## Startup Validation & Advisory Checks
 
@@ -253,7 +253,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-156 | Exit Code 1 | rings exits 1 when max_cycles completes without a signal, distinguishing "ran out of cycles" from errors | COMPLETE | [exit-codes.md](cli/exit-codes.md) |
 | F-157 | Exit Code 2 | rings exits 2 for configuration errors (bad TOML, missing files, executor not found) that need my attention | COMPLETE | [exit-codes.md](cli/exit-codes.md) |
 | F-158 | Exit Code 3 | rings exits 3 for executor errors (quota, auth, unknown) and saves state so I can resume after fixing the issue | COMPLETE | [exit-codes.md](cli/exit-codes.md) |
-| F-159 | Exit Code 4 | rings exits 4 when the budget cap is hit and saves state so I can resume after reviewing spend (requires F-112) | PRIORITIZED | [exit-codes.md](cli/exit-codes.md) |
+| F-159 | Exit Code 4 | rings exits 4 when the budget cap is hit and saves state so I can resume after reviewing spend (requires F-112) | COMPLETE | [exit-codes.md](cli/exit-codes.md) |
 | F-160 | Exit Code 130 | rings exits 130 on Ctrl+C or SIGTERM, matching the standard Unix convention for signal termination | COMPLETE | [exit-codes.md](cli/exit-codes.md) |
 | F-161 | Error Output to stderr | All error messages go to stderr so stdout remains clean for JSONL piping | COMPLETE | [exit-codes.md](cli/exit-codes.md) |
 
@@ -317,3 +317,19 @@ Summaries are written from the user's perspective. Features with dependencies no
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
 | F-192 | `rings update` | I can update rings to the latest nightly release with a single command instead of re-running the install script manually | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
+
+## Context Directory Tracking
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-193 | Context Dir in Run Metadata | Each run's `run.toml` stores the canonicalized `context_dir` so I can tell which project a run belongs to | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-194 | `--dir` List Filter | I can filter `rings list` by context directory substring so I only see runs for a specific project | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-195 | DIR Column in List Output | `rings list` shows a DIR column so I can distinguish runs from different projects at a glance | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
+
+## Verbose Streaming
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-196 | Stream-JSON Executor Default | The default executor uses `--output-format stream-json` so verbose mode can stream events in real time instead of dumping a blob at the end | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
+| F-197 | Verbose Event Renderer | In verbose mode, stream-json events are parsed and rendered as human-friendly output: assistant text, tool call summaries, suppressed noise | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
+| F-198 | Pinned Status Bar | In verbose mode on a TTY, the rings status bar is pinned at the terminal bottom via ANSI scroll regions while executor output scrolls above | COMPLETE | [runtime-output.md](observability/runtime-output.md) |

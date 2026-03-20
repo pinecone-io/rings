@@ -120,6 +120,9 @@ OPTIONS:
     -n, --limit <N>              Number of runs to show (default: 20)
         --status <STATUS>        Filter by run status: running, completed, canceled, failed
         --workflow <PATH>        Filter by workflow file path (substring match)
+        --dir <PATH>             Filter by context directory (substring match on the
+                                 stored context_dir value). Useful when running workflows
+                                 across multiple projects.
         --since <DATE>           Show runs started after this date.
                                  Accepts ISO 8601 date (2024-03-15) or relative
                                  duration (7d, 24h, 30m).
@@ -128,11 +131,14 @@ OPTIONS:
     -h, --help                   Print help information
 ```
 
-Output columns: `RUN_ID | DATE | WORKFLOW | STATUS | CYCLES | COST`
+Output columns: `RUN_ID | DATE | DIR | WORKFLOW | STATUS | CYCLES | COST`
 
-Pipeline example:
+The `DIR` column shows the stored `context_dir` from the workflow that launched the run. The value is the **canonicalized absolute path** recorded at run start (see run.toml metadata). In human mode the path is shortened for display: `~` replaces `$HOME`, and paths longer than 30 characters are truncated with a leading `…/` to show only the last path components that fit. In JSONL mode, the full absolute path is always emitted as `context_dir`.
+
+Pipeline examples:
 ```bash
 rings list --status canceled --output-format jsonl | jq -r .run_id | xargs -I {} rings resume {}
+rings list --dir my-project --output-format jsonl | jq -r '.run_id + " " + .context_dir'
 ```
 
 ---

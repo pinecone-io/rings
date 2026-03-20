@@ -177,9 +177,38 @@ The `claude resume` commands are captured from the subprocess output so the user
 
 ## Verbose Mode
 
-With `--verbose`, Claude Code's stdout is streamed live to the terminal interleaved with rings's own output. The status line is still displayed, but it appears below the streamed output.
+With `--verbose`, rings streams human-friendly summaries of Claude Code's activity to the terminal in real time. The rings status bar is pinned at the bottom of the terminal so it remains visible while executor output scrolls above it.
 
-Verbose mode is useful for debugging prompt behavior or monitoring what Claude Code is doing in real time.
+### Executor Output Format
+
+When rings controls the executor (default `ClaudeExecutor`), it uses `--output-format stream-json` (plus `--verbose`, required by Claude Code in `-p` mode) to receive structured events as they happen. Each event is one JSON object per line on stdout.
+
+### Event Rendering
+
+rings parses each stream-json line and renders a human-friendly summary:
+
+| Event type | Rendering |
+|------------|-----------|
+| `system` (subtype `init`) | Suppressed — contains internal metadata (tools, MCP servers) |
+| `assistant` with text content | Displayed as-is (the model's text response) |
+| `assistant` with tool_use | One-line summary: `  Tool: Read  file_path=...` (dimmed) |
+| `user` (tool results) | Abbreviated: `  [tool result: N lines]` (dimmed) |
+| `rate_limit_event` | Suppressed (internal bookkeeping) |
+| `result` | Suppressed — rings shows its own completion/cost summary |
+
+A single `assistant` event can contain both text and tool_use blocks in its `content[]` array; each block is rendered on its own line.
+
+Non-JSON lines or unknown event types are passed through as-is, ensuring graceful fallback for custom executors.
+
+### Pinned Status Bar
+
+On a TTY, verbose mode uses ANSI scroll regions to keep the rings status bar (cycle, phase, cost) pinned at the terminal bottom. Executor output scrolls naturally above it. The scroll region is always reset on exit (normal, Ctrl+C, error) to leave the terminal clean.
+
+On non-TTY (piped output), verbose mode falls back to the non-pinned interleaved display.
+
+### Raw Output Capture
+
+Regardless of rendering, the full raw JSON output from the executor is always accumulated and written to per-run log files (F-106). This preserves complete observability data for later inspection via `rings inspect`.
 
 ## Output Format: Human vs Machine
 

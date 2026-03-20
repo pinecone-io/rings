@@ -42,6 +42,14 @@ fn regex_capture_group_returns_bool_no_panic() {
     assert!(!result2);
 }
 
+#[test]
+fn regex_digit_pattern_matches_numbered_signal() {
+    // e.g., DONE_\d+ matches DONE_42 but not DONE_EXTRA
+    let re = Regex::new(r"DONE_\d+").unwrap();
+    assert!(output_regex_matches_signal("DONE_42", &re));
+    assert!(!output_regex_matches_signal("DONE_EXTRA", &re));
+}
+
 // --- Unit tests for line mode ---
 
 #[test]

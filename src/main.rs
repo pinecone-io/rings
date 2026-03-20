@@ -10,6 +10,7 @@ use std::sync::Arc;
 use rings::cancel::CancelState;
 use rings::cli::{self, Cli, Command};
 use rings::completion;
+use rings::config::RingsConfig;
 use rings::display;
 use rings::dry_run;
 use rings::duration;
@@ -48,35 +49,63 @@ fn main() {
 
     let cli = Cli::parse();
 
-    // Initialize color: disable if --no-color, NO_COLOR env var, or stderr is not a TTY.
+    // Load config file (project .rings-config.toml or user config.toml).
+    // Non-fatal: if config loading fails, log to stderr and continue with defaults.
+    let config = match RingsConfig::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("rings: config error: {e:#}");
+            std::process::exit(2);
+        }
+    };
+
+    // Initialize color: disable if --no-color, NO_COLOR env var, config color=false, or stderr
+    // is not a TTY.
     {
         use std::io::IsTerminal;
         if cli.no_color
             || std::env::var_os("NO_COLOR").is_some()
+            || config.color == Some(false)
             || !std::io::stderr().is_terminal()
         {
             style::set_no_color();
         }
     }
 
+    let cfg_output_dir = config.expanded_output_dir();
     let exit_code = match cli.command {
-        Command::Run(args) => cmd_run(args, Arc::clone(&cancel), cli.output_format),
-        Command::Resume(args) => cmd_resume(args, Arc::clone(&cancel), cli.output_format),
-        Command::List(args) => cmd_list(args, cli.output_format),
-        Command::Show(args) => cmd_show(args, cli.output_format),
-        Command::Inspect(args) => cmd_inspect(args, cli.output_format),
-        Command::Lineage(args) => cmd_lineage(args, cli.output_format),
+        Command::Run(args) => cmd_run(
+            args,
+            Arc::clone(&cancel),
+            cli.output_format,
+            cfg_output_dir.as_deref(),
+        ),
+        Command::Resume(args) => cmd_resume(
+            args,
+            Arc::clone(&cancel),
+            cli.output_format,
+            cfg_output_dir.as_deref(),
+        ),
+        Command::List(args) => cmd_list(args, cli.output_format, cfg_output_dir.as_deref()),
+        Command::Show(args) => cmd_show(args, cli.output_format, cfg_output_dir.as_deref()),
+        Command::Inspect(args) => cmd_inspect(args, cli.output_format, cfg_output_dir.as_deref()),
+        Command::Lineage(args) => cmd_lineage(args, cli.output_format, cfg_output_dir.as_deref()),
         Command::Completions(args) => cmd_completions(args),
         Command::Init(args) => cmd_init(args, cli.output_format),
         Command::Update => cmd_update(),
-        Command::Cleanup(args) => cmd_cleanup(args, cli.output_format),
+        Command::Cleanup(args) => cmd_cleanup(args, cli.output_format, cfg_output_dir.as_deref()),
     };
     std::process::exit(exit_code);
 }
 
-fn cmd_run(args: cli::RunArgs, cancel: Arc<CancelState>, output_format: cli::OutputFormat) -> i32 {
+fn cmd_run(
+    args: cli::RunArgs,
+    cancel: Arc<CancelState>,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> i32 {
     let mut run_id: Option<String> = None;
-    match run_inner(args, cancel, output_format, &mut run_id) {
+    match run_inner(args, cancel, output_format, &mut run_id, config_output_dir) {
         Ok(code) => code,
         Err(e) => {
             if output_format == cli::OutputFormat::Jsonl {
@@ -96,6 +125,7 @@ fn run_inner(
     cancel: Arc<CancelState>,
     output_format: cli::OutputFormat,
     run_id_out: &mut Option<String>,
+    config_output_dir: Option<&str>,
 ) -> Result<i32> {
     // Conflict check: --step is incompatible with --output-format jsonl
     if args.step && output_format == cli::OutputFormat::Jsonl {
@@ -276,8 +306,11 @@ fn run_inner(
     }
 
     // Resolve output directory
-    let output_base =
-        resolve_output_dir(args.output_dir.as_deref(), workflow.output_dir.as_deref());
+    let output_base = resolve_output_dir(
+        args.output_dir.as_deref(),
+        workflow.output_dir.as_deref(),
+        config_output_dir,
+    );
     let run_id = generate_run_id();
     *run_id_out = Some(run_id.clone());
     let run_dir = output_base.join(&run_id);
@@ -661,9 +694,10 @@ fn cmd_resume(
     args: cli::ResumeArgs,
     cancel: Arc<CancelState>,
     output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
 ) -> i32 {
     let mut run_id: Option<String> = None;
-    match resume_inner(args, cancel, output_format, &mut run_id) {
+    match resume_inner(args, cancel, output_format, &mut run_id, config_output_dir) {
         Ok(code) => code,
         Err(e) => {
             if output_format == cli::OutputFormat::Jsonl {
@@ -683,9 +717,10 @@ fn resume_inner(
     cancel: Arc<CancelState>,
     output_format: cli::OutputFormat,
     run_id_out: &mut Option<String>,
+    config_output_dir: Option<&str>,
 ) -> Result<i32> {
     // Find old run directory to resume from
-    let output_base = resolve_output_dir(args.output_dir.as_deref(), None);
+    let output_base = resolve_output_dir(args.output_dir.as_deref(), None, config_output_dir);
     let old_run_dir = output_base.join(&args.run_id);
     let state_path = old_run_dir.join("state.json");
     let costs_path = old_run_dir.join("costs.jsonl");
@@ -1061,8 +1096,12 @@ fn resume_inner(
     Ok(result.exit_code)
 }
 
-fn cmd_list(args: cli::ListArgs, output_format: cli::OutputFormat) -> i32 {
-    match list_inner(args, output_format) {
+fn cmd_list(
+    args: cli::ListArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> i32 {
+    match list_inner(args, output_format, config_output_dir) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {e:#}");
@@ -1071,9 +1110,13 @@ fn cmd_list(args: cli::ListArgs, output_format: cli::OutputFormat) -> i32 {
     }
 }
 
-fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i32> {
+fn list_inner(
+    args: cli::ListArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> Result<i32> {
     // Resolve base directory for scanning runs
-    let base_dir = resolve_output_dir(None, None);
+    let base_dir = resolve_output_dir(None, None, config_output_dir);
 
     // Parse since filter
     let since_filter = if let Some(since_str) = args.since {
@@ -1175,18 +1218,26 @@ fn list_inner(args: cli::ListArgs, output_format: cli::OutputFormat) -> Result<i
     Ok(0)
 }
 
-fn cmd_show(args: cli::ShowArgs, output_format: cli::OutputFormat) -> i32 {
+fn cmd_show(
+    args: cli::ShowArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> i32 {
     let inspect_args = cli::InspectArgs {
         run_id: args.run_id,
         show: vec![cli::InspectView::Summary],
         cycle: None,
         phase: None,
     };
-    cmd_inspect(inspect_args, output_format)
+    cmd_inspect(inspect_args, output_format, config_output_dir)
 }
 
-fn cmd_inspect(args: cli::InspectArgs, output_format: cli::OutputFormat) -> i32 {
-    match inspect_inner(args, output_format) {
+fn cmd_inspect(
+    args: cli::InspectArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> i32 {
+    match inspect_inner(args, output_format, config_output_dir) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {e:#}");
@@ -1195,8 +1246,12 @@ fn cmd_inspect(args: cli::InspectArgs, output_format: cli::OutputFormat) -> i32 
     }
 }
 
-fn inspect_inner(args: cli::InspectArgs, output_format: cli::OutputFormat) -> Result<i32> {
-    let base_dir = resolve_output_dir(None, None);
+fn inspect_inner(
+    args: cli::InspectArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> Result<i32> {
+    let base_dir = resolve_output_dir(None, None, config_output_dir);
     let run_dir = base_dir.join(&args.run_id);
 
     if !run_dir.exists() {
@@ -1426,8 +1481,12 @@ fn render_summary(run_dir: &std::path::Path, output_format: cli::OutputFormat) -
     Ok(())
 }
 
-fn cmd_lineage(args: cli::LineageArgs, output_format: cli::OutputFormat) -> i32 {
-    match lineage_inner(args, output_format) {
+fn cmd_lineage(
+    args: cli::LineageArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> i32 {
+    match lineage_inner(args, output_format, config_output_dir) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {e:#}");
@@ -1448,8 +1507,12 @@ struct ChainRun {
     parent_run_id: Option<String>,
 }
 
-fn lineage_inner(args: cli::LineageArgs, output_format: cli::OutputFormat) -> Result<i32> {
-    let base_dir = resolve_output_dir(None, None);
+fn lineage_inner(
+    args: cli::LineageArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> Result<i32> {
+    let base_dir = resolve_output_dir(None, None, config_output_dir);
     lineage_inner_with_base(args, output_format, &base_dir)
 }
 
@@ -1921,8 +1984,12 @@ fn update_inner() -> Result<i32> {
     }
 }
 
-fn cmd_cleanup(args: cli::CleanupArgs, output_format: cli::OutputFormat) -> i32 {
-    match cleanup_inner(args, output_format) {
+fn cmd_cleanup(
+    args: cli::CleanupArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> i32 {
+    match cleanup_inner(args, output_format, config_output_dir) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {e:#}");
@@ -1931,10 +1998,14 @@ fn cmd_cleanup(args: cli::CleanupArgs, output_format: cli::OutputFormat) -> i32 
     }
 }
 
-fn cleanup_inner(args: cli::CleanupArgs, output_format: cli::OutputFormat) -> Result<i32> {
+fn cleanup_inner(
+    args: cli::CleanupArgs,
+    output_format: cli::OutputFormat,
+    config_output_dir: Option<&str>,
+) -> Result<i32> {
     use std::io::{self, Write};
 
-    let base_dir = resolve_output_dir(None, None);
+    let base_dir = resolve_output_dir(None, None, config_output_dir);
 
     // Parse --older-than as a SinceSpec (reuses the same duration parser as `rings list --since`)
     let since_spec = args.older_than.parse::<duration::SinceSpec>()?;
@@ -2079,11 +2150,18 @@ fn path_contains_parent_dir(path: &str) -> bool {
         .any(|c| c == Component::ParentDir)
 }
 
-fn resolve_output_dir(cli_override: Option<&str>, workflow_override: Option<&str>) -> PathBuf {
+fn resolve_output_dir(
+    cli_override: Option<&str>,
+    workflow_override: Option<&str>,
+    config_override: Option<&str>,
+) -> PathBuf {
     if let Some(p) = cli_override {
         return PathBuf::from(p);
     }
     if let Some(p) = workflow_override {
+        return PathBuf::from(p);
+    }
+    if let Some(p) = config_override {
         return PathBuf::from(p);
     }
     dirs::data_dir()

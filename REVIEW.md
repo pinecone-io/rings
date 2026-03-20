@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-MM / task name] description` -->
 
+[2026-03-20 / F-061/F-062 Task 1: Config file loading] Created `src/config.rs` with `RingsConfig` struct and `RingsConfig::load()`. Config is loaded in `main()` after CLI parsing; `color = false` extends the existing no-color check; `default_output_dir` is threaded as `config_output_dir: Option<&str>` into every command function and `resolve_output_dir` (which now takes a 3rd parameter). Precedence order is: CLI > workflow TOML > config file > XDG default, matching the spec. `~` expansion is handled via `RingsConfig::expand_tilde`. The spec also lists `skip_completion_check` and `strict_parsing` config fields — both are parsed but not yet wired into command logic (engine integration not in scope for this task).
+
 [2026-03-20 / Bug: Custom cost parser validation] Used `.filter(|&v| is_valid_cost(v))` on the parsed `Option<f64>` instead of `validated_cost()`. The `validated_cost()` helper replaces `raw_match` with a diagnostic string, but the custom path already has `raw_match` set from the full regex match; using `.filter` preserves the original raw_match and keeps the fix minimal.
 
 [2026-03-20 / F-098 Task 2: --show costs view] Added `render_costs` to `inspect.rs` taking `&[CostEntry]`, `phase_filter`, and `output_format`. CostEntry has no duration field, so Duration is omitted from the table despite being listed in the task description. Human output shows columns: Run, Cycle, Phase, Iter, Input Tok, Output Tok, Cost, Confidence. Token totals are formatted with comma separators. JSONL mode emits one object per run. Phase filter is threaded from `--phase` CLI arg through `inspect_inner` → `render_costs`.

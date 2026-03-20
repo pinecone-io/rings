@@ -41,8 +41,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-019 | Sequential Phase Execution | I can write phases that depend on each other's file output because rings never runs two phases simultaneously | COMPLETE | [engine.md](execution/engine.md) |
 | F-020 | Timeout Per Run | I can set a per-run timeout so a hung Claude invocation doesn't stall my workflow indefinitely | PLANNED | [engine.md](execution/engine.md) |
 | F-021 | Claude Code Integration | rings invokes Claude Code as a subprocess and passes my prompt securely over stdin | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
-| F-022 | Executor Abstraction | I can swap out the default `claude` binary for any other tool that accepts prompts over stdin | PRIORITIZED | [executor-integration.md](execution/executor-integration.md) |
-| F-023 | Per-Phase Executors | I can use a different executor binary for individual phases within the same workflow | PRIORITIZED | [executor-integration.md](execution/executor-integration.md) |
+| F-022 | Executor Abstraction | I can swap out the default `claude` binary for any other tool that accepts prompts over stdin | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
+| F-023 | Per-Phase Executors | I can use a different executor binary for individual phases within the same workflow | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
 | F-024 | Executor Binary Check | rings tells me before starting if the configured executor binary can't be found on PATH | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
 | F-025 | Include Directory | I can pass additional context directories whose file listings get prepended to each prompt | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
 | F-026 | Environment Variable Pass-Through | My shell environment variables are automatically available to the executor subprocess | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
@@ -93,7 +93,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-046 | State Persistence | rings saves my exact execution position after every completed run so nothing is lost on interruption | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-047 | Atomic State Writes | rings writes state atomically so a crash mid-write can't leave me with a corrupted position file | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-048 | Resumable Runs | I can press Ctrl+C to stop a workflow and later resume from exactly where it left off (requires F-046) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
-| F-049 | Resume State Recovery | If my state file is corrupted, rings can reconstruct my position from audit logs (requires F-046, F-068) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-049 | Resume State Recovery | If my state file is corrupted, rings can reconstruct my position from audit logs (requires F-046, F-068) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-050 | Workflow File Change Detection | rings refuses to resume if I've made structural changes to the workflow since the last run, protecting me from mismatched state | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-051 | SIGINT Handling | Pressing Ctrl+C gracefully saves state and prints a resume command before exiting (requires F-046) | COMPLETE | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-052 | SIGTERM Handling | rings treats SIGTERM like Ctrl+C so process managers can stop it cleanly (requires F-051) | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
@@ -102,21 +102,21 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-055 | Context Directory Lock | rings prevents two instances from running against the same context_dir at the same time | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-056 | Stale Lock Detection | rings automatically removes a lock from a process that is no longer running (requires F-055) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-057 | Cross-Machine Resume Limitation | rings documents that resume requires the workflow file at the same absolute path; `--parent-run` is available for cross-machine linking | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
-| F-058 | Parent Run ID | rings records which run was the parent when I resume or use `--parent-run`, building an ancestry chain | PRIORITIZED | [run-ancestry.md](state/run-ancestry.md) |
-| F-059 | Ancestry Depth Tracking | rings tracks how many resumptions deep a run is (requires F-058) | PRIORITIZED | [run-ancestry.md](state/run-ancestry.md) |
-| F-060 | Continuation Linking | I can use `--parent-run` to link a fresh run to a prior one without resuming its saved state (requires F-058) | PRIORITIZED | [run-ancestry.md](state/run-ancestry.md) |
+| F-058 | Parent Run ID | rings records which run was the parent when I resume or use `--parent-run`, building an ancestry chain | COMPLETE | [run-ancestry.md](state/run-ancestry.md) |
+| F-059 | Ancestry Depth Tracking | rings tracks how many resumptions deep a run is (requires F-058) | COMPLETE | [run-ancestry.md](state/run-ancestry.md) |
+| F-060 | Continuation Linking | I can use `--parent-run` to link a fresh run to a prior one without resuming its saved state (requires F-058) | COMPLETE | [run-ancestry.md](state/run-ancestry.md) |
 
 ## Configuration
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-061 | User Config File | I can set personal defaults in `~/.config/rings/config.toml` that apply to all my workflows | PRIORITIZED | [configuration.md](state/configuration.md) |
-| F-062 | Project Config File | I can check a `.rings-config.toml` into my project to share team-level defaults | PRIORITIZED | [configuration.md](state/configuration.md) |
-| F-063 | Config Precedence | I always know which value wins: CLI flags beat env vars beat workflow TOML beat project config beat user config | PRIORITIZED | [configuration.md](state/configuration.md) |
-| F-064 | XDG Base Directory | rings follows XDG so my config and data land in standard locations alongside my other tools | PRIORITIZED | [configuration.md](state/configuration.md) |
-| F-065 | Default Output Directory | I can set a global default for where all run output is written instead of specifying it every time (requires F-061) | PRIORITIZED | [configuration.md](state/configuration.md) |
+| F-061 | User Config File | I can set personal defaults in `~/.config/rings/config.toml` that apply to all my workflows | COMPLETE | [configuration.md](state/configuration.md) |
+| F-062 | Project Config File | I can check a `.rings-config.toml` into my project to share team-level defaults | COMPLETE | [configuration.md](state/configuration.md) |
+| F-063 | Config Precedence | I always know which value wins: CLI flags beat env vars beat workflow TOML beat project config beat user config | COMPLETE | [configuration.md](state/configuration.md) |
+| F-064 | XDG Base Directory | rings follows XDG so my config and data land in standard locations alongside my other tools | COMPLETE | [configuration.md](state/configuration.md) |
+| F-065 | Default Output Directory | I can set a global default for where all run output is written instead of specifying it every time (requires F-061) | COMPLETE | [configuration.md](state/configuration.md) |
 | F-066 | Default Executor Config | I can define executor defaults in my workflow TOML that apply to all phases unless overridden | PRIORITIZED | [configuration.md](state/configuration.md) |
-| F-067 | Config File Trust Warning | rings warns me when it loads a `.rings-config.toml` from the current directory in case I ran rings somewhere unexpected (requires F-062) | PRIORITIZED | [configuration.md](state/configuration.md) |
+| F-067 | Config File Trust Warning | rings warns me when it loads a `.rings-config.toml` from the current directory in case I ran rings somewhere unexpected (requires F-062) | COMPLETE | [configuration.md](state/configuration.md) |
 
 ## CLI Commands
 
@@ -127,7 +127,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-070 | `rings list` | I can see all recent runs with their status and total cost in a summary table | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-071 | `rings show` | I can get a single-screen summary of any past run by its ID | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-072 | `rings inspect` | I can deeply inspect any run with multiple views: summary, cycles, files, costs, and raw output | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
-| F-073 | `rings lineage` | I can see the full chain of parent/child runs that led to any given run ID (requires F-058) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
+| F-073 | `rings lineage` | I can see the full chain of parent/child runs that led to any given run ID (requires F-058) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 | F-074 | `rings cleanup` | I can remove old run data to free disk space | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-075 | `rings completions` | I can generate shell completion scripts for bash, zsh, or fish with `rings completions <shell>` | PRIORITIZED | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 
@@ -137,7 +137,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 |---|---------|---------|--------|------|
 | F-076 | `--max-cycles` | I can override the workflow's max_cycles for a single run without editing the file | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-077 | `--output-dir` | I can redirect this run's output to a specific directory | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-078 | `--include-dir` | I can inject additional file-listing context into prompts for this run (requires F-025) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-078 | `--include-dir` | I can inject additional file-listing context into prompts for this run (requires F-025) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-079 | `--delay` | I can set or override the between-run delay for this run without editing the workflow file (requires F-041) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-080 | `--cycle-delay` | I can set or override the between-cycle delay for this run without editing the workflow file (requires F-042) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-081 | `--dry-run` | I can preview the full execution plan — phases, prompts, delays — without any Claude calls | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
@@ -152,7 +152,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-090 | `--parent-run` | I can explicitly link this run to a prior one for ancestry tracking without resuming its state (requires F-058) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-091 | `--force-lock` | I can override the context_dir lock check when I know the previous process is truly gone (requires F-055) | PRIORITIZED | [cancellation-resume.md](state/cancellation-resume.md) |
 | F-092 | `--no-completion-check` | I can suppress the startup warning about missing completion signals in prompts (requires F-011) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
-| F-093 | `--no-contract-check` | I can suppress phase contract violation warnings for a run (requires F-014, F-015) | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-093 | `--no-contract-check` | I can suppress phase contract violation warnings for a run (requires F-014, F-015) | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-094 | `--no-color` | I can disable colored terminal output | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-095 | `--output-format` | I can switch between human-readable and JSONL output for the same run | PLANNED | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-096 | `--no-sensitive-files-check` | I can suppress the warning about credential files in context_dir when I know they're intentionally there | COMPLETE | [engine.md](execution/engine.md) |
@@ -161,12 +161,12 @@ Summaries are written from the user's perspective. Features with dependencies no
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-097 | Summary View | I can see a one-screen overview of a run: total cycles, cost, and files changed (requires F-072) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
+| F-097 | Summary View | I can see a one-screen overview of a run: total cycles, cost, and files changed (requires F-072) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 | F-098 | Cycles View | I can drill into a per-cycle breakdown showing each run's status and whether the completion signal fired (requires F-072) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 | F-099 | Files Changed View | I can see exactly which files changed in each run, attributed by phase and cycle (requires F-072, F-117) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
 | F-100 | Data Flow View | I can see declared vs. actual file inputs and outputs for each phase (requires F-072, F-014, F-015, F-117) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
-| F-101 | Costs View | I can see a detailed cost and token breakdown for every individual run (requires F-072, F-030) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
-| F-102 | Claude Output View | I can read the raw stdout/stderr from any executor invocation inside `rings inspect` (requires F-072, F-106) | PRIORITIZED | [inspect-command.md](cli/inspect-command.md) |
+| F-101 | Costs View | I can see a detailed cost and token breakdown for every individual run (requires F-072, F-030) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
+| F-102 | Claude Output View | I can read the raw stdout/stderr from any executor invocation inside `rings inspect` (requires F-072, F-106) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 
 ## Observability & Audit Logs
 
@@ -304,13 +304,13 @@ Summaries are written from the user's perspective. Features with dependencies no
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-181 | Per-Phase Model Selection via `executor.extra_args` | I can set `executor.extra_args` on any phase to append flags (e.g. `--model claude-haiku-4-5`) to the inherited executor args, so I can route cheap phases to smaller models without re-specifying all base flags | PRIORITIZED | [executor-integration.md](execution/executor-integration.md) |
+| F-181 | Per-Phase Model Selection via `executor.extra_args` | I can set `executor.extra_args` on any phase to append flags (e.g. `--model claude-haiku-4-5`) to the inherited executor args, so I can route cheap phases to smaller models without re-specifying all base flags | COMPLETE | [executor-integration.md](execution/executor-integration.md) |
 
 ## Workflow Scaffolding
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-182 | `rings init` | I can scaffold a new, immediately runnable workflow TOML file with `rings init [NAME]` so I don't have to write boilerplate by hand | PRIORITIZED | [commands-and-flags.md](cli/commands-and-flags.md) |
+| F-182 | `rings init` | I can scaffold a new, immediately runnable workflow TOML file with `rings init [NAME]` so I don't have to write boilerplate by hand | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 
 ## Self-Update
 

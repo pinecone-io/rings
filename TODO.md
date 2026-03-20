@@ -23,37 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-073: `rings lineage` — Ancestry Chain Display
-
-**Spec:** `specs/cli/inspect-command.md` (rings lineage section)
-
-**Summary:** `rings lineage <RUN_ID>` traverses the ancestry chain (parent_run_id links) and displays the full history of related runs with aggregate totals. Currently a stub.
-
-### Task 1: Implement lineage traversal and display
-
-**Files:** `src/main.rs`, `src/list.rs` (or new `src/lineage.rs`)
-
-**Steps:**
-- [x] In `cmd_lineage`, replace the stub with real implementation:
-  1. Load `run.toml` for the given run ID
-  2. Walk backwards via `parent_run_id` / `continuation_of` to find the root run
-  3. Walk forwards from root: scan all run directories for runs whose `parent_run_id` or `continuation_of` matches each chain member
-  4. For each run in the chain, load status, cycles, cost from `run.toml` and `state.json`
-- [x] Display the chain as a numbered table (see spec for format): `#, RUN_ID, DATE, STATUS, CYCLES, COST` with relationship indicators
-- [x] Show chain totals at bottom: total wall time, total cycles, total runs, total cost
-- [x] In JSONL mode: emit one JSON object per run, then a `chain_summary` object
-- [x] Handle broken chains gracefully (missing parent run directory → show "parent not found" and stop traversal)
-
-**Tests:**
-- [x] Single run with no parent shows just itself
-- [x] Chain of 3 runs (root → resumed → resumed) displays all 3 with correct relationships
-- [x] Chain totals sum correctly across all runs
-- [x] Broken chain (missing parent dir) shows partial chain with warning
-- [x] JSONL mode emits correct structured output
-- [x] `just validate` clean
-
----
-
 ## F-061/F-062: User and Project Config Files
 
 **Spec:** `specs/state/configuration.md`
@@ -65,25 +34,25 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/config.rs` (new), `src/main.rs`, `src/lib.rs`
 
 **Steps:**
-- [ ] Create `src/config.rs` with a `RingsConfig` struct containing optional fields for all configurable defaults:
+- [x] Create `src/config.rs` with a `RingsConfig` struct containing optional fields for all configurable defaults:
   - `default_output_dir: Option<String>`
   - `color: Option<bool>`
   - Additional fields can be added later
-- [ ] Implement `RingsConfig::load() -> Result<RingsConfig>` that:
+- [x] Implement `RingsConfig::load() -> Result<RingsConfig>` that:
   1. Checks for `.rings-config.toml` in the current directory
   2. Checks for `~/.config/rings/config.toml` (or `$XDG_CONFIG_HOME/rings/config.toml`)
   3. First found wins (project config takes precedence over user config)
   4. If neither exists, return empty defaults
-- [ ] Register `pub mod config;` in `src/lib.rs`
-- [ ] In `main.rs`, load config early and apply defaults before CLI flag processing
+- [x] Register `pub mod config;` in `src/lib.rs`
+- [x] In `main.rs`, load config early and apply defaults before CLI flag processing
 
 **Tests:**
-- [ ] `.rings-config.toml` in current dir is loaded
-- [ ] `~/.config/rings/config.toml` is loaded when no project config exists
-- [ ] Project config takes precedence over user config
-- [ ] Missing both config files returns empty defaults (no error)
-- [ ] Invalid TOML in config file produces clear error
-- [ ] `just validate` clean
+- [x] `.rings-config.toml` in current dir is loaded
+- [x] `~/.config/rings/config.toml` is loaded when no project config exists
+- [x] Project config takes precedence over user config
+- [x] Missing both config files returns empty defaults (no error)
+- [x] Invalid TOML in config file produces clear error
+- [x] `just validate` clean
 
 ---
 

@@ -34,15 +34,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/cost.rs`
 
 **Steps:**
-- [ ] After parsing `cost_usd` at line 238, apply the same `is_valid_cost()` check used in the built-in paths
-- [ ] If the parsed value fails validation (negative, NaN, Infinity): set `cost_usd = None` and `confidence = ParseConfidence::None`, same as the built-in parser behavior
-- [ ] Reuse the existing `validated_cost()` helper or call `is_valid_cost()` directly
+- [x] After parsing `cost_usd` at line 238, apply the same `is_valid_cost()` check used in the built-in paths
+- [x] If the parsed value fails validation (negative, NaN, Infinity): set `cost_usd = None` and `confidence = ParseConfidence::None`, same as the built-in parser behavior
+- [x] Reuse the existing `validated_cost()` helper or call `is_valid_cost()` directly
 
 **Tests:**
-- [ ] Custom parser matching `"-5.00"` returns `confidence: None`, `cost_usd: None`
-- [ ] Custom parser matching `"NaN"` returns `confidence: None`, `cost_usd: None`
-- [ ] Custom parser matching `"1.23"` (valid) still works normally
-- [ ] `just validate` clean
+- [x] Custom parser matching `"-5.00"` returns `confidence: None`, `cost_usd: None`
+- [x] Custom parser matching `"NaN"` returns `confidence: None`, `cost_usd: None`
+- [x] Custom parser matching `"1.23"` (valid) still works normally
+- [x] `just validate` clean
 
 ---
 
@@ -51,27 +51,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Spec:** `specs/cli/inspect-command.md`
 
 **Summary:** Implement the three most useful inspect views. `--show summary` is already done (F-071). Add `--show cycles` (per-cycle breakdown) and `--show costs` (detailed per-run cost/token table).
-
-### Task 1: Implement `--show cycles` view
-
-**Files:** `src/inspect.rs`, `src/main.rs`
-
-**Steps:**
-- [x] In `inspect_inner`, handle `InspectView::Cycles`:
-  1. Read `costs.jsonl` → group entries by cycle number
-  2. For each cycle, show: cycle number, runs in that cycle (phase name, cost, duration, completion signal status)
-  3. Show cycle subtotal cost
-- [x] Support `--cycle <N>` filter to show only a specific cycle
-- [x] In JSONL mode, emit one JSON object per cycle
-
-**Tests:**
-- [x] `rings inspect <id> --show cycles` displays per-cycle breakdown
-- [x] `--cycle 2` filters to only cycle 2
-- [x] Cycles with no cost data show "—" for cost
-- [x] JSONL mode emits structured cycle data
-- [x] `just validate` clean
-
----
 
 ### Task 2: Implement `--show costs` view
 

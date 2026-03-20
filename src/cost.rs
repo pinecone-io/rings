@@ -234,8 +234,11 @@ pub fn parse_cost_from_output_with_profile(output: &str, parser: &CompiledCostPa
             let parse_tokens = |s: &str| -> Option<u64> { s.replace(',', "").parse().ok() };
 
             if let Some(caps) = re.captures(output) {
-                let cost_usd: Option<f64> =
+                let parsed_cost: Option<f64> =
                     caps.name("cost_usd").and_then(|m| m.as_str().parse().ok());
+                // Apply the same validation used by the built-in parser: reject
+                // negative, NaN, and infinite values.
+                let cost_usd = parsed_cost.filter(|&v| is_valid_cost(v));
                 let input_tokens = caps
                     .name("input_tokens")
                     .and_then(|m| parse_tokens(m.as_str()));
@@ -407,6 +410,33 @@ mod tests {
         );
         assert_eq!(result.cost_usd, Some(0.75));
         assert_eq!(result.confidence, ParseConfidence::Full);
+    }
+
+    #[test]
+    fn custom_parser_negative_cost_rejected() {
+        let re = regex::Regex::new(r"Total: \$(?P<cost_usd>[-\d.]+)").unwrap();
+        let parser = CompiledCostParser::Custom(re);
+        let result = parse_cost_from_output_with_profile("Total: $-5.00", &parser);
+        assert_eq!(result.cost_usd, None);
+        assert_eq!(result.confidence, ParseConfidence::None);
+    }
+
+    #[test]
+    fn custom_parser_nan_cost_rejected() {
+        let re = regex::Regex::new(r"Total: (?P<cost_usd>\S+)").unwrap();
+        let parser = CompiledCostParser::Custom(re);
+        let result = parse_cost_from_output_with_profile("Total: NaN", &parser);
+        assert_eq!(result.cost_usd, None);
+        assert_eq!(result.confidence, ParseConfidence::None);
+    }
+
+    #[test]
+    fn custom_parser_valid_cost_still_works() {
+        let re = regex::Regex::new(r"Total: \$(?P<cost_usd>[-\d.]+)").unwrap();
+        let parser = CompiledCostParser::Custom(re);
+        let result = parse_cost_from_output_with_profile("Total: $1.23", &parser);
+        assert_eq!(result.cost_usd, Some(1.23));
+        assert_eq!(result.confidence, ParseConfidence::Partial);
     }
 
     #[test]

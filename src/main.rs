@@ -74,12 +74,13 @@ fn main() {
 }
 
 fn cmd_run(args: cli::RunArgs, cancel: Arc<CancelState>, output_format: cli::OutputFormat) -> i32 {
-    match run_inner(args, cancel, output_format) {
+    let mut run_id: Option<String> = None;
+    match run_inner(args, cancel, output_format, &mut run_id) {
         Ok(code) => code,
         Err(e) => {
             if output_format == cli::OutputFormat::Jsonl {
                 rings::events::emit_jsonl(&rings::events::FatalErrorEvent::new(
-                    None,
+                    run_id,
                     format!("{e:#}"),
                 ));
             }
@@ -93,6 +94,7 @@ fn run_inner(
     args: cli::RunArgs,
     cancel: Arc<CancelState>,
     output_format: cli::OutputFormat,
+    run_id_out: &mut Option<String>,
 ) -> Result<i32> {
     // Conflict check: --step is incompatible with --output-format jsonl
     if args.step && output_format == cli::OutputFormat::Jsonl {
@@ -252,6 +254,7 @@ fn run_inner(
     let output_base =
         resolve_output_dir(args.output_dir.as_deref(), workflow.output_dir.as_deref());
     let run_id = generate_run_id();
+    *run_id_out = Some(run_id.clone());
     let run_dir = output_base.join(&run_id);
     std::fs::create_dir_all(&run_dir)
         .with_context(|| format!("Cannot create output directory: {}", run_dir.display()))?;
@@ -539,12 +542,13 @@ fn cmd_resume(
     cancel: Arc<CancelState>,
     output_format: cli::OutputFormat,
 ) -> i32 {
-    match resume_inner(args, cancel, output_format) {
+    let mut run_id: Option<String> = None;
+    match resume_inner(args, cancel, output_format, &mut run_id) {
         Ok(code) => code,
         Err(e) => {
             if output_format == cli::OutputFormat::Jsonl {
                 rings::events::emit_jsonl(&rings::events::FatalErrorEvent::new(
-                    None,
+                    run_id,
                     format!("{e:#}"),
                 ));
             }
@@ -558,6 +562,7 @@ fn resume_inner(
     args: cli::ResumeArgs,
     cancel: Arc<CancelState>,
     output_format: cli::OutputFormat,
+    run_id_out: &mut Option<String>,
 ) -> Result<i32> {
     // Find old run directory to resume from
     let output_base = resolve_output_dir(args.output_dir.as_deref(), None);
@@ -595,6 +600,7 @@ fn resume_inner(
 
     // Generate a new run_id for the resumed run (implements Option A: new run directory on resume)
     let new_run_id = generate_run_id();
+    *run_id_out = Some(new_run_id.clone());
     let run_dir = output_base.join(&new_run_id);
     let meta_path = run_dir.join("run.toml");
 

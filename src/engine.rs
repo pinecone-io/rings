@@ -1132,7 +1132,15 @@ pub fn run_workflow(
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
                     Err(e) => {
-                        // Error waiting for process
+                        // Error waiting for process; emit summary to uphold the JSONL
+                        // start/summary pairing contract before propagating.
+                        emit_summary_if_jsonl(
+                            config,
+                            &ctx,
+                            &workflow.phases,
+                            "executor_error",
+                            workflow_start,
+                        );
                         return Err(e);
                     }
                 }

@@ -456,6 +456,52 @@ impl RunHandle for SlowMockRunHandle {
     }
 }
 
+// ─── ErrorMockRunHandle (test-only) ─────────────────────────────────────────
+
+/// Mock handle whose `try_wait()` always returns an I/O error.
+/// Used to test the engine's handling of executor wait errors.
+#[cfg(feature = "testing")]
+pub struct ErrorMockRunHandle;
+
+#[cfg(feature = "testing")]
+impl RunHandle for ErrorMockRunHandle {
+    fn wait(&mut self) -> Result<ExecutorOutput> {
+        Err(anyhow::anyhow!("simulated OS process poll failure"))
+    }
+
+    fn try_wait(&mut self) -> Result<Option<ExecutorOutput>> {
+        Err(anyhow::anyhow!("simulated OS process poll failure"))
+    }
+
+    fn pid(&self) -> u32 {
+        0
+    }
+
+    fn send_sigterm(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn send_sigkill(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn partial_output(&self) -> Result<String> {
+        Ok(String::new())
+    }
+}
+
+/// Mock executor that always produces a `try_wait` error.
+/// Used to test that the engine emits a `SummaryEvent` before propagating the error.
+#[cfg(feature = "testing")]
+pub struct ErrorMockExecutor;
+
+#[cfg(feature = "testing")]
+impl Executor for ErrorMockExecutor {
+    fn spawn(&self, _invocation: &Invocation, _verbose: bool) -> Result<Box<dyn RunHandle>> {
+        Ok(Box::new(ErrorMockRunHandle))
+    }
+}
+
 // ─── MockExecutor (test-only) ──────────────────────────────────────────────
 
 /// Test-only executor: returns pre-configured outputs in sequence.

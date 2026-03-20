@@ -10,47 +10,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 **Summary:** Every push to `main` currently triggers a full build+release pipeline, creating a version-bump commit (`chore: bump version to vX.Y.Z [skip ci]`) on every code push. This pollutes the git history with mechanical commits. Instead, split CI into two workflows: a push-triggered check-only workflow and a cron-triggered release workflow that wakes up hourly, compares the latest release tag to `HEAD`, and only bumps/builds/releases if there are unreleased code changes.
 
-### Task 1: Split `ci.yml` into check-only and release workflows
-
-**Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml` (new)
-
-**Steps:**
-- [x] Strip the `changes`, `bump`, `build`, and `release` jobs from `ci.yml`, leaving only the `check` job
-- [x] Remove the `workflow_dispatch` trigger from `ci.yml` (it's only useful for manual releases)
-- [x] Create `.github/workflows/release.yml` containing the `changes`, `bump`, `build`, and `release` jobs (copied from current `ci.yml`)
-- [x] In `release.yml`, add a `check` job as the first step (same as current `ci.yml` check job) so releases are never built from code that doesn't pass CI
-
-### Task 2: Configure cron + workflow_dispatch triggers on `release.yml`
-
-**Files:** `.github/workflows/release.yml`
-
-**Steps:**
-- [x] Set triggers to `schedule: [{cron: '0 * * * *'}]` (every hour on the hour) and `workflow_dispatch`
-- [x] Do not include `push` or `pull_request` triggers
-- [x] Confirm that `[skip ci]` in bump commits only suppresses `push`-triggered runs, not `schedule`-triggered ones (this is the documented GitHub Actions behavior)
-
-### Task 3: Replace change detection with tag-based diff
-
-**Files:** `.github/workflows/release.yml`
-
-**Steps:**
-- [x] In the `changes` job, replace `fetch-depth: 2` with `fetch-depth: 0` so all tags and history are available
-- [x] Replace the `HEAD~1` vs `HEAD` diff with a tag-based comparison:
-  1. Find the latest `v*` tag: `LATEST_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo '')`
-  2. If no tag exists, set `should_release=true` (first release)
-  3. If a tag exists, diff `$LATEST_TAG..HEAD` and filter out docs-only changes (same grep pattern as current)
-  4. If code changes exist between the tag and HEAD, set `should_release=true`; otherwise `should_release=false`
-- [x] Keep the `workflow_dispatch` override that always sets `should_release=true`
-
-### Task 4: Clean up `ci.yml`
-
-**Files:** `.github/workflows/ci.yml`
-
-**Steps:**
-- [x] Remove the `if: github.ref == 'refs/heads/main'` condition that was only relevant for gating release jobs
-- [x] Verify the `check` job still runs on both `push` and `pull_request` to `main`
-- [x] Verify no leftover `needs:` references to removed jobs
-
 ### Task 5: Test the new workflow split
 
 **Steps:**
@@ -73,14 +32,14 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] At line 1122-1124 in `engine.rs`, before returning `Err(e)`, emit a `SummaryEvent` via `emit_summary_if_jsonl` with status `"executor_error"` and the current run context
-- [ ] Alternatively, catch the error in `run_workflow`, emit the summary, then re-return the error
-- [ ] In `main.rs` lines 77-86 (cmd_run error handler) and lines 540-551 (cmd_resume error handler): pass the `run_id` to `FatalErrorEvent::new(Some(run_id), ...)` instead of `None` — this requires extracting and storing the run_id before calling `run_workflow`
+- [x] At line 1122-1124 in `engine.rs`, before returning `Err(e)`, emit a `SummaryEvent` via `emit_summary_if_jsonl` with status `"executor_error"` and the current run context
+- [x] Alternatively, catch the error in `run_workflow`, emit the summary, then re-return the error
+- [x] In `main.rs` lines 77-86 (cmd_run error handler) and lines 540-551 (cmd_resume error handler): pass the `run_id` to `FatalErrorEvent::new(Some(run_id), ...)` instead of `None` — this requires extracting and storing the run_id before calling `run_workflow`
 
 **Tests:**
-- [ ] A mock executor whose `try_wait()` returns `Err`: verify JSONL output contains both `StartEvent` and `SummaryEvent`
-- [ ] Verify `FatalErrorEvent` includes the correct `run_id` (not null)
-- [ ] `just validate` clean
+- [x] A mock executor whose `try_wait()` returns `Err`: verify JSONL output contains both `StartEvent` and `SummaryEvent`
+- [x] Verify `FatalErrorEvent` includes the correct `run_id` (not null)
+- [x] `just validate` clean
 
 ---
 

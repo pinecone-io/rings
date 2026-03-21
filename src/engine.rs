@@ -14,7 +14,10 @@ use crate::cost::parse_cost_from_output_with_profile;
 use crate::executor::{
     extract_response_text, ClaudeExecutor, ConfigurableExecutor, Executor, Invocation,
 };
-use crate::manifest::{compute_manifest, diff_manifests, read_manifest_gz, write_manifest_gz};
+use crate::manifest::{
+    compute_manifest, copy_snapshot, diff_manifests, format_snapshot_size, read_manifest_gz,
+    write_manifest_gz,
+};
 use crate::state::{FailureReason, StateFile};
 use crate::template::{render_prompt, TemplateVars};
 use crate::workflow::CompletionSignalMode;
@@ -742,6 +745,28 @@ pub fn run_workflow(
         }
     }
 
+    // Capture before-snapshot if enabled and this is not a resume.
+    if workflow.snapshot_cycles && resume_from.is_none() {
+        let snapshot_dir = config.output_dir.join("snapshots").join("cycle-000-before");
+        match copy_snapshot(
+            &PathBuf::from(&workflow.context_dir),
+            &config.output_dir,
+            &snapshot_dir,
+            &workflow.manifest_ignore,
+        ) {
+            Ok(bytes) => {
+                if config.output_format == crate::cli::OutputFormat::Human {
+                    println!(
+                        "📸  Snapshot saved: {} ({})",
+                        snapshot_dir.display(),
+                        format_snapshot_size(bytes)
+                    );
+                }
+            }
+            Err(e) => eprintln!("⚠  Failed to create before-snapshot: {}", e),
+        }
+    }
+
     // Restore cumulative cost from resume point if provided.
     if let Some(ref _r) = resume_from {
         // Reconstruct cumulative_cost and token totals from costs.jsonl.
@@ -930,6 +955,30 @@ pub fn run_workflow(
                 crate::display::print_cycle_boundary(run_spec.cycle, prev_cost);
                 if verbose_tty {
                     let _ = crate::display::setup_scroll_region();
+                }
+            }
+            // After-snapshot for the completed cycle.
+            if workflow.snapshot_cycles && ctx.current_display_cycle > 0 {
+                let snapshot_dir = config
+                    .output_dir
+                    .join("snapshots")
+                    .join(format!("cycle-{:03}-after", ctx.current_display_cycle));
+                match copy_snapshot(
+                    &PathBuf::from(&workflow.context_dir),
+                    &config.output_dir,
+                    &snapshot_dir,
+                    &workflow.manifest_ignore,
+                ) {
+                    Ok(bytes) => {
+                        if config.output_format == crate::cli::OutputFormat::Human {
+                            println!(
+                                "📸  Snapshot saved: {} ({})",
+                                snapshot_dir.display(),
+                                format_snapshot_size(bytes)
+                            );
+                        }
+                    }
+                    Err(e) => eprintln!("⚠  Failed to create cycle-snapshot: {}", e),
                 }
             }
             cycle_cost = 0.0;
@@ -2331,6 +2380,33 @@ pub fn run_workflow(
                     &config.run_id,
                     run_spec.global_run_number as u64,
                 ));
+            }
+        }
+    }
+
+    // After-snapshot for the last completed cycle.
+    if workflow.snapshot_cycles && ctx.current_display_cycle > 0 {
+        let snapshot_dir = config
+            .output_dir
+            .join("snapshots")
+            .join(format!("cycle-{:03}-after", ctx.current_display_cycle));
+        if !snapshot_dir.exists() {
+            match copy_snapshot(
+                &PathBuf::from(&workflow.context_dir),
+                &config.output_dir,
+                &snapshot_dir,
+                &workflow.manifest_ignore,
+            ) {
+                Ok(bytes) => {
+                    if config.output_format == crate::cli::OutputFormat::Human {
+                        println!(
+                            "📸  Snapshot saved: {} ({})",
+                            snapshot_dir.display(),
+                            format_snapshot_size(bytes)
+                        );
+                    }
+                }
+                Err(e) => eprintln!("⚠  Failed to create cycle-snapshot: {}", e),
             }
         }
     }

@@ -323,6 +323,95 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet> {
     builder.build().context("Failed to build glob set")
 }
 
+/// Copy all eligible files from `context_dir` to `snapshot_dir`, applying the same exclusion
+/// rules as manifests (user ignore patterns + hardcoded credential patterns).
+///
+/// Returns the total number of bytes copied.
+pub fn copy_snapshot(
+    context_dir: &Path,
+    output_dir: &Path,
+    snapshot_dir: &Path,
+    user_patterns: &[String],
+) -> Result<u64> {
+    let context_dir = context_dir
+        .canonicalize()
+        .context("context_dir not found")?;
+    let output_dir_canonical = output_dir
+        .canonicalize()
+        .unwrap_or_else(|_| output_dir.to_path_buf());
+
+    let user_globset = build_glob_set(user_patterns)?;
+    let cred_globset = build_glob_set(
+        &CREDENTIAL_PATTERNS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )?;
+
+    fs::create_dir_all(snapshot_dir).context("Failed to create snapshot directory")?;
+
+    let mut total_bytes: u64 = 0;
+
+    for entry in WalkDir::new(&context_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        if path.is_dir() {
+            continue;
+        }
+
+        if path.is_symlink() && !path.exists() {
+            continue;
+        }
+
+        if is_inside_path(path, &output_dir_canonical) {
+            continue;
+        }
+
+        let rel_path = path
+            .strip_prefix(&context_dir)
+            .context("Failed to compute relative path")?;
+
+        if user_globset.is_match(rel_path) {
+            continue;
+        }
+
+        if cred_globset.is_match(rel_path) {
+            continue;
+        }
+
+        let dest = snapshot_dir.join(rel_path);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).context("Failed to create snapshot subdirectory")?;
+        }
+
+        let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        fs::copy(path, &dest).context("Failed to copy file to snapshot")?;
+        total_bytes += size;
+    }
+
+    Ok(total_bytes)
+}
+
+/// Format a byte count as a human-readable string (e.g. "1.2 MB").
+pub fn format_snapshot_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 /// Check if a path is inside another path.
 fn is_inside_path(path: &Path, parent: &Path) -> bool {
     path.starts_with(parent)
@@ -844,5 +933,125 @@ mod tests {
                 "all files should have computed hashes"
             );
         }
+    }
+
+    #[test]
+    fn test_copy_snapshot_copies_files() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        fs::write(context.join("main.rs"), "fn main() {}").unwrap();
+        fs::write(context.join("lib.rs"), "pub fn foo() {}").unwrap();
+
+        let snapshot_dir = tmpdir.path().join("snap");
+        let total = copy_snapshot(&context, &output, &snapshot_dir, &[]).unwrap();
+
+        assert!(
+            snapshot_dir.join("main.rs").exists(),
+            "main.rs should be copied"
+        );
+        assert!(
+            snapshot_dir.join("lib.rs").exists(),
+            "lib.rs should be copied"
+        );
+        assert!(total > 0, "total bytes should be > 0");
+        assert_eq!(
+            fs::read_to_string(snapshot_dir.join("main.rs")).unwrap(),
+            "fn main() {}"
+        );
+    }
+
+    #[test]
+    fn test_copy_snapshot_excludes_credentials() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        fs::write(context.join("main.rs"), "fn main() {}").unwrap();
+        fs::write(context.join(".env"), "SECRET=xyz").unwrap();
+        fs::write(context.join("id_rsa"), "private key").unwrap();
+        fs::write(context.join("cert.pem"), "cert").unwrap();
+
+        let snapshot_dir = tmpdir.path().join("snap");
+        copy_snapshot(&context, &output, &snapshot_dir, &[]).unwrap();
+
+        assert!(
+            snapshot_dir.join("main.rs").exists(),
+            "main.rs should be copied"
+        );
+        assert!(!snapshot_dir.join(".env").exists(), ".env must be excluded");
+        assert!(
+            !snapshot_dir.join("id_rsa").exists(),
+            "id_rsa must be excluded"
+        );
+        assert!(
+            !snapshot_dir.join("cert.pem").exists(),
+            "cert.pem must be excluded"
+        );
+    }
+
+    #[test]
+    fn test_copy_snapshot_respects_user_ignore_patterns() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        fs::write(context.join("main.rs"), "fn main() {}").unwrap();
+        fs::write(context.join("build.log"), "log content").unwrap();
+
+        let snapshot_dir = tmpdir.path().join("snap");
+        let user_patterns = vec!["**/*.log".to_string()];
+        copy_snapshot(&context, &output, &snapshot_dir, &user_patterns).unwrap();
+
+        assert!(
+            snapshot_dir.join("main.rs").exists(),
+            "main.rs should be copied"
+        );
+        assert!(
+            !snapshot_dir.join("build.log").exists(),
+            "build.log should be excluded"
+        );
+    }
+
+    #[test]
+    fn test_copy_snapshot_excludes_output_dir() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path();
+        let output = context.join("rings-output");
+        fs::create_dir(&output).unwrap();
+
+        fs::write(context.join("main.rs"), "fn main() {}").unwrap();
+        fs::write(output.join("state.json"), "{}").unwrap();
+
+        let snapshot_dir = tmpdir.path().join("snap");
+        copy_snapshot(context, &output, &snapshot_dir, &[]).unwrap();
+
+        assert!(
+            snapshot_dir.join("main.rs").exists(),
+            "main.rs should be copied"
+        );
+        assert!(
+            !snapshot_dir
+                .join("rings-output")
+                .join("state.json")
+                .exists(),
+            "output dir contents must be excluded"
+        );
+    }
+
+    #[test]
+    fn test_format_snapshot_size() {
+        assert_eq!(format_snapshot_size(0), "0 B");
+        assert_eq!(format_snapshot_size(500), "500 B");
+        assert_eq!(format_snapshot_size(1024), "1.0 KB");
+        assert_eq!(format_snapshot_size(1024 * 1024), "1.0 MB");
+        assert_eq!(format_snapshot_size(1024 * 1024 * 1024), "1.0 GB");
     }
 }

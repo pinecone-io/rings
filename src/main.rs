@@ -25,6 +25,14 @@ use rings::template;
 use rings::workflow;
 
 fn main() {
+    // Handle shell completion requests made via the COMPLETE env var (e.g. `COMPLETE=zsh rings`).
+    // This is a no-op when COMPLETE is not set; when set, it prints a dynamic completion script
+    // that calls back to the binary for custom completers, then exits.
+    {
+        use clap::CommandFactory;
+        clap_complete::CompleteEnv::with_factory(Cli::command).complete();
+    }
+
     // Ignore SIGPIPE so that broken pipe errors (e.g., when piping rings output
     // through `head`) do not cause unexpected crashes.
     #[cfg(unix)]
@@ -4172,6 +4180,96 @@ mod completions_tests {
                 "completions output for {shell:?} is empty"
             );
         }
+    }
+
+    // --- Custom completer tests (F-178) ---
+
+    /// Verify that the workflow file completer returns only .toml files.
+    #[test]
+    fn workflow_file_completer_suggests_toml_files() {
+        use std::ffi::OsStr;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        std::fs::write(dir.join("workflow.rings.toml"), "").unwrap();
+        std::fs::write(dir.join("other.toml"), "").unwrap();
+        std::fs::write(dir.join("not-toml.txt"), "").unwrap();
+        std::fs::write(dir.join("script.sh"), "").unwrap();
+
+        let candidates = rings::cli::complete_toml_files_from_dir(Some(dir), OsStr::new(""));
+        let names: Vec<String> = candidates
+            .iter()
+            .map(|c| c.get_value().to_string_lossy().to_string())
+            .collect();
+
+        assert!(
+            !names.is_empty(),
+            "expected at least one .toml candidate, got none"
+        );
+        for name in &names {
+            assert!(
+                name.ends_with(".toml"),
+                "expected only .toml files, but got: {name}"
+            );
+        }
+        // Both .rings.toml and .toml files should appear
+        assert!(
+            names.iter().any(|n| n.contains("workflow.rings.toml")),
+            "workflow.rings.toml missing from candidates: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n.contains("other.toml")),
+            "other.toml missing from candidates: {names:?}"
+        );
+    }
+
+    /// Verify that the run ID completer lists run directories and filters out non-run entries.
+    #[test]
+    fn run_id_completer_lists_run_ids() {
+        use std::ffi::OsStr;
+        let tmp = tempfile::tempdir().unwrap();
+        let runs_dir = tmp.path().join("runs");
+        std::fs::create_dir_all(runs_dir.join("run_20240315_143022_a1b2c3")).unwrap();
+        std::fs::create_dir_all(runs_dir.join("run_20240316_100000_b2c3d4")).unwrap();
+        std::fs::create_dir_all(runs_dir.join("not-a-run")).unwrap();
+        std::fs::create_dir_all(runs_dir.join("other-dir")).unwrap();
+
+        let candidates = rings::cli::complete_run_ids_from_dir(&runs_dir, OsStr::new(""));
+        let names: Vec<String> = candidates
+            .iter()
+            .map(|c| c.get_value().to_string_lossy().to_string())
+            .collect();
+
+        assert!(
+            names.contains(&"run_20240315_143022_a1b2c3".to_string()),
+            "run_20240315_143022_a1b2c3 missing from candidates: {names:?}"
+        );
+        assert!(
+            names.contains(&"run_20240316_100000_b2c3d4".to_string()),
+            "run_20240316_100000_b2c3d4 missing from candidates: {names:?}"
+        );
+        assert!(
+            !names.contains(&"not-a-run".to_string()),
+            "non-run dir 'not-a-run' should not appear in candidates: {names:?}"
+        );
+    }
+
+    /// Verify that the run ID completer filters by the current partial input prefix.
+    #[test]
+    fn run_id_completer_filters_by_prefix() {
+        use std::ffi::OsStr;
+        let tmp = tempfile::tempdir().unwrap();
+        let runs_dir = tmp.path().join("runs");
+        std::fs::create_dir_all(runs_dir.join("run_20240315_143022_a1b2c3")).unwrap();
+        std::fs::create_dir_all(runs_dir.join("run_20240316_100000_b2c3d4")).unwrap();
+
+        let candidates =
+            rings::cli::complete_run_ids_from_dir(&runs_dir, OsStr::new("run_20240315"));
+        let names: Vec<String> = candidates
+            .iter()
+            .map(|c| c.get_value().to_string_lossy().to_string())
+            .collect();
+
+        assert_eq!(names, vec!["run_20240315_143022_a1b2c3"]);
     }
 
     // --- check_workflow_path_mismatch tests (F-057) ---

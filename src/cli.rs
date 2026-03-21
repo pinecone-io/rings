@@ -1,6 +1,60 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap_complete::engine::{
+    ArgValueCompleter, CompletionCandidate, PathCompleter, ValueCompleter,
+};
 pub use clap_complete::Shell;
+use std::ffi::OsStr;
 use std::str::FromStr;
+
+/// Complete `.toml` and `.rings.toml` files relative to the current directory.
+pub fn complete_toml_files(current: &OsStr) -> Vec<CompletionCandidate> {
+    complete_toml_files_from_dir(None, current)
+}
+
+/// Like [`complete_toml_files`] but searches `dir` instead of the process current directory.
+/// Used by tests to avoid mutating the process working directory.
+pub fn complete_toml_files_from_dir(
+    dir: Option<&std::path::Path>,
+    current: &OsStr,
+) -> Vec<CompletionCandidate> {
+    let mut completer = PathCompleter::file().filter(|p| {
+        p.extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+    });
+    if let Some(d) = dir {
+        completer = completer.current_dir(d);
+    }
+    completer.complete(current)
+}
+
+/// Complete run IDs from the default rings output directory.
+pub fn complete_run_ids(current: &OsStr) -> Vec<CompletionCandidate> {
+    let output_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("rings")
+        .join("runs");
+    complete_run_ids_from_dir(&output_dir, current)
+}
+
+/// Like [`complete_run_ids`] but searches `dir` instead of the default output directory.
+/// Used by tests to supply a controlled directory.
+pub fn complete_run_ids_from_dir(
+    dir: &std::path::Path,
+    current: &OsStr,
+) -> Vec<CompletionCandidate> {
+    let current_str = current.to_str().unwrap_or("");
+    let mut candidates = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("run_") && name_str.starts_with(current_str) {
+                candidates.push(CompletionCandidate::new(name_str.as_ref()));
+            }
+        }
+    }
+    candidates
+}
 
 fn validate_run_id(s: &str) -> Result<String, String> {
     if s.starts_with("run_") {
@@ -93,6 +147,7 @@ pub enum Command {
 #[derive(Args, Debug)]
 pub struct RunArgs {
     /// Path to the workflow TOML file
+    #[arg(add = ArgValueCompleter::new(complete_toml_files))]
     pub workflow_file: String,
 
     /// Override output directory for this run
@@ -180,6 +235,7 @@ pub struct RunArgs {
 #[derive(Args, Debug)]
 pub struct ResumeArgs {
     /// Run ID to resume (e.g. run_20240315_143022_a1b2c3)
+    #[arg(add = ArgValueCompleter::new(complete_run_ids))]
     pub run_id: String,
 
     /// Override output directory
@@ -241,6 +297,7 @@ pub struct ListArgs {
 #[derive(Args, Debug)]
 pub struct ShowArgs {
     /// Run ID to show (e.g. run_20240315_143022_a1b2c3)
+    #[arg(add = ArgValueCompleter::new(complete_run_ids))]
     pub run_id: String,
 }
 
@@ -269,6 +326,7 @@ pub enum InspectView {
 #[derive(Args, Debug)]
 pub struct InspectArgs {
     /// Run ID to inspect (e.g. run_20240315_143022_a1b2c3)
+    #[arg(add = ArgValueCompleter::new(complete_run_ids))]
     pub run_id: String,
 
     /// Views to display (can be specified multiple times)
@@ -287,6 +345,7 @@ pub struct InspectArgs {
 #[derive(Args, Debug)]
 pub struct LineageArgs {
     /// Run ID to trace ancestry for (e.g. run_20240315_143022_a1b2c3)
+    #[arg(add = ArgValueCompleter::new(complete_run_ids))]
     pub run_id: String,
 
     /// Show descendants instead of ancestors

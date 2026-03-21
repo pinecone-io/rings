@@ -23,55 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-057: Cross-Machine Resume Documentation
-
-**Spec:** `specs/state/cancellation-resume.md`
-
-**Summary:** Document that resume requires the workflow file at the same absolute path. When paths don't match, print a clear error suggesting `--parent-run` for cross-machine linking.
-
-### Task 1: Add path mismatch check on resume
-
-**Files:** `src/main.rs` (in `resume_inner`)
-
-**Steps:**
-- [x] On resume, compare the current workflow file's absolute path against the path stored in `run.toml`
-- [x] If paths differ, print a warning (not error): `⚠  Workflow file path has changed:\n   Saved: {old_path}\n   Current: {new_path}\n   This may cause issues if the workflow structure has also changed.`
-- [x] The phase fingerprint check (F-050) already catches structural changes — this is for path-only changes (e.g., moved repo)
-- [x] If the path is different but fingerprint matches, proceed with warning only
-
-**Tests:**
-- [x] Resume with same path: no warning
-- [x] Resume with different path but same fingerprint: warning but proceeds
-- [x] `just validate` clean
-
----
-
-## F-122: Cycle Snapshots
-
-**Spec:** `specs/observability/file-lineage.md`
-
-**Summary:** Copy the entire `context_dir` at each cycle boundary so the user can roll back to any prior cycle. Opt-in via `snapshot_cycles = true` in workflow config.
-
-### Task 1: Add cycle snapshot support
-
-**Files:** `src/workflow.rs`, `src/engine.rs`
-
-**Steps:**
-- [ ] Add `snapshot_cycles: bool` field (with `#[serde(default)]`) to workflow config
-- [ ] At each cycle boundary (after all phases in a cycle complete), if `snapshot_cycles = true`:
-  1. Create directory `{output_dir}/snapshots/cycle-{N}/`
-  2. Copy all files from `context_dir` to the snapshot directory (respecting manifest_ignore patterns)
-- [ ] Print snapshot info: `📸  Snapshot saved: {path} ({size})`
-- [ ] Skip credential files from snapshots (reuse F-120 exclusion patterns)
-
-**Tests:**
-- [ ] `snapshot_cycles = true` creates snapshot directories at cycle boundaries
-- [ ] Snapshot contains all context_dir files except ignored/credential patterns
-- [ ] `snapshot_cycles = false` (default) creates no snapshots
-- [ ] `just validate` clean
-
----
-
 ## F-123: Snapshot Storage Warning
 
 **Spec:** `specs/observability/file-lineage.md`
@@ -83,43 +34,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs` (or `src/engine.rs`)
 
 **Steps:**
-- [ ] When `snapshot_cycles = true`, at startup: compute the total size of context_dir (excluding ignored files)
-- [ ] Estimate total snapshot storage: `size_per_snapshot × max_cycles`
-- [ ] If estimate > 100 MB: print warning `⚠  Cycle snapshots enabled. Estimated storage: {size} ({per_snapshot} × {max_cycles} cycles).\n   Consider reducing max_cycles or using manifest_ignore to exclude large directories.`
-- [ ] On TTY: prompt `Continue? [Y/n]` — on non-TTY: proceed with warning only
+- [x] When `snapshot_cycles = true`, at startup: compute the total size of context_dir (excluding ignored files)
+- [x] Estimate total snapshot storage: `size_per_snapshot × max_cycles`
+- [x] If estimate > 100 MB: print warning `⚠  Cycle snapshots enabled. Estimated storage: {size} ({per_snapshot} × {max_cycles} cycles).\n   Consider reducing max_cycles or using manifest_ignore to exclude large directories.`
+- [x] On TTY: prompt `Continue? [Y/n]` — on non-TTY: proceed with warning only
 
 **Tests:**
-- [ ] Large context_dir with many cycles triggers storage warning
-- [ ] Small context_dir produces no warning
-- [ ] `snapshot_cycles = false` skips the check entirely
-- [ ] `just validate` clean
-
----
-
-## F-124: Manifest Compression
-
-**Spec:** `specs/observability/file-lineage.md`
-
-**Summary:** Store file manifests as gzip-compressed JSON to keep disk usage low. Manifests are written to `manifests/<run-number>-after.json.gz`.
-
-### Task 1: Add gzip compression to manifest storage
-
-**Files:** `src/manifest.rs`
-
-**Steps:**
-- [ ] When writing manifests, use `flate2::write::GzEncoder` to compress the JSON before writing
-- [ ] Add `flate2` to `Cargo.toml` dependencies (with `gzip` feature)
-- [ ] Write to `.json.gz` extension instead of `.json`
-- [ ] When reading manifests (for diff computation, inspect views), detect `.json.gz` and decompress with `flate2::read::GzDecoder`
-- [ ] Handle backwards compatibility: if a `.json` file exists (old format), read it uncompressed
-
-**Tests:**
-- [ ] Written manifest file has `.json.gz` extension
-- [ ] Compressed manifest is valid gzip (can be decompressed with `gunzip`)
-- [ ] Reading compressed manifest produces correct data
-- [ ] Reading old uncompressed `.json` manifest still works
-- [ ] Compressed size is significantly smaller than uncompressed
-- [ ] `just validate` clean
+- [x] Large context_dir with many cycles triggers storage warning
+- [x] Small context_dir produces no warning
+- [x] `snapshot_cycles = false` skips the check entirely
+- [x] `just validate` clean
 
 ---
 

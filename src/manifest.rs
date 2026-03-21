@@ -412,6 +412,71 @@ pub fn format_snapshot_size(bytes: u64) -> String {
     }
 }
 
+/// Estimate the total size of files in `context_dir` applying the same exclusion rules
+/// as manifests (user ignore patterns, credential patterns, and output_dir).
+///
+/// Returns the total size in bytes. Errors reading individual files are silently skipped.
+pub fn estimate_context_dir_size(
+    context_dir: &Path,
+    output_dir: &Path,
+    user_patterns: &[String],
+) -> Result<u64> {
+    let context_dir = context_dir
+        .canonicalize()
+        .context("context_dir not found")?;
+    let output_dir_canonical = output_dir
+        .canonicalize()
+        .unwrap_or_else(|_| output_dir.to_path_buf());
+
+    let user_globset = build_glob_set(user_patterns)?;
+    let cred_globset = build_glob_set(
+        &CREDENTIAL_PATTERNS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )?;
+
+    let mut total_bytes: u64 = 0;
+
+    for entry in WalkDir::new(&context_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        if path.is_dir() {
+            continue;
+        }
+
+        if path.is_symlink() && !path.exists() {
+            continue;
+        }
+
+        if is_inside_path(path, &output_dir_canonical) {
+            continue;
+        }
+
+        let rel_path = match path.strip_prefix(&context_dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        if user_globset.is_match(rel_path) {
+            continue;
+        }
+
+        if cred_globset.is_match(rel_path) {
+            continue;
+        }
+
+        if let Ok(metadata) = fs::metadata(path) {
+            total_bytes += metadata.len();
+        }
+    }
+
+    Ok(total_bytes)
+}
+
 /// Check if a path is inside another path.
 fn is_inside_path(path: &Path, parent: &Path) -> bool {
     path.starts_with(parent)
@@ -1053,5 +1118,72 @@ mod tests {
         assert_eq!(format_snapshot_size(1024), "1.0 KB");
         assert_eq!(format_snapshot_size(1024 * 1024), "1.0 MB");
         assert_eq!(format_snapshot_size(1024 * 1024 * 1024), "1.0 GB");
+    }
+
+    #[test]
+    fn test_estimate_context_dir_size_sums_eligible_files() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir(&output).unwrap();
+
+        // Write files of known sizes
+        fs::write(context.join("a.txt"), "hello").unwrap(); // 5 bytes
+        fs::write(context.join("b.txt"), "world!").unwrap(); // 6 bytes
+
+        let size = estimate_context_dir_size(&context, &output, &[]).unwrap();
+        assert_eq!(size, 11, "should sum all eligible file sizes");
+    }
+
+    #[test]
+    fn test_estimate_context_dir_size_excludes_output_dir() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir_all(&context).unwrap();
+        let output = context.join("output");
+        fs::create_dir_all(&output).unwrap();
+
+        fs::write(context.join("real.txt"), "data").unwrap(); // 4 bytes
+        fs::write(output.join("artifact.txt"), "ignore").unwrap(); // should be excluded
+
+        let size = estimate_context_dir_size(&context, &output, &[]).unwrap();
+        assert_eq!(size, 4, "output dir contents should be excluded");
+    }
+
+    #[test]
+    fn test_estimate_context_dir_size_excludes_user_patterns() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir_all(&context).unwrap();
+        let target = context.join("target");
+        fs::create_dir_all(&target).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir_all(&output).unwrap();
+
+        fs::write(context.join("src.rs"), "rust").unwrap(); // 4 bytes
+        fs::write(target.join("binary"), "big stuff").unwrap(); // should be excluded by pattern
+
+        let size =
+            estimate_context_dir_size(&context, &output, &["**/target/**".to_string()]).unwrap();
+        assert_eq!(size, 4, "user-ignored files should be excluded");
+    }
+
+    #[test]
+    fn test_estimate_context_dir_size_excludes_credential_files() {
+        let tmpdir = TempDir::new().unwrap();
+        let context = tmpdir.path().join("context");
+        fs::create_dir_all(&context).unwrap();
+        let output = tmpdir.path().join("output");
+        fs::create_dir_all(&output).unwrap();
+
+        fs::write(context.join("code.rs"), "fn main() {}").unwrap();
+        fs::write(context.join(".env"), "SECRET=abc").unwrap();
+        fs::write(context.join("id_rsa"), "private key").unwrap();
+
+        let size = estimate_context_dir_size(&context, &output, &[]).unwrap();
+        // Only code.rs should be counted
+        let expected = fs::metadata(context.join("code.rs")).unwrap().len();
+        assert_eq!(size, expected, "credential files should be excluded");
     }
 }

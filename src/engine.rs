@@ -15,8 +15,8 @@ use crate::executor::{
     extract_response_text, ClaudeExecutor, ConfigurableExecutor, Executor, Invocation,
 };
 use crate::manifest::{
-    compute_manifest, copy_snapshot, diff_manifests, format_snapshot_size, read_manifest_gz,
-    write_manifest_gz,
+    compute_manifest, copy_snapshot, diff_manifests, estimate_context_dir_size,
+    format_snapshot_size, read_manifest_gz, write_manifest_gz,
 };
 use crate::state::{FailureReason, StateFile};
 use crate::template::{render_prompt, TemplateVars};
@@ -742,6 +742,48 @@ pub fn run_workflow(
         // Load existing before-manifest for diff computation on resume
         if let Ok(manifest) = read_manifest_gz(&before_manifest_path) {
             current_manifest = Some(manifest);
+        }
+    }
+
+    // Warn if snapshot storage estimate exceeds 100 MB. Only at startup (not on resume).
+    if workflow.snapshot_cycles && resume_from.is_none() {
+        let context_dir_path = PathBuf::from(&workflow.context_dir);
+        if let Ok(per_snapshot_bytes) = estimate_context_dir_size(
+            &context_dir_path,
+            &config.output_dir,
+            &workflow.manifest_ignore,
+        ) {
+            const WARN_THRESHOLD: u64 = 100 * 1024 * 1024; // 100 MB
+            let total_bytes = per_snapshot_bytes.saturating_mul(workflow.max_cycles as u64);
+            if total_bytes > WARN_THRESHOLD {
+                let per_str = format_snapshot_size(per_snapshot_bytes);
+                let total_str = format_snapshot_size(total_bytes);
+                eprintln!(
+                    "⚠  snapshot_cycles is enabled. Estimated storage: {} per cycle × {} cycles = {}.",
+                    per_str, workflow.max_cycles, total_str
+                );
+                eprintln!("   Consider reducing max_cycles or using manifest_ignore to exclude large directories.");
+                use std::io::IsTerminal;
+                if std::io::stdin().is_terminal() {
+                    eprint!("   Continue? [y/N]: ");
+                    let mut line = String::new();
+                    std::io::stdin().read_line(&mut line).ok();
+                    let trimmed = line.trim().to_lowercase();
+                    if trimmed != "y" && trimmed != "yes" {
+                        return Ok(EngineResult {
+                            exit_code: 1,
+                            completed_cycles: 0,
+                            total_cost_usd: 0.0,
+                            total_runs: 0,
+                            total_input_tokens: 0,
+                            total_output_tokens: 0,
+                            parse_warnings: vec![],
+                            failure_reason: None,
+                            phase_costs: vec![],
+                        });
+                    }
+                }
+            }
         }
     }
 

@@ -23,29 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-178: Shell Completions Behavior
-
-**Spec:** `specs/cli/completion-and-manpage.md`
-
-**Summary:** Tab-completion offers `.toml` files for workflow arguments, run IDs for resume/show/inspect arguments, and flag names everywhere. Requires clap_complete's custom completer support.
-
-### Task 1: Add custom completers for arguments
-
-**Files:** `src/cli.rs`, `src/main.rs`
-
-**Steps:**
-- [x] For `<WORKFLOW>` argument in `rings run`: add a custom completer that suggests `.rings.toml` and `.toml` files in the current directory
-- [x] For `<RUN_ID>` arguments in `rings resume`, `rings show`, `rings inspect`, `rings lineage`: add a custom completer that lists run IDs from the output directory
-- [x] Use `clap_complete::engine::ArgValueCompleter` or shell-specific completion scripts
-- [x] Test with `rings completions zsh` and verify completions work in zsh
-
-**Tests:**
-- [x] Generated completion script contains workflow file completion logic
-- [x] Generated completion script contains run ID completion logic
-- [x] `just validate` clean
-
----
-
 ## F-162: OpenTelemetry Opt-In
 
 **Spec:** `specs/observability/opentelemetry.md`
@@ -57,21 +34,21 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/otel.rs` (new), `src/lib.rs`, `src/engine.rs`, `Cargo.toml`
 
 **Steps:**
-- [ ] Add `opentelemetry`, `opentelemetry-otlp`, and `tracing-opentelemetry` to `Cargo.toml` as optional dependencies behind an `otel` feature flag
-- [ ] Create `src/otel.rs` with `init_tracer() -> Result<Option<SdkTracerProvider>>`:
+- [x] Add `opentelemetry`, `opentelemetry-otlp`, and `tracing-opentelemetry` to `Cargo.toml` as optional dependencies behind an `otel` feature flag
+- [x] Create `src/otel.rs` with `init_tracer() -> Result<Option<SdkTracerProvider>>`:
   1. Check `RINGS_OTEL_ENABLED` env var — if not set or "0", return `None` (no-op)
   2. Read `OTEL_EXPORTER_OTLP_ENDPOINT` for collector endpoint (F-170)
   3. Initialize OTLP exporter and tracer provider
   4. If init fails, print warning and continue with no-op tracer (F-169)
-- [ ] Register `pub mod otel;` in `src/lib.rs`
-- [ ] In engine startup: call `init_tracer()`, store the provider for shutdown at exit
-- [ ] On exit: call `provider.shutdown()` to flush remaining spans
+- [x] Register `pub mod otel;` in `src/lib.rs`
+- [x] In engine startup: call `init_tracer()`, store the provider for shutdown at exit
+- [x] On exit: call `provider.shutdown()` to flush remaining spans
 
 **Tests:**
-- [ ] `RINGS_OTEL_ENABLED=0`: no tracer initialized, no overhead
-- [ ] `RINGS_OTEL_ENABLED=1` with no endpoint: warning printed, continues with no-op
-- [ ] Feature flag `otel` controls compilation of dependencies
-- [ ] `just validate` clean (with and without `otel` feature)
+- [x] `RINGS_OTEL_ENABLED=0`: no tracer initialized, no overhead
+- [x] `RINGS_OTEL_ENABLED=1` with no endpoint: warning printed, continues with no-op
+- [x] Feature flag `otel` controls compilation of dependencies
+- [x] `just validate` clean (with and without `otel` feature)
 
 ---
 

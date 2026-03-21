@@ -21,6 +21,7 @@ use rings::list;
 use rings::lock::ContextLock;
 use rings::state;
 use rings::style;
+use rings::telemetry;
 use rings::template;
 use rings::workflow;
 
@@ -80,6 +81,9 @@ fn main() {
         }
     }
 
+    // Initialize OTel tracing (no-op unless RINGS_OTEL_ENABLED=true).
+    let otel_handle = telemetry::init_tracer();
+
     let cfg_output_dir = config.expanded_output_dir();
     let exit_code = match cli.command {
         Command::Run(args) => cmd_run(
@@ -103,6 +107,10 @@ fn main() {
         Command::Update => cmd_update(),
         Command::Cleanup(args) => cmd_cleanup(args, cli.output_format, cfg_output_dir.as_deref()),
     };
+
+    // Flush any buffered OTel spans before exiting.
+    otel_handle.shutdown();
+
     std::process::exit(exit_code);
 }
 

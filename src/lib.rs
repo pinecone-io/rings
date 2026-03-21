@@ -20,6 +20,7 @@ pub mod lock;
 pub mod manifest;
 pub mod state;
 pub mod style;
+pub mod telemetry;
 pub mod template;
 pub mod verbose;
 pub mod workflow;

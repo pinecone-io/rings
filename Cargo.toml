@@ -50,6 +50,12 @@ clap_mangen = "0.2"
 [dev-dependencies]
 clap_mangen = "0.2"
 
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+
 [[test]]
 name = "engine_integration"
 path = "tests/engine_integration.rs"

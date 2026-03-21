@@ -34,16 +34,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `.github/workflows/release.yml`, `Cargo.toml`
 
 **Steps:**
-- [ ] For Linux builds: use `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets for fully static binaries
-- [ ] For macOS: standard builds are already effectively static (no dynamic deps beyond system frameworks)
-- [ ] Add cross-compilation targets to the release workflow matrix
-- [ ] Verify binary has no dynamic library dependencies: `ldd target/release/rings` shows "not a dynamic executable"
-- [ ] Verify binary size is reasonable (< 10 MB target)
+- [x] For Linux builds: use `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets for fully static binaries
+- [x] For macOS: standard builds are already effectively static (no dynamic deps beyond system frameworks)
+- [x] Add cross-compilation targets to the release workflow matrix
+- [x] Verify binary has no dynamic library dependencies: `ldd target/release/rings` shows "not a dynamic executable"
+- [x] Verify binary size is reasonable (< 10 MB target)
 
 **Tests:**
-- [ ] Linux musl binary runs without any shared libraries
-- [ ] macOS binary runs on both Intel and Apple Silicon (if universal)
-- [ ] `just validate` clean on each target
+- [x] Linux musl binary runs without any shared libraries
+- [x] macOS binary runs on both Intel and Apple Silicon (if universal)
+- [x] `just validate` clean on each target
 
 ---
 

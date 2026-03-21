@@ -200,6 +200,20 @@ jobs:
       - name: Rename binary
         run: cp target/${{ matrix.target }}/release/rings ${{ matrix.artifact }}
 
+      - name: Verify no dynamic library dependencies (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          ldd ${{ matrix.artifact }} && echo "ERROR: binary has dynamic dependencies" && exit 1 || echo "OK: not a dynamic executable"
+
+      - name: Verify binary size (< 10 MB)
+        run: |
+          SIZE=$(wc -c < ${{ matrix.artifact }})
+          echo "Binary size: ${SIZE} bytes ($(( SIZE / 1024 / 1024 )) MB)"
+          if [ "$SIZE" -gt $((10 * 1024 * 1024)) ]; then
+            echo "ERROR: binary exceeds 10 MB limit"
+            exit 1
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

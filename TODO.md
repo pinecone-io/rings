@@ -23,29 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-166: OTel Span Links for Resumed Runs
-
-**Spec:** `specs/observability/opentelemetry.md`, `specs/state/run-ancestry.md`
-
-**Summary:** When resuming a run, link the new trace to the parent run's trace so observability tools can navigate the full history across resume boundaries.
-
-### Task 1: Add span links on resume
-
-**Files:** `src/telemetry.rs`, `src/engine.rs`, `src/state.rs`, `src/main.rs`
-
-**Steps:**
-- [x] When a run is resumed (has `parent_run_id` or `continuation_of`), add a span link from the root span to the parent run's trace
-- [x] Store the parent run's trace ID in `run.toml` so it can be referenced
-- [x] If the parent trace ID is not available (old run without OTel), skip the link gracefully
-
-**Tests:**
-- [x] Resumed run's root span has a link to the parent run's trace
-- [x] Fresh run (no parent) has no span links
-- [x] Missing parent trace ID is handled gracefully
-- [x] `just validate` clean
-
----
-
 ## F-167/F-168/F-169/F-170: OTel Metrics, Path Stripping, Init Failure, Endpoint Config
 
 **Spec:** `specs/observability/opentelemetry.md`
@@ -57,15 +34,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/otel.rs`
 
 **Steps:**
-- [ ] When OTel is enabled, create a meter provider alongside the tracer
-- [ ] Emit counters: `rings.runs.total`, `rings.cycles.total`
-- [ ] Emit histograms: `rings.run.cost_usd`, `rings.run.duration_secs`, `rings.run.input_tokens`, `rings.run.output_tokens`
-- [ ] Record metrics after each run completes
+- [x] When OTel is enabled, create a meter provider alongside the tracer
+- [x] Emit counters: `rings.runs.total`, `rings.cycles.total`
+- [x] Emit histograms: `rings.run.cost_usd`, `rings.run.duration_secs`, `rings.run.input_tokens`, `rings.run.output_tokens`
+- [x] Record metrics after each run completes
 
 **Tests:**
-- [ ] Metrics are recorded when OTel is enabled
-- [ ] OTel disabled: no metrics overhead
-- [ ] `just validate` clean
+- [x] Metrics are recorded when OTel is enabled
+- [x] OTel disabled: no metrics overhead
+- [x] `just validate` clean
 
 ---
 
@@ -97,6 +74,99 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Tests:**
 - [ ] Invalid endpoint URL: warning printed, rings continues normally
 - [ ] `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` is used as the endpoint
+- [ ] `just validate` clean
+
+---
+
+## F-173: macOS Universal Binary
+
+**Spec:** `specs/cli/distribution.md`
+
+**Summary:** On macOS, produce a single universal binary that runs natively on both Intel and Apple Silicon using `lipo` to combine x86_64 and aarch64 builds.
+
+### Task 1: Add universal binary step to release workflow
+
+**Files:** `.github/workflows/release.yml`
+
+**Steps:**
+- [ ] After building both `x86_64-apple-darwin` and `aarch64-apple-darwin` targets, combine with `lipo -create -output rings-macos-universal rings-x86_64 rings-aarch64`
+- [ ] Upload the universal binary as a release asset alongside the per-arch binaries
+- [ ] Verify the universal binary runs on both architectures: `file rings-macos-universal` shows "Mach-O universal binary"
+
+**Tests:**
+- [ ] Universal binary contains both x86_64 and arm64 slices
+- [ ] `just validate` clean
+
+---
+
+## F-174: Binary Size Optimization
+
+**Spec:** `specs/cli/distribution.md`
+
+**Summary:** Target < 5 MB binary size. Configure Cargo profile for release builds to minimize binary size.
+
+### Task 1: Optimize release profile
+
+**Files:** `Cargo.toml`
+
+**Steps:**
+- [ ] In `[profile.release]`, set `opt-level = "z"` (optimize for size) or `opt-level = "s"`
+- [ ] Set `lto = true` for link-time optimization
+- [ ] Set `codegen-units = 1` for better optimization (slower build, smaller binary)
+- [ ] Set `strip = true` to strip debug symbols from release binary
+- [ ] Measure binary size before and after: `ls -lh target/release/rings`
+- [ ] If size is still > 5 MB, consider `panic = "abort"` to remove unwinding code
+
+**Tests:**
+- [ ] Release binary is < 5 MB
+- [ ] Binary still passes all tests after optimization
+- [ ] `just validate` clean
+
+---
+
+## F-175: Cargo Install Support
+
+**Spec:** `specs/cli/distribution.md`
+
+**Summary:** Rust users can install rings with `cargo install rings` without needing pre-built binaries. Requires publishing to crates.io.
+
+### Task 1: Prepare for crates.io publishing
+
+**Files:** `Cargo.toml`
+
+**Steps:**
+- [ ] Verify `Cargo.toml` has required crates.io fields: `description`, `license`, `repository`, `keywords`, `categories`
+- [ ] Verify `cargo package` succeeds without errors (all required files included)
+- [ ] Add `exclude` patterns to keep the crate size reasonable (exclude test fixtures, specs, etc.)
+- [ ] Test with `cargo install --path .` locally
+
+**Tests:**
+- [ ] `cargo install --path .` builds and installs successfully
+- [ ] `cargo package` produces a valid crate
+- [ ] `just validate` clean
+
+---
+
+## F-177: Reproducible Builds
+
+**Spec:** `specs/cli/distribution.md`
+
+**Summary:** Pin the Rust toolchain and commit Cargo.lock so any developer can reproduce the exact same release binary.
+
+### Task 1: Pin toolchain and verify reproducibility
+
+**Files:** `rust-toolchain.toml`, `Cargo.lock`
+
+**Steps:**
+- [ ] Verify `rust-toolchain.toml` exists and pins a specific Rust version
+- [ ] Verify `Cargo.lock` is committed to the repository (not gitignored)
+- [ ] Document the build command in README or CONTRIBUTING: `cargo build --release --locked`
+- [ ] If already in place, mark as COMPLETE
+
+**Tests:**
+- [ ] `cargo build --release --locked` succeeds
+- [ ] `rust-toolchain.toml` specifies exact version
+- [ ] `Cargo.lock` is tracked in git
 - [ ] `just validate` clean
 
 ---

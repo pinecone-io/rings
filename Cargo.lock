@@ -1220,6 +1220,8 @@ dependencies = [
  "rand",
  "serde_json",
  "thiserror",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -1478,6 +1480,8 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
+ "tokio",
+ "tokio-stream",
  "toml",
  "uuid",
  "walkdir",

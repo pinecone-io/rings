@@ -6,28 +6,42 @@
 //! Initialization failures are non-fatal: a warning is printed to stderr and
 //! execution continues with a no-op tracer.
 
-/// A handle to the initialized tracer provider.
+/// A handle to the initialized tracer and meter providers.
 ///
-/// Call `shutdown()` before process exit to flush any buffered spans.
+/// Call `shutdown()` before process exit to flush any buffered spans and metrics.
 pub struct TracerHandle {
     #[cfg(feature = "otel")]
     provider: Option<opentelemetry_sdk::trace::TracerProvider>,
+    #[cfg(feature = "otel")]
+    meter_provider: Option<opentelemetry_sdk::metrics::SdkMeterProvider>,
+    #[cfg(feature = "otel")]
+    otel_rt: Option<tokio::runtime::Runtime>,
     _private: (),
 }
 
 impl TracerHandle {
-    /// Flush and shut down the tracer provider.
+    /// Flush and shut down the tracer and meter providers.
     pub fn shutdown(self) {
         #[cfg(feature = "otel")]
-        if let Some(provider) = self.provider {
-            if let Err(e) = provider.shutdown() {
-                eprintln!("Warning: OTel shutdown error: {e}");
+        {
+            if let Some(provider) = self.provider {
+                if let Err(e) = provider.shutdown() {
+                    eprintln!("Warning: OTel tracer shutdown error: {e}");
+                }
             }
+            if let Some(mp) = self.meter_provider {
+                if let Err(e) = mp.shutdown() {
+                    eprintln!("Warning: OTel meter shutdown error: {e}");
+                }
+            }
+            // Drop the tokio runtime last; this blocks until the PeriodicReader
+            // background task finishes its final export flush.
+            drop(self.otel_rt);
         }
     }
 }
 
-/// Initialize OpenTelemetry tracing.
+/// Initialize OpenTelemetry tracing and metrics.
 ///
 /// Returns a `TracerHandle` that should be shut down before process exit.
 ///
@@ -49,6 +63,8 @@ fn init_tracer_inner() -> TracerHandle {
     if std::env::var("RINGS_OTEL_ENABLED").unwrap_or_default() != "true" {
         return TracerHandle {
             provider: None,
+            meter_provider: None,
+            otel_rt: None,
             _private: (),
         };
     }
@@ -56,42 +72,88 @@ fn init_tracer_inner() -> TracerHandle {
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .unwrap_or_else(|_| "http://localhost:4317".to_string());
 
-    match build_provider(&endpoint) {
-        Ok(provider) => {
-            opentelemetry::global::set_tracer_provider(provider.clone());
-            TracerHandle {
-                provider: Some(provider),
-                _private: (),
-            }
-        }
+    let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "rings".to_string());
+    let resource = build_resource(service_name);
+
+    // Build trace provider.
+    let tracer_provider = match build_tracer_provider(&endpoint, resource.clone()) {
+        Ok(p) => p,
         Err(e) => {
             eprintln!("Warning: OTel initialization failed: {e}. Continuing without telemetry.");
-            TracerHandle {
+            return TracerHandle {
                 provider: None,
+                meter_provider: None,
+                otel_rt: None,
                 _private: (),
+            };
+        }
+    };
+    opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+
+    // Build a dedicated tokio runtime for the metrics PeriodicReader background task.
+    let otel_rt = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .thread_name("rings-otel-metrics")
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Warning: OTel metrics runtime failed to start: {e}. Metrics disabled.");
+            return TracerHandle {
+                provider: Some(tracer_provider),
+                meter_provider: None,
+                otel_rt: None,
+                _private: (),
+            };
+        }
+    };
+
+    // Build meter provider — the PeriodicReader spawns a background task, so we enter
+    // the runtime to make `tokio::task::spawn` route to our runtime.
+    let meter_provider = {
+        let _guard = otel_rt.enter();
+        match build_meter_provider(&endpoint, resource) {
+            Ok(mp) => {
+                opentelemetry::global::set_meter_provider(mp.clone());
+                Some(mp)
+            }
+            Err(e) => {
+                eprintln!("Warning: OTel metrics init failed: {e}. Metrics disabled.");
+                None
             }
         }
+    };
+
+    TracerHandle {
+        provider: Some(tracer_provider),
+        meter_provider,
+        otel_rt: Some(otel_rt),
+        _private: (),
     }
 }
 
 #[cfg(feature = "otel")]
-fn build_provider(endpoint: &str) -> anyhow::Result<opentelemetry_sdk::trace::TracerProvider> {
+fn build_resource(service_name: String) -> opentelemetry_sdk::Resource {
     use opentelemetry::KeyValue;
+    opentelemetry_sdk::Resource::new(vec![
+        KeyValue::new("service.name", service_name),
+        KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
+    ])
+}
+
+#[cfg(feature = "otel")]
+fn build_tracer_provider(
+    endpoint: &str,
+    resource: opentelemetry_sdk::Resource,
+) -> anyhow::Result<opentelemetry_sdk::trace::TracerProvider> {
     use opentelemetry_otlp::WithExportConfig;
-    use opentelemetry_sdk::Resource;
 
     let exporter = opentelemetry_otlp::new_exporter()
         .http()
         .with_endpoint(endpoint)
         .build_span_exporter()
         .map_err(|e| anyhow::anyhow!("failed to build OTLP span exporter: {e}"))?;
-
-    let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "rings".to_string());
-
-    let resource = Resource::new(vec![
-        KeyValue::new("service.name", service_name),
-        KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
-    ]);
 
     let config = opentelemetry_sdk::trace::Config::default().with_resource(resource);
 
@@ -101,6 +163,34 @@ fn build_provider(endpoint: &str) -> anyhow::Result<opentelemetry_sdk::trace::Tr
         .build();
 
     Ok(provider)
+}
+
+#[cfg(feature = "otel")]
+fn build_meter_provider(
+    endpoint: &str,
+    resource: opentelemetry_sdk::Resource,
+) -> anyhow::Result<opentelemetry_sdk::metrics::SdkMeterProvider> {
+    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_sdk::metrics::PeriodicReader;
+    use opentelemetry_sdk::runtime::Tokio;
+
+    let exporter = opentelemetry_otlp::new_exporter()
+        .http()
+        .with_endpoint(endpoint)
+        .build_metrics_exporter(
+            Box::new(opentelemetry_sdk::metrics::reader::DefaultAggregationSelector::new()),
+            Box::new(opentelemetry_sdk::metrics::reader::DefaultTemporalitySelector::new()),
+        )
+        .map_err(|e| anyhow::anyhow!("failed to build OTLP metrics exporter: {e}"))?;
+
+    let reader = PeriodicReader::builder(exporter, Tokio).build();
+
+    let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_reader(reader)
+        .with_resource(resource)
+        .build();
+
+    Ok(meter_provider)
 }
 
 // ─── Span management ────────────────────────────────────────────────────────
@@ -149,6 +239,16 @@ struct RunTracerInner {
     trace_id_hex: String,
     /// Hex span ID of this run's root span (stored for writing to run.toml).
     span_id_hex: String,
+    /// Current cycle number (updated in start_cycle; used in set_run_status for cycles_per_run).
+    current_cycle: u32,
+    // Metrics instruments — created once per run, recorded per phase-run and per run.
+    phase_duration_hist: opentelemetry::metrics::Histogram<u64>,
+    cost_hist: opentelemetry::metrics::Histogram<f64>,
+    tokens_input_hist: opentelemetry::metrics::Histogram<u64>,
+    tokens_output_hist: opentelemetry::metrics::Histogram<u64>,
+    runs_completed_counter: opentelemetry::metrics::Counter<u64>,
+    runs_canceled_counter: opentelemetry::metrics::Counter<u64>,
+    cycles_per_run_hist: opentelemetry::metrics::Histogram<u64>,
 }
 
 #[cfg(feature = "otel")]
@@ -239,6 +339,44 @@ impl RunTracer {
 
             let run_cx = Context::current_with_span(run_span);
 
+            // Build metrics instruments.
+            let meter = global::meter("rings");
+            let phase_duration_hist = meter
+                .u64_histogram("rings.phase.run.duration")
+                .with_unit("ms")
+                .with_description("Wall time per phase run in milliseconds")
+                .init();
+            let cost_hist = meter
+                .f64_histogram("rings.cost.usd")
+                .with_unit("{USD}")
+                .with_description("Cost per phase run in USD")
+                .init();
+            let tokens_input_hist = meter
+                .u64_histogram("rings.tokens.input")
+                .with_unit("{token}")
+                .with_description("Input tokens per phase run")
+                .init();
+            let tokens_output_hist = meter
+                .u64_histogram("rings.tokens.output")
+                .with_unit("{token}")
+                .with_description("Output tokens per phase run")
+                .init();
+            let runs_completed_counter = meter
+                .u64_counter("rings.runs.completed")
+                .with_unit("{run}")
+                .with_description("Incremented on each successful workflow completion")
+                .init();
+            let runs_canceled_counter = meter
+                .u64_counter("rings.runs.canceled")
+                .with_unit("{run}")
+                .with_description("Incremented on each Ctrl+C cancellation")
+                .init();
+            let cycles_per_run_hist = meter
+                .u64_histogram("rings.cycles.per_run")
+                .with_unit("{cycle}")
+                .with_description("Number of cycles to completion")
+                .init();
+
             RunTracer {
                 inner: Some(RunTracerInner {
                     cycle_cx: None,
@@ -246,6 +384,14 @@ impl RunTracer {
                     include_tokens,
                     trace_id_hex,
                     span_id_hex,
+                    current_cycle: 0,
+                    phase_duration_hist,
+                    cost_hist,
+                    tokens_input_hist,
+                    tokens_output_hist,
+                    runs_completed_counter,
+                    runs_canceled_counter,
+                    cycles_per_run_hist,
                 }),
                 _private: (),
             }
@@ -281,10 +427,13 @@ impl RunTracer {
             let mut cycle_span = tracer.start_with_context("rings.cycle", &inner.run_cx);
             cycle_span.set_attribute(KeyValue::new("cycle.number", cycle_number as i64));
             inner.cycle_cx = Some(inner.run_cx.with_span(cycle_span));
+            inner.current_cycle = cycle_number;
         }
     }
 
     /// Record a completed phase-run span with explicit start/end times.
+    ///
+    /// Also records per-phase OTel metrics: duration, and optionally cost/token histograms.
     ///
     /// The span is immediately ended after all attributes are set.
     pub fn record_phase_run(&self, data: &PhaseRunData) {
@@ -293,6 +442,7 @@ impl RunTracer {
             use opentelemetry::trace::{Span, Status, Tracer};
             use opentelemetry::KeyValue;
 
+            // ── Span ────────────────────────────────────────────────────────
             let parent_cx = inner.cycle_cx.as_ref().unwrap_or(&inner.run_cx);
             let tracer = opentelemetry::global::tracer("rings");
             let mut span = tracer
@@ -352,10 +502,35 @@ impl RunTracer {
             }
 
             span.end_with_timestamp(data.end_time);
+
+            // ── Metrics ─────────────────────────────────────────────────────
+            let phase_attrs = &[KeyValue::new("rings.phase.name", data.phase_name.clone())];
+
+            let duration_ms = data
+                .end_time
+                .duration_since(data.start_time)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            inner.phase_duration_hist.record(duration_ms, phase_attrs);
+
+            if inner.include_tokens {
+                if let Some(cost) = data.cost_usd {
+                    inner.cost_hist.record(cost, phase_attrs);
+                }
+                if let Some(tokens) = data.input_tokens {
+                    inner.tokens_input_hist.record(tokens, phase_attrs);
+                }
+                if let Some(tokens) = data.output_tokens {
+                    inner.tokens_output_hist.record(tokens, phase_attrs);
+                }
+            }
         }
     }
 
     /// Set the `rings.status` attribute and span status on the root `rings.run` span.
+    ///
+    /// Also increments the appropriate run counter (`rings.runs.completed` or
+    /// `rings.runs.canceled`) and records `rings.cycles.per_run`.
     ///
     /// `is_error` maps to OTel `Status::Error`; otherwise `Status::Ok` is used.
     pub fn set_run_status(&self, status: &str, is_error: bool) {
@@ -376,6 +551,17 @@ impl RunTracer {
             } else {
                 inner.run_cx.span().set_status(Status::Ok);
             }
+
+            // Run-level metrics.
+            match status {
+                "completed" => inner.runs_completed_counter.add(1, &[]),
+                "canceled" => inner.runs_canceled_counter.add(1, &[]),
+                _ => {}
+            }
+            // Record cycle count for every terminal status.
+            inner
+                .cycles_per_run_hist
+                .record(inner.current_cycle as u64, &[]);
         }
     }
 }
@@ -390,7 +576,10 @@ mod tests {
         std::env::remove_var("RINGS_OTEL_ENABLED");
         let handle = init_tracer();
         #[cfg(feature = "otel")]
-        assert!(handle.provider.is_none());
+        {
+            assert!(handle.provider.is_none());
+            assert!(handle.meter_provider.is_none());
+        }
         handle.shutdown();
     }
 
@@ -399,7 +588,10 @@ mod tests {
         std::env::set_var("RINGS_OTEL_ENABLED", "false");
         let handle = init_tracer();
         #[cfg(feature = "otel")]
-        assert!(handle.provider.is_none());
+        {
+            assert!(handle.provider.is_none());
+            assert!(handle.meter_provider.is_none());
+        }
         handle.shutdown();
         std::env::remove_var("RINGS_OTEL_ENABLED");
     }
@@ -410,7 +602,10 @@ mod tests {
         std::env::set_var("RINGS_OTEL_ENABLED", "1");
         let handle = init_tracer();
         #[cfg(feature = "otel")]
-        assert!(handle.provider.is_none());
+        {
+            assert!(handle.provider.is_none());
+            assert!(handle.meter_provider.is_none());
+        }
         handle.shutdown();
         std::env::remove_var("RINGS_OTEL_ENABLED");
     }
@@ -433,6 +628,8 @@ mod tests {
     fn shutdown_is_safe_with_no_provider() {
         let handle = TracerHandle {
             provider: None,
+            meter_provider: None,
+            otel_rt: None,
             _private: (),
         };
         handle.shutdown(); // Must not panic.
@@ -513,5 +710,122 @@ mod tests {
         );
         // No panic. In disabled mode, always None.
         assert!(tracer.get_trace_context().is_none());
+    }
+
+    // ── Metrics tests ────────────────────────────────────────────────────────
+
+    /// When OTel is disabled, metrics recording is a no-op (no panic, no side-effects).
+    #[test]
+    fn metrics_noop_when_otel_disabled() {
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        let mut tracer = RunTracer::new("run_metrics", "/wf.toml", 3, "builder,reviewer", None);
+        tracer.start_cycle(1);
+        tracer.record_phase_run(&PhaseRunData {
+            run_id: "run_metrics".to_string(),
+            workflow_file: "/wf.toml".to_string(),
+            cycle: 1,
+            phase_name: "builder".to_string(),
+            iteration: 1,
+            total_iterations: 2,
+            global_run_number: 1,
+            exit_code: 0,
+            completion_signal_found: false,
+            files_changed: 0,
+            cost_usd: Some(0.10),
+            input_tokens: Some(500),
+            output_tokens: Some(250),
+            start_time: std::time::SystemTime::now(),
+            end_time: std::time::SystemTime::now(),
+        });
+        tracer.set_run_status("completed", false);
+        // No panic — no-op path.
+    }
+
+    /// When OTel is enabled (but endpoint is unreachable), metrics instruments are created
+    /// and recording does not panic.
+    #[test]
+    #[cfg(feature = "otel")]
+    fn metrics_record_does_not_panic_when_enabled() {
+        std::env::set_var("RINGS_OTEL_ENABLED", "true");
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1");
+
+        let mut tracer = RunTracer::new("run_m_enabled", "/wf.toml", 5, "builder", None);
+        tracer.start_cycle(1);
+
+        let start = std::time::SystemTime::now();
+        let end = start + std::time::Duration::from_millis(50);
+
+        tracer.record_phase_run(&PhaseRunData {
+            run_id: "run_m_enabled".to_string(),
+            workflow_file: "/wf.toml".to_string(),
+            cycle: 1,
+            phase_name: "builder".to_string(),
+            iteration: 1,
+            total_iterations: 1,
+            global_run_number: 1,
+            exit_code: 0,
+            completion_signal_found: true,
+            files_changed: 2,
+            cost_usd: Some(0.05),
+            input_tokens: Some(1000),
+            output_tokens: Some(500),
+            start_time: start,
+            end_time: end,
+        });
+        tracer.set_run_status("completed", false);
+        drop(tracer);
+
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+    }
+
+    /// `rings.runs.canceled` counter path does not panic.
+    #[test]
+    #[cfg(feature = "otel")]
+    fn metrics_canceled_counter_does_not_panic() {
+        std::env::set_var("RINGS_OTEL_ENABLED", "true");
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1");
+
+        let mut tracer = RunTracer::new("run_cancel", "/wf.toml", 5, "builder", None);
+        tracer.start_cycle(2);
+        tracer.set_run_status("canceled", false);
+        drop(tracer);
+
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+    }
+
+    /// Token/cost metrics are only recorded when `RINGS_OTEL_INCLUDE_TOKENS=true`.
+    #[test]
+    #[cfg(feature = "otel")]
+    fn metrics_tokens_only_when_include_tokens_enabled() {
+        std::env::set_var("RINGS_OTEL_ENABLED", "true");
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1");
+        std::env::remove_var("RINGS_OTEL_INCLUDE_TOKENS");
+
+        let mut tracer = RunTracer::new("run_no_tokens", "/wf.toml", 2, "phase1", None);
+        tracer.start_cycle(1);
+        tracer.record_phase_run(&PhaseRunData {
+            run_id: "run_no_tokens".to_string(),
+            workflow_file: "/wf.toml".to_string(),
+            cycle: 1,
+            phase_name: "phase1".to_string(),
+            iteration: 1,
+            total_iterations: 1,
+            global_run_number: 1,
+            exit_code: 0,
+            completion_signal_found: false,
+            files_changed: 0,
+            cost_usd: Some(99.9),
+            input_tokens: Some(99999),
+            output_tokens: Some(99999),
+            start_time: std::time::SystemTime::now(),
+            end_time: std::time::SystemTime::now(),
+        });
+        tracer.set_run_status("completed", false);
+        // No panic; cost/token metrics are silently dropped when include_tokens=false.
+
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
     }
 }

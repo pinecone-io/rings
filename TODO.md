@@ -23,30 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-180: Man Page Generation
-
-**Spec:** `specs/cli/completion-and-manpage.md`
-
-**Summary:** Generate a man page from the CLI definition so users can read `man rings` for offline documentation.
-
-### Task 1: Add man page generation
-
-**Files:** `build.rs` (or `src/main.rs`), `Cargo.toml`
-
-**Steps:**
-- [x] Add `clap_mangen` to `Cargo.toml` build-dependencies
-- [x] In `build.rs`: generate man page from the `Cli` struct using `clap_mangen::Man::new(cmd).render(&mut buf)`
-- [x] Write the generated man page to `target/man/rings.1` during build
-- [x] Add a `just man` recipe that copies the generated man page to a standard location
-- [ ] Alternatively: add a `rings --generate-man` hidden flag that prints the man page to stdout
-
-**Tests:**
-- [x] Generated man page is valid roff format
-- [x] Man page includes all subcommands and flags
-- [x] `just validate` clean
-
----
-
 ## F-171/F-172: Static Binary and Multi-Platform Release
 
 **Spec:** `specs/cli/distribution.md`

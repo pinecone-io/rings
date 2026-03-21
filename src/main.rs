@@ -103,6 +103,7 @@ fn main() {
         Command::Inspect(args) => cmd_inspect(args, cli.output_format, cfg_output_dir.as_deref()),
         Command::Lineage(args) => cmd_lineage(args, cli.output_format, cfg_output_dir.as_deref()),
         Command::Completions(args) => cmd_completions(args),
+        Command::GenerateMan => cmd_generate_man(),
         Command::Init(args) => cmd_init(args, cli.output_format),
         Command::Update => cmd_update(),
         Command::Cleanup(args) => cmd_cleanup(args, cli.output_format, cfg_output_dir.as_deref()),
@@ -1978,6 +1979,26 @@ fn generate_completions(shell: cli::Shell, writer: &mut dyn std::io::Write) {
 fn cmd_completions(args: cli::CompletionsArgs) -> i32 {
     generate_completions(args.shell, &mut std::io::stdout());
     0
+}
+
+fn cmd_generate_man() -> i32 {
+    use clap::CommandFactory;
+    use clap_mangen::Man;
+    let cmd = Cli::command();
+    let mut buf = Vec::new();
+    match Man::new(cmd).render(&mut buf) {
+        Ok(()) => {
+            if let Err(e) = std::io::Write::write_all(&mut std::io::stdout(), &buf) {
+                eprintln!("Error writing man page: {e}");
+                return 1;
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("Error generating man page: {e}");
+            1
+        }
+    }
 }
 
 fn cmd_init(args: cli::InitArgs, output_format: cli::OutputFormat) -> i32 {
@@ -4328,5 +4349,60 @@ mod completions_tests {
         // If the file doesn't exist, canonicalize fails — we return None (error handled later)
         let result = check_workflow_path_mismatch("/nonexistent/rings_test/workflow.toml");
         assert!(result.is_none(), "no warning for nonexistent file");
+    }
+}
+
+#[cfg(test)]
+mod generate_man_tests {
+    use super::*;
+
+    fn man_page_output() -> Vec<u8> {
+        use clap::CommandFactory;
+        use clap_mangen::Man;
+        let cmd = Cli::command();
+        let mut buf = Vec::new();
+        Man::new(cmd).render(&mut buf).unwrap();
+        buf
+    }
+
+    #[test]
+    fn generated_man_page_is_valid_roff() {
+        let output = man_page_output();
+        let text = String::from_utf8(output).unwrap();
+        // Man pages contain the .TH macro (title header) — required in valid roff
+        assert!(
+            text.contains(".TH rings"),
+            "man page should contain .TH rings macro"
+        );
+        assert!(!text.is_empty(), "man page should not be empty");
+    }
+
+    #[test]
+    fn generated_man_page_includes_subcommands() {
+        let output = man_page_output();
+        let text = String::from_utf8(output).unwrap();
+        for subcmd in ["run", "resume", "list", "show", "inspect", "lineage"] {
+            assert!(
+                text.contains(subcmd),
+                "man page missing subcommand '{subcmd}'"
+            );
+        }
+    }
+
+    #[test]
+    fn generate_man_hidden_subcommand_not_shown_in_help() {
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let generate_man_cmd = cmd
+            .get_subcommands()
+            .find(|s| s.get_name() == "generate-man");
+        assert!(
+            generate_man_cmd.is_some(),
+            "generate-man subcommand should exist"
+        );
+        assert!(
+            generate_man_cmd.unwrap().is_hide_set(),
+            "generate-man subcommand should be hidden"
+        );
     }
 }

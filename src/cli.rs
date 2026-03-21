@@ -136,6 +136,9 @@ pub enum Command {
     Lineage(LineageArgs),
     /// Generate shell completions
     Completions(CompletionsArgs),
+    /// Print man page to stdout
+    #[command(name = "generate-man", hide = true)]
+    GenerateMan,
     /// Scaffold a new workflow TOML file
     Init(InitArgs),
     /// Update rings to the latest nightly release

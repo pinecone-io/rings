@@ -346,20 +346,22 @@ fn run_inner(
         )?;
     }
 
-    // Handle --parent-run flag and calculate ancestry_depth
-    let (continuation_of, ancestry_depth) = if let Some(ref parent_run_id) = args.parent_run {
-        // Load parent's run.toml to get its ancestry_depth
-        let parent_depth = {
+    // Handle --parent-run flag and calculate ancestry_depth, also capturing OTel context.
+    let (continuation_of, ancestry_depth, parent_otel_trace_id, parent_otel_span_id) =
+        if let Some(ref parent_run_id) = args.parent_run {
             let parent_meta_path = output_base.join(parent_run_id).join("run.toml");
             match state::RunMeta::read(&parent_meta_path) {
-                Ok(parent_meta) => parent_meta.ancestry_depth,
-                Err(_) => 0, // Parent not found or unreadable; treat as depth 0
+                Ok(parent_meta) => (
+                    Some(parent_run_id.clone()),
+                    parent_meta.ancestry_depth + 1,
+                    parent_meta.otel_trace_id,
+                    parent_meta.otel_span_id,
+                ),
+                Err(_) => (Some(parent_run_id.clone()), 1, None, None),
             }
+        } else {
+            (None, 0, None, None)
         };
-        (Some(parent_run_id.clone()), parent_depth + 1)
-    } else {
-        (None, 0)
-    };
 
     // Write run.toml
     let mut meta = state::RunMeta {
@@ -378,6 +380,8 @@ fn run_inner(
         context_dir: std::fs::canonicalize(&workflow.context_dir)
             .ok()
             .map(|p| p.to_string_lossy().to_string()),
+        otel_trace_id: None, // Populated by engine after OTel init.
+        otel_span_id: None,
     };
     meta.write(&run_dir.join("run.toml"))?;
 
@@ -591,7 +595,7 @@ fn run_inner(
             .unwrap_or_else(|_| PathBuf::from(&args.workflow_file))
             .to_string_lossy()
             .to_string(),
-        ancestry_continuation_of: continuation_of,
+        ancestry_continuation_of: continuation_of.clone(),
         ancestry_depth,
         no_contract_check: args.no_contract_check,
         output_format,
@@ -600,6 +604,9 @@ fn run_inner(
         step_cycles: args.step_cycles,
         step_reader: None,
         include_dirs,
+        parent_run_id: continuation_of,
+        parent_otel_trace_id,
+        parent_otel_span_id,
     };
 
     let run_start = std::time::Instant::now();
@@ -900,6 +907,8 @@ fn resume_inner(
         continuation_of: None,
         ancestry_depth: 1,
         context_dir: None,
+        otel_trace_id: None, // Populated by engine after OTel init.
+        otel_span_id: None,
     };
 
     // Reload workflow
@@ -1057,6 +1066,15 @@ fn resume_inner(
     // Write the new run.toml with parent_run_id set
     meta.write(&meta_path)?;
 
+    // Read parent run's OTel context so the resumed run can add a span link.
+    let (parent_otel_trace_id, parent_otel_span_id) = {
+        let parent_meta_path = output_base.join(&args.run_id).join("run.toml");
+        match state::RunMeta::read(&parent_meta_path) {
+            Ok(parent_meta) => (parent_meta.otel_trace_id, parent_meta.otel_span_id),
+            Err(_) => (None, None), // Old run without OTel — skip link gracefully.
+        }
+    };
+
     // Build engine config for the new run directory
     let config = EngineConfig {
         output_dir: run_dir.clone(),
@@ -1072,6 +1090,9 @@ fn resume_inner(
         step_cycles: false,
         step_reader: None,
         include_dirs: vec![],
+        parent_run_id: Some(args.run_id.clone()),
+        parent_otel_trace_id,
+        parent_otel_span_id,
     };
 
     let resume_point = Some(ResumePoint {
@@ -3473,6 +3494,8 @@ mod cleanup_tests {
             continuation_of: None,
             ancestry_depth: 0,
             context_dir: None,
+            otel_trace_id: None,
+            otel_span_id: None,
         };
         meta.write(&run_dir.join("run.toml")).unwrap();
         run_dir
@@ -3667,6 +3690,8 @@ mod show_tests {
             continuation_of: None,
             ancestry_depth: 0,
             context_dir: Some("/home/user/project".to_string()),
+            otel_trace_id: None,
+            otel_span_id: None,
         };
         meta.write(&run_dir.join("run.toml")).unwrap();
         run_dir
@@ -3982,6 +4007,8 @@ mod dir_permissions_tests {
             continuation_of: None,
             ancestry_depth: 0,
             context_dir: None,
+            otel_trace_id: None,
+            otel_span_id: None,
         };
         let content = toml::to_string_pretty(&meta).unwrap();
         std::fs::write(dir.join("run.toml"), content).unwrap();

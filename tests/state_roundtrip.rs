@@ -47,6 +47,8 @@ fn run_meta_roundtrip() {
         continuation_of: None,
         ancestry_depth: 0,
         context_dir: None,
+        otel_trace_id: None,
+        otel_span_id: None,
     };
 
     meta.write(&path).unwrap();

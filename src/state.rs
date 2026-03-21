@@ -202,6 +202,12 @@ pub struct RunMeta {
     pub ancestry_depth: u32,
     #[serde(default)]
     pub context_dir: Option<String>,
+    /// OTel trace ID (hex) of this run's root span, for use as a parent span link in resumed runs.
+    #[serde(default)]
+    pub otel_trace_id: Option<String>,
+    /// OTel span ID (hex) of this run's root `rings.run` span.
+    #[serde(default)]
+    pub otel_span_id: Option<String>,
 }
 
 impl RunMeta {
@@ -249,6 +255,8 @@ mod tests {
             continuation_of: None,
             ancestry_depth: 0,
             context_dir,
+            otel_trace_id: None,
+            otel_span_id: None,
         }
     }
 

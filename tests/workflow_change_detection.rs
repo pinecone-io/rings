@@ -46,6 +46,8 @@ fn test_runmeta_with_phase_fingerprint() {
         continuation_of: None,
         ancestry_depth: 0,
         context_dir: None,
+        otel_trace_id: None,
+        otel_span_id: None,
     };
 
     let toml_str = toml::to_string(&meta).unwrap();

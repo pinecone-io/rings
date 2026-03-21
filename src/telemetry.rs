@@ -145,6 +145,10 @@ struct RunTracerInner {
     cycle_cx: Option<opentelemetry::Context>,
     run_cx: opentelemetry::Context,
     include_tokens: bool,
+    /// Hex trace ID of this run's root span (stored for writing to run.toml).
+    trace_id_hex: String,
+    /// Hex span ID of this run's root span (stored for writing to run.toml).
+    span_id_hex: String,
 }
 
 #[cfg(feature = "otel")]
@@ -162,8 +166,19 @@ impl Drop for RunTracerInner {
 impl RunTracer {
     /// Create a new `RunTracer` and open the root `rings.run` span.
     ///
+    /// `parent_link` optionally carries `(parent_run_id, trace_id_hex, span_id_hex)` from a
+    /// prior run. When present, the root span gets a W3C span link to the parent run's root span
+    /// plus a `rings.parent_run_id` attribute.  If the hex values are invalid or the feature is
+    /// disabled, the link is silently omitted — OTel is never fatal.
+    ///
     /// Returns a no-op tracer if OTel is disabled.
-    pub fn new(run_id: &str, workflow_file: &str, max_cycles: u32, phases: &str) -> Self {
+    pub fn new(
+        run_id: &str,
+        workflow_file: &str,
+        max_cycles: u32,
+        phases: &str,
+        parent_link: Option<(&str, &str, &str)>,
+    ) -> Self {
         #[cfg(feature = "otel")]
         {
             if std::env::var("RINGS_OTEL_ENABLED").unwrap_or_default() != "true" {
@@ -172,14 +187,37 @@ impl RunTracer {
                     _private: (),
                 };
             }
-            use opentelemetry::trace::{Span, TraceContextExt, Tracer};
+            use opentelemetry::trace::{
+                Span, SpanContext, TraceContextExt, TraceFlags, TraceState, Tracer,
+            };
             use opentelemetry::{global, Context, KeyValue};
 
             let include_tokens =
                 std::env::var("RINGS_OTEL_INCLUDE_TOKENS").unwrap_or_default() == "true";
 
             let tracer = global::tracer("rings");
-            let mut run_span = tracer.start("rings.run");
+
+            // Build the root span, optionally attaching a span link to the parent run.
+            let mut builder = tracer.span_builder("rings.run");
+            if let Some((_, trace_hex, span_hex)) = parent_link {
+                if let (Ok(trace_id), Ok(span_id)) = (
+                    opentelemetry::trace::TraceId::from_hex(trace_hex),
+                    opentelemetry::trace::SpanId::from_hex(span_hex),
+                ) {
+                    let parent_span_ctx = SpanContext::new(
+                        trace_id,
+                        span_id,
+                        TraceFlags::SAMPLED,
+                        true, // is_remote: the parent span is from a different process invocation
+                        TraceState::NONE,
+                    );
+                    builder = builder.with_links(vec![opentelemetry::trace::Link::with_context(
+                        parent_span_ctx,
+                    )]);
+                }
+            }
+            let mut run_span = builder.start(&tracer);
+
             run_span.set_attribute(KeyValue::new("rings.run.id", run_id.to_string()));
             run_span.set_attribute(KeyValue::new(
                 "rings.workflow.file",
@@ -187,6 +225,17 @@ impl RunTracer {
             ));
             run_span.set_attribute(KeyValue::new("max_cycles", max_cycles as i64));
             run_span.set_attribute(KeyValue::new("phases", phases.to_string()));
+            if let Some((parent_run_id, _, _)) = parent_link {
+                run_span.set_attribute(KeyValue::new(
+                    "rings.parent_run_id",
+                    parent_run_id.to_string(),
+                ));
+            }
+
+            // Capture trace/span IDs before moving the span into the context.
+            let span_ctx = run_span.span_context();
+            let trace_id_hex = format!("{}", span_ctx.trace_id());
+            let span_id_hex = format!("{}", span_ctx.span_id());
 
             let run_cx = Context::current_with_span(run_span);
 
@@ -195,12 +244,25 @@ impl RunTracer {
                     cycle_cx: None,
                     run_cx,
                     include_tokens,
+                    trace_id_hex,
+                    span_id_hex,
                 }),
                 _private: (),
             }
         }
         #[cfg(not(feature = "otel"))]
         RunTracer { _private: () }
+    }
+
+    /// Return the hex trace ID and span ID of this run's root span.
+    ///
+    /// Returns `None` when OTel is disabled or the tracer is a no-op.
+    pub fn get_trace_context(&self) -> Option<(String, String)> {
+        #[cfg(feature = "otel")]
+        if let Some(inner) = &self.inner {
+            return Some((inner.trace_id_hex.clone(), inner.span_id_hex.clone()));
+        }
+        None
     }
 
     /// End the previous cycle span (if any) and start a new `rings.cycle` span.
@@ -379,7 +441,13 @@ mod tests {
     #[test]
     fn run_tracer_noop_when_disabled() {
         std::env::remove_var("RINGS_OTEL_ENABLED");
-        let mut tracer = RunTracer::new("run_001", "/path/to/workflow.toml", 5, "builder,reviewer");
+        let mut tracer = RunTracer::new(
+            "run_001",
+            "/path/to/workflow.toml",
+            5,
+            "builder,reviewer",
+            None,
+        );
         tracer.start_cycle(1);
         tracer.record_phase_run(&PhaseRunData {
             run_id: "run_001".to_string(),
@@ -406,10 +474,44 @@ mod tests {
     #[cfg(feature = "otel")]
     fn run_tracer_noop_when_otel_disabled_at_runtime() {
         std::env::set_var("RINGS_OTEL_ENABLED", "false");
-        let mut tracer = RunTracer::new("run_002", "/wf.toml", 3, "phase1");
+        let mut tracer = RunTracer::new("run_002", "/wf.toml", 3, "phase1", None);
         tracer.start_cycle(1);
         tracer.set_run_status("max_cycles", false);
         drop(tracer); // Must not panic.
         std::env::remove_var("RINGS_OTEL_ENABLED");
+    }
+
+    #[test]
+    fn fresh_run_has_no_parent_link_and_get_trace_context_is_none_when_disabled() {
+        // When OTel is disabled, get_trace_context() returns None for any run.
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        let tracer = RunTracer::new("run_fresh", "/wf.toml", 3, "phase1", None);
+        assert!(
+            tracer.get_trace_context().is_none(),
+            "disabled OTel should return None for trace context"
+        );
+    }
+
+    #[test]
+    fn missing_parent_trace_id_handled_gracefully() {
+        // Passing None parent link must not panic.
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        let tracer = RunTracer::new("run_child", "/wf.toml", 3, "phase1", None);
+        assert!(tracer.get_trace_context().is_none());
+    }
+
+    #[test]
+    fn invalid_parent_hex_handled_gracefully() {
+        // Passing garbage hex values must not panic; link is silently dropped.
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        let tracer = RunTracer::new(
+            "run_child",
+            "/wf.toml",
+            3,
+            "phase1",
+            Some(("run_parent", "not_a_trace_id", "not_a_span_id")),
+        );
+        // No panic. In disabled mode, always None.
+        assert!(tracer.get_trace_context().is_none());
     }
 }

@@ -31,18 +31,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ### Task 1: Add span links on resume
 
-**Files:** `src/otel.rs`, `src/engine.rs`
+**Files:** `src/telemetry.rs`, `src/engine.rs`, `src/state.rs`, `src/main.rs`
 
 **Steps:**
-- [ ] When a run is resumed (has `parent_run_id` or `continuation_of`), add a span link from the root span to the parent run's trace
-- [ ] Store the parent run's trace ID in `run.toml` so it can be referenced
-- [ ] If the parent trace ID is not available (old run without OTel), skip the link gracefully
+- [x] When a run is resumed (has `parent_run_id` or `continuation_of`), add a span link from the root span to the parent run's trace
+- [x] Store the parent run's trace ID in `run.toml` so it can be referenced
+- [x] If the parent trace ID is not available (old run without OTel), skip the link gracefully
 
 **Tests:**
-- [ ] Resumed run's root span has a link to the parent run's trace
-- [ ] Fresh run (no parent) has no span links
-- [ ] Missing parent trace ID is handled gracefully
-- [ ] `just validate` clean
+- [x] Resumed run's root span has a link to the parent run's trace
+- [x] Fresh run (no parent) has no span links
+- [x] Missing parent trace ID is handled gracefully
+- [x] `just validate` clean
 
 ---
 

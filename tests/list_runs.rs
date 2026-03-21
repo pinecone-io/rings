@@ -30,6 +30,8 @@ fn create_test_run(
         continuation_of: None,
         ancestry_depth: 0,
         context_dir: None,
+        otel_trace_id: None,
+        otel_span_id: None,
     };
     meta.write(&run_dir.join("run.toml")).unwrap();
 
@@ -80,6 +82,8 @@ fn test_runstatus_roundtrip() {
             continuation_of: None,
             ancestry_depth: 0,
             context_dir: None,
+            otel_trace_id: None,
+            otel_span_id: None,
         };
 
         let toml_str = toml::to_string_pretty(&meta).unwrap();
@@ -429,6 +433,8 @@ fn test_list_runs_missing_state_json() {
         continuation_of: None,
         ancestry_depth: 0,
         context_dir: None,
+        otel_trace_id: None,
+        otel_span_id: None,
     };
     let run_dir = dir.path().join("run_no_state");
     fs::create_dir_all(&run_dir).unwrap();
@@ -515,6 +521,8 @@ fn create_test_run_with_context_dir(
         continuation_of: None,
         ancestry_depth: 0,
         context_dir: context_dir.map(|s| s.to_string()),
+        otel_trace_id: None,
+        otel_span_id: None,
     };
     meta.write(&run_dir.join("run.toml")).unwrap();
     run_dir

@@ -375,6 +375,12 @@ pub struct EngineConfig {
     pub step_reader: Option<std::sync::Mutex<Box<dyn std::io::BufRead + Send>>>,
     /// Directories whose file listings are prepended to each prompt as context.
     pub include_dirs: Vec<PathBuf>,
+    /// Parent run ID for OTel span link (set when this run resumes or continues another run).
+    pub parent_run_id: Option<String>,
+    /// Parent run's OTel trace ID (hex), used to create a span link in the root span.
+    pub parent_otel_trace_id: Option<String>,
+    /// Parent run's OTel span ID (hex) for the root span, used in the span link.
+    pub parent_otel_span_id: Option<String>,
 }
 
 impl Default for EngineConfig {
@@ -393,6 +399,9 @@ impl Default for EngineConfig {
             step_cycles: false,
             step_reader: None,
             include_dirs: vec![],
+            parent_run_id: None,
+            parent_otel_trace_id: None,
+            parent_otel_span_id: None,
         }
     }
 }
@@ -700,12 +709,38 @@ pub fn run_workflow(
         .map(|p| p.name.as_str())
         .collect::<Vec<_>>()
         .join(",");
+    // Build parent span link info if the parent run has OTel context stored.
+    let parent_link_owned: Option<(String, String, String)> = match (
+        &config.parent_run_id,
+        &config.parent_otel_trace_id,
+        &config.parent_otel_span_id,
+    ) {
+        (Some(run_id), Some(trace_id), Some(span_id)) => {
+            Some((run_id.clone(), trace_id.clone(), span_id.clone()))
+        }
+        _ => None,
+    };
+    let parent_link = parent_link_owned
+        .as_ref()
+        .map(|(r, t, s)| (r.as_str(), t.as_str(), s.as_str()));
+
     let mut run_tracer = crate::telemetry::RunTracer::new(
         &config.run_id,
         &config.workflow_file,
         workflow.max_cycles,
         &phase_names,
+        parent_link,
     );
+
+    // Write this run's OTel trace/span IDs to run.toml so resumed runs can link back to us.
+    if let Some((trace_id, span_id)) = run_tracer.get_trace_context() {
+        let meta_path = config.output_dir.join("run.toml");
+        if let Ok(mut meta) = crate::state::RunMeta::read(&meta_path) {
+            meta.otel_trace_id = Some(trace_id);
+            meta.otel_span_id = Some(span_id);
+            let _ = meta.write(&meta_path); // Best-effort; OTel failures are never fatal.
+        }
+    }
 
     // Emit start event in JSONL mode.
     if config.output_format == crate::cli::OutputFormat::Jsonl {

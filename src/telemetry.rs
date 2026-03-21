@@ -36,7 +36,7 @@ impl TracerHandle {
 pub fn init_tracer() -> TracerHandle {
     #[cfg(feature = "otel")]
     {
-        return init_tracer_inner();
+        init_tracer_inner()
     }
     #[cfg(not(feature = "otel"))]
     {
@@ -103,6 +103,221 @@ fn build_provider(endpoint: &str) -> anyhow::Result<opentelemetry_sdk::trace::Tr
     Ok(provider)
 }
 
+// ─── Span management ────────────────────────────────────────────────────────
+
+/// Attributes for a single phase-run span.
+///
+/// Constructed in the engine loop and passed to [`RunTracer::record_phase_run`].
+pub struct PhaseRunData {
+    pub run_id: String,
+    pub workflow_file: String,
+    pub cycle: u32,
+    pub phase_name: String,
+    pub iteration: u32,
+    pub total_iterations: u32,
+    pub global_run_number: u32,
+    pub exit_code: i32,
+    pub completion_signal_found: bool,
+    pub files_changed: u32,
+    pub cost_usd: Option<f64>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub start_time: std::time::SystemTime,
+    pub end_time: std::time::SystemTime,
+}
+
+/// Manages the OTel span hierarchy for one `rings run` invocation.
+///
+/// Holds the root `rings.run` span and the current `rings.cycle` span.
+/// Both spans are ended (and flushed) when this struct is dropped.
+/// All methods are no-ops when `RINGS_OTEL_ENABLED != "true"` or the `otel`
+/// feature is disabled.
+pub struct RunTracer {
+    #[cfg(feature = "otel")]
+    inner: Option<RunTracerInner>,
+    _private: (),
+}
+
+#[cfg(feature = "otel")]
+struct RunTracerInner {
+    // Fields drop in declaration order: cycle_cx drops before run_cx,
+    // ensuring the child cycle span ends before the root run span.
+    cycle_cx: Option<opentelemetry::Context>,
+    run_cx: opentelemetry::Context,
+    include_tokens: bool,
+}
+
+#[cfg(feature = "otel")]
+impl Drop for RunTracerInner {
+    fn drop(&mut self) {
+        use opentelemetry::trace::TraceContextExt;
+        // End cycle span before run span.
+        if let Some(ref cycle_cx) = self.cycle_cx {
+            cycle_cx.span().end();
+        }
+        self.run_cx.span().end();
+    }
+}
+
+impl RunTracer {
+    /// Create a new `RunTracer` and open the root `rings.run` span.
+    ///
+    /// Returns a no-op tracer if OTel is disabled.
+    pub fn new(run_id: &str, workflow_file: &str, max_cycles: u32, phases: &str) -> Self {
+        #[cfg(feature = "otel")]
+        {
+            if std::env::var("RINGS_OTEL_ENABLED").unwrap_or_default() != "true" {
+                return RunTracer {
+                    inner: None,
+                    _private: (),
+                };
+            }
+            use opentelemetry::trace::{Span, TraceContextExt, Tracer};
+            use opentelemetry::{global, Context, KeyValue};
+
+            let include_tokens =
+                std::env::var("RINGS_OTEL_INCLUDE_TOKENS").unwrap_or_default() == "true";
+
+            let tracer = global::tracer("rings");
+            let mut run_span = tracer.start("rings.run");
+            run_span.set_attribute(KeyValue::new("rings.run.id", run_id.to_string()));
+            run_span.set_attribute(KeyValue::new(
+                "rings.workflow.file",
+                workflow_file.to_string(),
+            ));
+            run_span.set_attribute(KeyValue::new("max_cycles", max_cycles as i64));
+            run_span.set_attribute(KeyValue::new("phases", phases.to_string()));
+
+            let run_cx = Context::current_with_span(run_span);
+
+            RunTracer {
+                inner: Some(RunTracerInner {
+                    cycle_cx: None,
+                    run_cx,
+                    include_tokens,
+                }),
+                _private: (),
+            }
+        }
+        #[cfg(not(feature = "otel"))]
+        RunTracer { _private: () }
+    }
+
+    /// End the previous cycle span (if any) and start a new `rings.cycle` span.
+    pub fn start_cycle(&mut self, cycle_number: u32) {
+        #[cfg(feature = "otel")]
+        if let Some(inner) = &mut self.inner {
+            use opentelemetry::trace::{Span, TraceContextExt, Tracer};
+            use opentelemetry::KeyValue;
+
+            // End previous cycle span.
+            if let Some(ref prev_cx) = inner.cycle_cx {
+                prev_cx.span().end();
+            }
+
+            let tracer = opentelemetry::global::tracer("rings");
+            let mut cycle_span = tracer.start_with_context("rings.cycle", &inner.run_cx);
+            cycle_span.set_attribute(KeyValue::new("cycle.number", cycle_number as i64));
+            inner.cycle_cx = Some(inner.run_cx.with_span(cycle_span));
+        }
+    }
+
+    /// Record a completed phase-run span with explicit start/end times.
+    ///
+    /// The span is immediately ended after all attributes are set.
+    pub fn record_phase_run(&self, data: &PhaseRunData) {
+        #[cfg(feature = "otel")]
+        if let Some(inner) = &self.inner {
+            use opentelemetry::trace::{Span, Status, Tracer};
+            use opentelemetry::KeyValue;
+
+            let parent_cx = inner.cycle_cx.as_ref().unwrap_or(&inner.run_cx);
+            let tracer = opentelemetry::global::tracer("rings");
+            let mut span = tracer
+                .span_builder("rings.phase.run")
+                .with_start_time(data.start_time)
+                .start_with_context(&tracer, parent_cx);
+
+            span.set_attribute(KeyValue::new("rings.run.id", data.run_id.clone()));
+            span.set_attribute(KeyValue::new(
+                "rings.workflow.file",
+                data.workflow_file.clone(),
+            ));
+            span.set_attribute(KeyValue::new("rings.cycle", data.cycle as i64));
+            span.set_attribute(KeyValue::new("rings.phase.name", data.phase_name.clone()));
+            span.set_attribute(KeyValue::new(
+                "rings.phase.iteration",
+                data.iteration as i64,
+            ));
+            span.set_attribute(KeyValue::new(
+                "rings.phase.total_iterations",
+                data.total_iterations as i64,
+            ));
+            span.set_attribute(KeyValue::new(
+                "rings.run.global_number",
+                data.global_run_number as i64,
+            ));
+            span.set_attribute(KeyValue::new("rings.exit_code", data.exit_code as i64));
+            span.set_attribute(KeyValue::new(
+                "rings.completion_signal_found",
+                data.completion_signal_found,
+            ));
+            span.set_attribute(KeyValue::new(
+                "rings.files_changed",
+                data.files_changed as i64,
+            ));
+
+            if inner.include_tokens {
+                if let Some(cost) = data.cost_usd {
+                    span.set_attribute(KeyValue::new("rings.cost.usd", cost));
+                }
+                if let Some(tokens) = data.input_tokens {
+                    span.set_attribute(KeyValue::new("rings.tokens.input", tokens as i64));
+                }
+                if let Some(tokens) = data.output_tokens {
+                    span.set_attribute(KeyValue::new("rings.tokens.output", tokens as i64));
+                }
+            }
+
+            if data.exit_code != 0 {
+                span.set_status(Status::error(format!("exit code {}", data.exit_code)));
+            } else {
+                span.set_status(Status::Ok);
+            }
+
+            if data.completion_signal_found {
+                span.add_event("rings.completion_signal", vec![]);
+            }
+
+            span.end_with_timestamp(data.end_time);
+        }
+    }
+
+    /// Set the `rings.status` attribute and span status on the root `rings.run` span.
+    ///
+    /// `is_error` maps to OTel `Status::Error`; otherwise `Status::Ok` is used.
+    pub fn set_run_status(&self, status: &str, is_error: bool) {
+        #[cfg(feature = "otel")]
+        if let Some(inner) = &self.inner {
+            use opentelemetry::trace::{Status, TraceContextExt};
+            use opentelemetry::KeyValue;
+
+            inner
+                .run_cx
+                .span()
+                .set_attribute(KeyValue::new("rings.status", status.to_string()));
+            if is_error {
+                inner
+                    .run_cx
+                    .span()
+                    .set_status(Status::error(status.to_string()));
+            } else {
+                inner.run_cx.span().set_status(Status::Ok);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +374,42 @@ mod tests {
             _private: (),
         };
         handle.shutdown(); // Must not panic.
+    }
+
+    #[test]
+    fn run_tracer_noop_when_disabled() {
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        let mut tracer = RunTracer::new("run_001", "/path/to/workflow.toml", 5, "builder,reviewer");
+        tracer.start_cycle(1);
+        tracer.record_phase_run(&PhaseRunData {
+            run_id: "run_001".to_string(),
+            workflow_file: "/path/to/workflow.toml".to_string(),
+            cycle: 1,
+            phase_name: "builder".to_string(),
+            iteration: 1,
+            total_iterations: 1,
+            global_run_number: 1,
+            exit_code: 0,
+            completion_signal_found: false,
+            files_changed: 3,
+            cost_usd: Some(0.05),
+            input_tokens: Some(1000),
+            output_tokens: Some(500),
+            start_time: std::time::SystemTime::now(),
+            end_time: std::time::SystemTime::now(),
+        });
+        tracer.set_run_status("completed", false);
+        // No panic — no-op path.
+    }
+
+    #[test]
+    #[cfg(feature = "otel")]
+    fn run_tracer_noop_when_otel_disabled_at_runtime() {
+        std::env::set_var("RINGS_OTEL_ENABLED", "false");
+        let mut tracer = RunTracer::new("run_002", "/wf.toml", 3, "phase1");
+        tracer.start_cycle(1);
+        tracer.set_run_status("max_cycles", false);
+        drop(tracer); // Must not panic.
+        std::env::remove_var("RINGS_OTEL_ENABLED");
     }
 }

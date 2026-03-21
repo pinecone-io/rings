@@ -23,35 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-162: OpenTelemetry Opt-In
-
-**Spec:** `specs/observability/opentelemetry.md`
-
-**Summary:** Add opt-in OpenTelemetry tracing, controlled by `RINGS_OTEL_ENABLED=1` environment variable. When enabled, rings exports traces to an OTLP-compatible collector. When disabled (default), no tracing overhead.
-
-### Task 1: Add OTel initialization
-
-**Files:** `src/otel.rs` (new), `src/lib.rs`, `src/engine.rs`, `Cargo.toml`
-
-**Steps:**
-- [x] Add `opentelemetry`, `opentelemetry-otlp`, and `tracing-opentelemetry` to `Cargo.toml` as optional dependencies behind an `otel` feature flag
-- [x] Create `src/otel.rs` with `init_tracer() -> Result<Option<SdkTracerProvider>>`:
-  1. Check `RINGS_OTEL_ENABLED` env var — if not set or "0", return `None` (no-op)
-  2. Read `OTEL_EXPORTER_OTLP_ENDPOINT` for collector endpoint (F-170)
-  3. Initialize OTLP exporter and tracer provider
-  4. If init fails, print warning and continue with no-op tracer (F-169)
-- [x] Register `pub mod otel;` in `src/lib.rs`
-- [x] In engine startup: call `init_tracer()`, store the provider for shutdown at exit
-- [x] On exit: call `provider.shutdown()` to flush remaining spans
-
-**Tests:**
-- [x] `RINGS_OTEL_ENABLED=0`: no tracer initialized, no overhead
-- [x] `RINGS_OTEL_ENABLED=1` with no endpoint: warning printed, continues with no-op
-- [x] Feature flag `otel` controls compilation of dependencies
-- [x] `just validate` clean (with and without `otel` feature)
-
----
-
 ## F-163/F-164/F-165: OTel Trace Structure and Span Attributes
 
 **Spec:** `specs/observability/opentelemetry.md`
@@ -63,19 +34,19 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/otel.rs`, `src/engine.rs`
 
 **Steps:**
-- [ ] Create a root span for the entire workflow run with attributes: `run_id`, `workflow`, `max_cycles`
-- [ ] Create child spans for each cycle: `rings.cycle` with `cycle_number` attribute
-- [ ] Create child spans for each phase-run: `rings.run` with attributes: `phase_name`, `iteration`, `cost_usd`, `input_tokens`, `output_tokens`, `files_changed`
-- [ ] On non-zero executor exit: set span status to ERROR with the error message
-- [ ] On completion signal: add `rings.completion_signal` event to the triggering run span
-- [ ] All span creation is no-op when OTel is disabled (behind the feature flag)
+- [x] Create a root span for the entire workflow run with attributes: `run_id`, `workflow`, `max_cycles`
+- [x] Create child spans for each cycle: `rings.cycle` with `cycle_number` attribute
+- [x] Create child spans for each phase-run: `rings.run` with attributes: `phase_name`, `iteration`, `cost_usd`, `input_tokens`, `output_tokens`, `files_changed`
+- [x] On non-zero executor exit: set span status to ERROR with the error message
+- [x] On completion signal: add `rings.completion_signal` event to the triggering run span
+- [x] All span creation is no-op when OTel is disabled (behind the feature flag)
 
 **Tests:**
-- [ ] With OTel enabled: spans are created with correct parent-child hierarchy
-- [ ] Span attributes contain expected values
-- [ ] Failed run span has ERROR status
-- [ ] OTel disabled: no spans created, no overhead
-- [ ] `just validate` clean
+- [x] With OTel enabled: spans are created with correct parent-child hierarchy
+- [x] Span attributes contain expected values
+- [x] Failed run span has ERROR status
+- [x] OTel disabled: no spans created, no overhead
+- [x] `just validate` clean
 
 ---
 

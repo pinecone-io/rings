@@ -693,6 +693,20 @@ pub fn run_workflow(
 
     let workflow_start = std::time::Instant::now();
 
+    // Open the root OTel span for this workflow run.
+    let phase_names = workflow
+        .phases
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut run_tracer = crate::telemetry::RunTracer::new(
+        &config.run_id,
+        &config.workflow_file,
+        workflow.max_cycles,
+        &phase_names,
+    );
+
     // Emit start event in JSONL mode.
     if config.output_format == crate::cli::OutputFormat::Jsonl {
         crate::events::emit_jsonl(&crate::events::StartEvent::new(
@@ -961,6 +975,7 @@ pub fn run_workflow(
 
         // Check if entering a new cycle
         if run_spec.cycle != ctx.current_display_cycle {
+            run_tracer.start_cycle(run_spec.cycle);
             let prev_cost = if ctx.current_display_cycle > 0 {
                 Some(cycle_cost)
             } else {
@@ -1103,6 +1118,7 @@ pub fn run_workflow(
         let mut timeout_occurred = false;
         let mut cancel_occurred = false;
         let run_start = std::time::Instant::now();
+        let run_start_systime = std::time::SystemTime::now();
         let mut tick: usize = 0;
 
         // Pre-run consumes check (cycle >= 2): warn if patterns still match nothing.
@@ -1459,6 +1475,7 @@ pub fn run_workflow(
         }
 
         let elapsed_secs = run_start.elapsed().as_secs();
+        let run_end_systime = std::time::SystemTime::now();
 
         // When --output-format json is used, cost lives in the JSON object and
         // the text response is in the `result` field. Extract the text for
@@ -1476,6 +1493,41 @@ pub fn run_workflow(
             ctx.budget.cumulative_output_tokens += t;
         }
         ctx.total_runs += 1;
+
+        // Precompute completion signal: checked now so it can be stored in the
+        // phase-run span and reused later to avoid re-running signal_matches.
+        let completion_eligible = workflow.completion_signal_phases.is_empty()
+            || workflow
+                .completion_signal_phases
+                .contains(&run_spec.phase_name);
+        let completion_signal_found = !timeout_occurred
+            && !cancel_occurred
+            && output.exit_code == 0
+            && completion_eligible
+            && signal_matches(
+                &response_text,
+                &workflow.completion_signal,
+                &workflow.completion_signal_mode,
+            );
+
+        // Build the phase-run span data; fields will be updated as they become available.
+        let mut phase_run_data = crate::telemetry::PhaseRunData {
+            run_id: config.run_id.clone(),
+            workflow_file: config.workflow_file.clone(),
+            cycle: run_spec.cycle,
+            phase_name: run_spec.phase_name.clone(),
+            iteration: run_spec.phase_iteration,
+            total_iterations: run_spec.phase_total_iterations,
+            global_run_number: run_spec.global_run_number,
+            exit_code: output.exit_code,
+            completion_signal_found,
+            files_changed: 0,
+            cost_usd: cost.cost_usd,
+            input_tokens: cost.input_tokens,
+            output_tokens: cost.output_tokens,
+            start_time: run_start_systime,
+            end_time: run_end_systime,
+        };
 
         // Accumulate low-confidence parse warnings
         if matches!(
@@ -1515,6 +1567,8 @@ pub fn run_workflow(
                     "strict_parsing_halt",
                     workflow_start,
                 );
+                run_tracer.record_phase_run(&phase_run_data);
+                run_tracer.set_run_status("strict_parsing_halt", true);
                 return Ok(EngineResult {
                     exit_code: 2,
                     completed_cycles: ctx.last_cycle,
@@ -1612,6 +1666,8 @@ pub fn run_workflow(
                 "executor_error",
                 workflow_start,
             );
+            run_tracer.record_phase_run(&phase_run_data);
+            run_tracer.set_run_status("timeout", true);
             return Ok(EngineResult {
                 exit_code: 2,
                 completed_cycles: ctx.last_cycle,
@@ -1680,6 +1736,8 @@ pub fn run_workflow(
                 ));
             }
             emit_summary_if_jsonl(config, &ctx, &workflow.phases, "canceled", workflow_start);
+            run_tracer.record_phase_run(&phase_run_data);
+            run_tracer.set_run_status("canceled", false);
             return Ok(EngineResult {
                 exit_code: 130,
                 completed_cycles: ctx.last_cycle,
@@ -1797,6 +1855,8 @@ pub fn run_workflow(
                 "executor_error",
                 workflow_start,
             );
+            run_tracer.record_phase_run(&phase_run_data);
+            run_tracer.set_run_status("executor_error", true);
             return Ok(EngineResult {
                 exit_code: 3,
                 completed_cycles: ctx.last_cycle,
@@ -1856,6 +1916,9 @@ pub fn run_workflow(
                 }
             }
         }
+
+        // Update phase-run span data with manifest diff results.
+        phase_run_data.files_changed = run_files_changed;
 
         // Append cost entry with file diff data.
         append_cost_entry(
@@ -1948,6 +2011,9 @@ pub fn run_workflow(
             ));
         }
 
+        // Record the phase-run OTel span now that all attributes are known.
+        run_tracer.record_phase_run(&phase_run_data);
+
         // Hard exit if produces_required and violations found.
         if phase_produces_required && !produces_violations.is_empty() {
             if config.output_format == crate::cli::OutputFormat::Human
@@ -1973,6 +2039,7 @@ pub fn run_workflow(
                 "executor_error",
                 workflow_start,
             );
+            run_tracer.set_run_status("produces_required_violation", true);
             return Ok(EngineResult {
                 exit_code: 2,
                 completed_cycles: ctx.last_cycle,
@@ -2073,6 +2140,7 @@ pub fn run_workflow(
                 state.write_atomic(&state_path)?;
 
                 emit_summary_if_jsonl(config, &ctx, &workflow.phases, "budget_cap", workflow_start);
+                run_tracer.set_run_status("budget_cap", false);
                 return Ok(EngineResult {
                     exit_code: 4,
                     completed_cycles: ctx.last_cycle,
@@ -2182,6 +2250,7 @@ pub fn run_workflow(
                             "budget_cap",
                             workflow_start,
                         );
+                        run_tracer.set_run_status("budget_cap", false);
                         return Ok(EngineResult {
                             exit_code: 4,
                             completed_cycles: ctx.last_cycle,
@@ -2276,6 +2345,7 @@ pub fn run_workflow(
                     ));
                 }
                 emit_summary_if_jsonl(config, &ctx, &workflow.phases, "canceled", workflow_start);
+                run_tracer.set_run_status("canceled", false);
                 return Ok(EngineResult {
                     exit_code: 130,
                     completed_cycles: ctx.last_cycle,
@@ -2290,18 +2360,9 @@ pub fn run_workflow(
             }
         }
 
-        // Check completion signal (respecting completion_signal_phases if configured).
-        let completion_eligible = workflow.completion_signal_phases.is_empty()
-            || workflow
-                .completion_signal_phases
-                .contains(&run_spec.phase_name);
-        if completion_eligible
-            && signal_matches(
-                &response_text,
-                &workflow.completion_signal,
-                &workflow.completion_signal_mode,
-            )
-        {
+        // Check completion signal using the precomputed boolean (computed after response_text
+        // was extracted, accounting for completion_signal_phases and signal mode).
+        if completion_signal_found {
             // Print final cycle cost before returning
             if config.output_format == crate::cli::OutputFormat::Human
                 && ctx.current_display_cycle > 0
@@ -2318,6 +2379,7 @@ pub fn run_workflow(
                 ));
             }
             emit_summary_if_jsonl(config, &ctx, &workflow.phases, "completed", workflow_start);
+            run_tracer.set_run_status("completed", false);
             return Ok(EngineResult {
                 exit_code: 0,
                 completed_cycles: ctx.last_cycle,
@@ -2467,6 +2529,7 @@ pub fn run_workflow(
         ));
     }
     emit_summary_if_jsonl(config, &ctx, &workflow.phases, "max_cycles", workflow_start);
+    run_tracer.set_run_status("max_cycles", false);
     Ok(EngineResult {
         exit_code: 1,
         completed_cycles: ctx.last_cycle,

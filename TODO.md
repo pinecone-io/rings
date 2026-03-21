@@ -29,36 +29,19 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 **Summary:** Remaining OTel features: emit cost/duration/token metrics (F-167), strip filesystem paths from telemetry for privacy (F-168), handle init failures gracefully (F-169, likely already done), and configure endpoint via standard env var (F-170, likely already done).
 
-### Task 1: Add OTel metrics
-
-**Files:** `src/otel.rs`
-
-**Steps:**
-- [x] When OTel is enabled, create a meter provider alongside the tracer
-- [x] Emit counters: `rings.runs.total`, `rings.cycles.total`
-- [x] Emit histograms: `rings.run.cost_usd`, `rings.run.duration_secs`, `rings.run.input_tokens`, `rings.run.output_tokens`
-- [x] Record metrics after each run completes
-
-**Tests:**
-- [x] Metrics are recorded when OTel is enabled
-- [x] OTel disabled: no metrics overhead
-- [x] `just validate` clean
-
----
-
 ### Task 2: Add path stripping option
 
 **Files:** `src/otel.rs`
 
 **Steps:**
-- [ ] Check `RINGS_OTEL_STRIP_PATHS` env var
-- [ ] When set to "1": replace all filesystem paths in span attributes with `[redacted]` or just the filename
-- [ ] Applies to: `workflow` path, `context_dir`, `output_dir`, file paths in manifest diffs
+- [x] Check `RINGS_OTEL_STRIP_PATHS` env var
+- [x] When set to "1": replace all filesystem paths in span attributes with `[redacted]` or just the filename
+- [x] Applies to: `workflow` path, `context_dir`, `output_dir`, file paths in manifest diffs
 
 **Tests:**
-- [ ] `RINGS_OTEL_STRIP_PATHS=1`: paths are redacted in span attributes
-- [ ] Without the var: full paths are preserved
-- [ ] `just validate` clean
+- [x] `RINGS_OTEL_STRIP_PATHS=1`: paths are redacted in span attributes
+- [x] Without the var: full paths are preserved
+- [x] `just validate` clean
 
 ---
 

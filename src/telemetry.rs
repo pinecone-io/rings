@@ -193,6 +193,25 @@ fn build_meter_provider(
     Ok(meter_provider)
 }
 
+// ─── Path stripping ─────────────────────────────────────────────────────────
+
+/// If `strip` is true, returns just the file name component of `path`
+/// (e.g. `/home/user/workflows/build.toml` → `build.toml`).
+/// Falls back to the full path if there is no file name component.
+/// When `strip` is false, returns the path unchanged.
+#[cfg(feature = "otel")]
+fn maybe_strip_path(path: &str, strip: bool) -> String {
+    if strip {
+        std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path)
+            .to_string()
+    } else {
+        path.to_string()
+    }
+}
+
 // ─── Span management ────────────────────────────────────────────────────────
 
 /// Attributes for a single phase-run span.
@@ -235,6 +254,7 @@ struct RunTracerInner {
     cycle_cx: Option<opentelemetry::Context>,
     run_cx: opentelemetry::Context,
     include_tokens: bool,
+    strip_paths: bool,
     /// Hex trace ID of this run's root span (stored for writing to run.toml).
     trace_id_hex: String,
     /// Hex span ID of this run's root span (stored for writing to run.toml).
@@ -294,6 +314,7 @@ impl RunTracer {
 
             let include_tokens =
                 std::env::var("RINGS_OTEL_INCLUDE_TOKENS").unwrap_or_default() == "true";
+            let strip_paths = std::env::var("RINGS_OTEL_STRIP_PATHS").unwrap_or_default() == "true";
 
             let tracer = global::tracer("rings");
 
@@ -321,7 +342,7 @@ impl RunTracer {
             run_span.set_attribute(KeyValue::new("rings.run.id", run_id.to_string()));
             run_span.set_attribute(KeyValue::new(
                 "rings.workflow.file",
-                workflow_file.to_string(),
+                maybe_strip_path(workflow_file, strip_paths),
             ));
             run_span.set_attribute(KeyValue::new("max_cycles", max_cycles as i64));
             run_span.set_attribute(KeyValue::new("phases", phases.to_string()));
@@ -382,6 +403,7 @@ impl RunTracer {
                     cycle_cx: None,
                     run_cx,
                     include_tokens,
+                    strip_paths,
                     trace_id_hex,
                     span_id_hex,
                     current_cycle: 0,
@@ -453,7 +475,7 @@ impl RunTracer {
             span.set_attribute(KeyValue::new("rings.run.id", data.run_id.clone()));
             span.set_attribute(KeyValue::new(
                 "rings.workflow.file",
-                data.workflow_file.clone(),
+                maybe_strip_path(&data.workflow_file, inner.strip_paths),
             ));
             span.set_attribute(KeyValue::new("rings.cycle", data.cycle as i64));
             span.set_attribute(KeyValue::new("rings.phase.name", data.phase_name.clone()));
@@ -793,6 +815,85 @@ mod tests {
 
         std::env::remove_var("RINGS_OTEL_ENABLED");
         std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+    }
+
+    // ── Path stripping tests ─────────────────────────────────────────────────
+
+    #[test]
+    #[cfg(feature = "otel")]
+    fn maybe_strip_path_returns_basename_when_strip_true() {
+        assert_eq!(
+            maybe_strip_path("/home/user/projects/workflow.toml", true),
+            "workflow.toml"
+        );
+        assert_eq!(maybe_strip_path("/var/lib/rings/ci.toml", true), "ci.toml");
+    }
+
+    #[test]
+    #[cfg(feature = "otel")]
+    fn maybe_strip_path_returns_full_path_when_strip_false() {
+        let path = "/home/user/projects/workflow.toml";
+        assert_eq!(maybe_strip_path(path, false), path);
+    }
+
+    #[test]
+    #[cfg(feature = "otel")]
+    fn maybe_strip_path_handles_filename_only() {
+        assert_eq!(maybe_strip_path("workflow.toml", true), "workflow.toml");
+    }
+
+    #[test]
+    fn strip_paths_disabled_by_default_noop_path() {
+        // Without RINGS_OTEL_STRIP_PATHS set, RunTracer is created with strip_paths=false (no-op
+        // when OTel is also disabled — just ensure no panic).
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        std::env::remove_var("RINGS_OTEL_STRIP_PATHS");
+        let tracer = RunTracer::new("run_strip_off", "/home/user/wf.toml", 1, "p1", None);
+        drop(tracer);
+    }
+
+    #[test]
+    #[cfg(feature = "otel")]
+    fn run_tracer_with_strip_paths_does_not_panic() {
+        std::env::set_var("RINGS_OTEL_ENABLED", "true");
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1");
+        std::env::set_var("RINGS_OTEL_STRIP_PATHS", "true");
+
+        let mut tracer = RunTracer::new(
+            "run_strip",
+            "/home/user/projects/my_workflow.toml",
+            5,
+            "builder",
+            None,
+        );
+        tracer.start_cycle(1);
+
+        let start = std::time::SystemTime::now();
+        let end = start + std::time::Duration::from_millis(10);
+
+        tracer.record_phase_run(&PhaseRunData {
+            run_id: "run_strip".to_string(),
+            workflow_file: "/home/user/projects/my_workflow.toml".to_string(),
+            cycle: 1,
+            phase_name: "builder".to_string(),
+            iteration: 1,
+            total_iterations: 1,
+            global_run_number: 1,
+            exit_code: 0,
+            completion_signal_found: false,
+            files_changed: 0,
+            cost_usd: None,
+            input_tokens: None,
+            output_tokens: None,
+            start_time: start,
+            end_time: end,
+        });
+        tracer.set_run_status("completed", false);
+        drop(tracer);
+
+        std::env::remove_var("RINGS_OTEL_ENABLED");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("RINGS_OTEL_STRIP_PATHS");
     }
 
     /// Token/cost metrics are only recorded when `RINGS_OTEL_INCLUDE_TOKENS=true`.

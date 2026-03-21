@@ -23,28 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-167/F-168/F-169/F-170: OTel Metrics, Path Stripping, Init Failure, Endpoint Config
-
-**Spec:** `specs/observability/opentelemetry.md`
-
-**Summary:** Remaining OTel features: emit cost/duration/token metrics (F-167), strip filesystem paths from telemetry for privacy (F-168), handle init failures gracefully (F-169, likely already done), and configure endpoint via standard env var (F-170, likely already done).
-
-### Task 3: Verify init failure handling and endpoint config — COMPLETE
-
-**Files:** `src/telemetry.rs`
-
-**Steps:**
-- [x] Verify F-169: if OTel init fails (bad endpoint, network error), rings prints a warning and continues with no-op tracer
-- [x] Verify F-170: `OTEL_EXPORTER_OTLP_ENDPOINT` is read for the collector endpoint
-- [x] If already working (likely done in F-162), mark as COMPLETE
-
-**Tests:**
-- [x] Invalid endpoint URL: warning printed, rings continues normally
-- [x] `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` is used as the endpoint
-- [x] `just validate` clean
-
----
-
 ## F-173: macOS Universal Binary
 
 **Spec:** `specs/cli/distribution.md`
@@ -56,13 +34,13 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `.github/workflows/release.yml`
 
 **Steps:**
-- [ ] After building both `x86_64-apple-darwin` and `aarch64-apple-darwin` targets, combine with `lipo -create -output rings-macos-universal rings-x86_64 rings-aarch64`
-- [ ] Upload the universal binary as a release asset alongside the per-arch binaries
-- [ ] Verify the universal binary runs on both architectures: `file rings-macos-universal` shows "Mach-O universal binary"
+- [x] After building both `x86_64-apple-darwin` and `aarch64-apple-darwin` targets, combine with `lipo -create -output rings-macos-universal rings-x86_64 rings-aarch64`
+- [x] Upload the universal binary as a release asset alongside the per-arch binaries
+- [x] Verify the universal binary runs on both architectures: `file rings-macos-universal` shows "Mach-O universal binary"
 
 **Tests:**
-- [ ] Universal binary contains both x86_64 and arm64 slices
-- [ ] `just validate` clean
+- [x] Universal binary contains both x86_64 and arm64 slices
+- [x] `just validate` clean
 
 ---
 

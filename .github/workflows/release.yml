@@ -225,9 +225,51 @@ jobs:
             ${{ matrix.artifact }}
             ${{ matrix.artifact }}.sha256
 
+  universal:
+    name: Build macOS universal binary
+    needs: [bump, build]
+    runs-on: macos-latest
+
+    steps:
+      - name: Download macOS x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rings-macos-x86_64
+          path: macos-x86_64
+
+      - name: Download macOS aarch64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rings-macos-aarch64
+          path: macos-aarch64
+
+      - name: Create universal binary with lipo
+        run: |
+          lipo -create -output rings-macos \
+            macos-x86_64/rings-macos-x86_64 \
+            macos-aarch64/rings-macos-aarch64
+
+      - name: Verify universal binary slices
+        run: |
+          file rings-macos
+          lipo -info rings-macos | grep -q "x86_64" || (echo "ERROR: missing x86_64 slice" && exit 1)
+          lipo -info rings-macos | grep -q "arm64" || (echo "ERROR: missing arm64 slice" && exit 1)
+          echo "Universal binary verified: contains x86_64 and arm64 slices"
+
+      - name: Compute SHA256 checksum
+        run: sha256sum rings-macos > rings-macos.sha256
+
+      - name: Upload universal binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rings-macos
+          path: |
+            rings-macos
+            rings-macos.sha256
+
   release:
     name: Publish release
-    needs: [bump, build]
+    needs: [bump, build, universal]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -250,7 +292,7 @@ jobs:
           done
           cd release
           # Combined SHA256SUMS (binaries only, not the per-binary .sha256 files)
-          sha256sum rings-linux-x86_64 rings-linux-aarch64 rings-macos-x86_64 rings-macos-aarch64 > SHA256SUMS
+          sha256sum rings-linux-x86_64 rings-linux-aarch64 rings-macos-x86_64 rings-macos-aarch64 rings-macos > SHA256SUMS
           cat SHA256SUMS
 
       - name: Tag release commit
@@ -277,6 +319,8 @@ jobs:
             release/rings-linux-x86_64.sha256
             release/rings-linux-aarch64
             release/rings-linux-aarch64.sha256
+            release/rings-macos
+            release/rings-macos.sha256
             release/rings-macos-x86_64
             release/rings-macos-x86_64.sha256
             release/rings-macos-aarch64
@@ -295,6 +339,7 @@ jobs:
             |----------|--------|----------|
             | Linux x86_64 | `rings-linux-x86_64` | `rings-linux-x86_64.sha256` |
             | Linux ARM64 | `rings-linux-aarch64` | `rings-linux-aarch64.sha256` |
+            | macOS (universal) | `rings-macos` | `rings-macos.sha256` |
             | macOS Intel | `rings-macos-x86_64` | `rings-macos-x86_64.sha256` |
             | macOS Apple Silicon | `rings-macos-aarch64` | `rings-macos-aarch64.sha256` |
 

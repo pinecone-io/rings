@@ -42,7 +42,12 @@ default = ["otel"]
 testing = []
 otel = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk"]
 
+[build-dependencies]
+clap = { version = "4", features = ["derive"] }
+clap_mangen = "0.2"
+
 [dev-dependencies]
+clap_mangen = "0.2"
 
 [[test]]
 name = "engine_integration"

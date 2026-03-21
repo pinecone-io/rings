@@ -23,33 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-163/F-164/F-165: OTel Trace Structure and Span Attributes
-
-**Spec:** `specs/observability/opentelemetry.md`
-
-**Summary:** When OTel is enabled, emit one trace per workflow run with spans for each cycle and phase-run. Spans carry attributes like phase name, cost, file change counts. Failed runs mark spans as ERROR.
-
-### Task 1: Add trace structure with cycle and run spans
-
-**Files:** `src/otel.rs`, `src/engine.rs`
-
-**Steps:**
-- [x] Create a root span for the entire workflow run with attributes: `run_id`, `workflow`, `max_cycles`
-- [x] Create child spans for each cycle: `rings.cycle` with `cycle_number` attribute
-- [x] Create child spans for each phase-run: `rings.run` with attributes: `phase_name`, `iteration`, `cost_usd`, `input_tokens`, `output_tokens`, `files_changed`
-- [x] On non-zero executor exit: set span status to ERROR with the error message
-- [x] On completion signal: add `rings.completion_signal` event to the triggering run span
-- [x] All span creation is no-op when OTel is disabled (behind the feature flag)
-
-**Tests:**
-- [x] With OTel enabled: spans are created with correct parent-child hierarchy
-- [x] Span attributes contain expected values
-- [x] Failed run span has ERROR status
-- [x] OTel disabled: no spans created, no overhead
-- [x] `just validate` clean
-
----
-
 ## F-180: Man Page Generation
 
 **Spec:** `specs/cli/completion-and-manpage.md`
@@ -61,16 +34,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `build.rs` (or `src/main.rs`), `Cargo.toml`
 
 **Steps:**
-- [ ] Add `clap_mangen` to `Cargo.toml` build-dependencies
-- [ ] In `build.rs`: generate man page from the `Cli` struct using `clap_mangen::Man::new(cmd).render(&mut buf)`
-- [ ] Write the generated man page to `target/man/rings.1` during build
-- [ ] Add a `just man` recipe that copies the generated man page to a standard location
+- [x] Add `clap_mangen` to `Cargo.toml` build-dependencies
+- [x] In `build.rs`: generate man page from the `Cli` struct using `clap_mangen::Man::new(cmd).render(&mut buf)`
+- [x] Write the generated man page to `target/man/rings.1` during build
+- [x] Add a `just man` recipe that copies the generated man page to a standard location
 - [ ] Alternatively: add a `rings --generate-man` hidden flag that prints the man page to stdout
 
 **Tests:**
-- [ ] Generated man page is valid roff format
-- [ ] Man page includes all subcommands and flags
-- [ ] `just validate` clean
+- [x] Generated man page is valid roff format
+- [x] Man page includes all subcommands and flags
+- [x] `just validate` clean
 
 ---
 
@@ -118,5 +91,85 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] Each release asset has a corresponding `.sha256` file
 - [ ] Checksum file content matches the actual binary hash
 - [ ] `just validate` clean
+
+---
+
+## F-166: OTel Span Links for Resumed Runs
+
+**Spec:** `specs/observability/opentelemetry.md`, `specs/state/run-ancestry.md`
+
+**Summary:** When resuming a run, link the new trace to the parent run's trace so observability tools can navigate the full history across resume boundaries.
+
+### Task 1: Add span links on resume
+
+**Files:** `src/otel.rs`, `src/engine.rs`
+
+**Steps:**
+- [ ] When a run is resumed (has `parent_run_id` or `continuation_of`), add a span link from the root span to the parent run's trace
+- [ ] Store the parent run's trace ID in `run.toml` so it can be referenced
+- [ ] If the parent trace ID is not available (old run without OTel), skip the link gracefully
+
+**Tests:**
+- [ ] Resumed run's root span has a link to the parent run's trace
+- [ ] Fresh run (no parent) has no span links
+- [ ] Missing parent trace ID is handled gracefully
+- [ ] `just validate` clean
+
+---
+
+## F-167/F-168/F-169/F-170: OTel Metrics, Path Stripping, Init Failure, Endpoint Config
+
+**Spec:** `specs/observability/opentelemetry.md`
+
+**Summary:** Remaining OTel features: emit cost/duration/token metrics (F-167), strip filesystem paths from telemetry for privacy (F-168), handle init failures gracefully (F-169, likely already done), and configure endpoint via standard env var (F-170, likely already done).
+
+### Task 1: Add OTel metrics
+
+**Files:** `src/otel.rs`
+
+**Steps:**
+- [ ] When OTel is enabled, create a meter provider alongside the tracer
+- [ ] Emit counters: `rings.runs.total`, `rings.cycles.total`
+- [ ] Emit histograms: `rings.run.cost_usd`, `rings.run.duration_secs`, `rings.run.input_tokens`, `rings.run.output_tokens`
+- [ ] Record metrics after each run completes
+
+**Tests:**
+- [ ] Metrics are recorded when OTel is enabled
+- [ ] OTel disabled: no metrics overhead
+- [ ] `just validate` clean
+
+---
+
+### Task 2: Add path stripping option
+
+**Files:** `src/otel.rs`
+
+**Steps:**
+- [ ] Check `RINGS_OTEL_STRIP_PATHS` env var
+- [ ] When set to "1": replace all filesystem paths in span attributes with `[redacted]` or just the filename
+- [ ] Applies to: `workflow` path, `context_dir`, `output_dir`, file paths in manifest diffs
+
+**Tests:**
+- [ ] `RINGS_OTEL_STRIP_PATHS=1`: paths are redacted in span attributes
+- [ ] Without the var: full paths are preserved
+- [ ] `just validate` clean
+
+---
+
+### Task 3: Verify init failure handling and endpoint config
+
+**Files:** `src/otel.rs`
+
+**Steps:**
+- [ ] Verify F-169: if OTel init fails (bad endpoint, network error), rings prints a warning and continues with no-op tracer
+- [ ] Verify F-170: `OTEL_EXPORTER_OTLP_ENDPOINT` is read for the collector endpoint
+- [ ] If already working (likely done in F-162), mark as COMPLETE
+
+**Tests:**
+- [ ] Invalid endpoint URL: warning printed, rings continues normally
+- [ ] `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` is used as the endpoint
+- [ ] `just validate` clean
+
+---
 
 ---

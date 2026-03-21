@@ -52,6 +52,11 @@ lint:
 # Run all quality gates (matches CI)
 validate: fmt-check lint test
 
+# Generate man pages to target/man/
+man: build
+    @echo "Man pages written to target/man/"
+    @ls target/man/
+
 # Watch for changes and rebuild
 watch:
     cargo watch -x build

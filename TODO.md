@@ -29,35 +29,19 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 **Summary:** Remaining OTel features: emit cost/duration/token metrics (F-167), strip filesystem paths from telemetry for privacy (F-168), handle init failures gracefully (F-169, likely already done), and configure endpoint via standard env var (F-170, likely already done).
 
-### Task 2: Add path stripping option
+### Task 3: Verify init failure handling and endpoint config — COMPLETE
 
-**Files:** `src/otel.rs`
+**Files:** `src/telemetry.rs`
 
 **Steps:**
-- [x] Check `RINGS_OTEL_STRIP_PATHS` env var
-- [x] When set to "1": replace all filesystem paths in span attributes with `[redacted]` or just the filename
-- [x] Applies to: `workflow` path, `context_dir`, `output_dir`, file paths in manifest diffs
+- [x] Verify F-169: if OTel init fails (bad endpoint, network error), rings prints a warning and continues with no-op tracer
+- [x] Verify F-170: `OTEL_EXPORTER_OTLP_ENDPOINT` is read for the collector endpoint
+- [x] If already working (likely done in F-162), mark as COMPLETE
 
 **Tests:**
-- [x] `RINGS_OTEL_STRIP_PATHS=1`: paths are redacted in span attributes
-- [x] Without the var: full paths are preserved
+- [x] Invalid endpoint URL: warning printed, rings continues normally
+- [x] `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` is used as the endpoint
 - [x] `just validate` clean
-
----
-
-### Task 3: Verify init failure handling and endpoint config
-
-**Files:** `src/otel.rs`
-
-**Steps:**
-- [ ] Verify F-169: if OTel init fails (bad endpoint, network error), rings prints a warning and continues with no-op tracer
-- [ ] Verify F-170: `OTEL_EXPORTER_OTLP_ENDPOINT` is read for the collector endpoint
-- [ ] If already working (likely done in F-162), mark as COMPLETE
-
-**Tests:**
-- [ ] Invalid endpoint URL: warning printed, rings continues normally
-- [ ] `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` is used as the endpoint
-- [ ] `just validate` clean
 
 ---
 

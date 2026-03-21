@@ -275,12 +275,12 @@ Summaries are written from the user's perspective. Features with dependencies no
 
 | # | Feature | Summary | Status | Spec |
 |---|---------|---------|--------|------|
-| F-171 | Static Binary | I can download a single binary with no system library dependencies and run it immediately | PRIORITIZED | [distribution.md](cli/distribution.md) |
-| F-172 | Multi-Platform Release | I can get native binaries for x86_64 and aarch64 on both Linux and macOS | PRIORITIZED | [distribution.md](cli/distribution.md) |
+| F-171 | Static Binary | I can download a single binary with no system library dependencies and run it immediately | COMPLETE | [distribution.md](cli/distribution.md) |
+| F-172 | Multi-Platform Release | I can get native binaries for x86_64 and aarch64 on both Linux and macOS | COMPLETE | [distribution.md](cli/distribution.md) |
 | F-173 | macOS Universal Binary | On macOS, I get a single universal binary that runs natively on both Intel and Apple Silicon | PRIORITIZED | [distribution.md](cli/distribution.md) |
 | F-174 | Binary Size Optimization | The rings binary targets < 5 MB so downloads and distributions stay lightweight | PRIORITIZED | [distribution.md](cli/distribution.md) |
 | F-175 | Cargo Install Support | Rust users can install rings with `cargo install rings` without needing pre-built binaries | PRIORITIZED | [distribution.md](cli/distribution.md) |
-| F-176 | SHA256 Checksums | Every release includes checksums I can verify to confirm binary integrity | PRIORITIZED | [distribution.md](cli/distribution.md) |
+| F-176 | SHA256 Checksums | Every release includes checksums I can verify to confirm binary integrity | COMPLETE | [distribution.md](cli/distribution.md) |
 | F-177 | Reproducible Builds | The Rust toolchain is pinned and Cargo.lock is committed so I can reproduce any release binary myself | PRIORITIZED | [distribution.md](cli/distribution.md) |
 | F-178 | Shell Completions | I can get tab-completion for all commands and flags in bash, zsh, or fish (requires F-075) | COMPLETE | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 | F-179 | Completion Behavior | Tab-completion offers `.toml` files for workflow arguments, run IDs for run arguments, and flag names everywhere (requires F-178) | COMPLETE | [completion-and-manpage.md](cli/completion-and-manpage.md) |

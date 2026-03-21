@@ -33,6 +33,21 @@ Update to the latest version:
 rings update
 ```
 
+### Verify a manual download
+
+Each release includes per-binary SHA256 checksum files and a combined `SHA256SUMS`:
+
+```bash
+# Download binary and its checksum
+curl -LO https://github.com/pinecone-io/rings/releases/latest/download/rings-linux-x86_64
+curl -LO https://github.com/pinecone-io/rings/releases/latest/download/rings-linux-x86_64.sha256
+sha256sum -c rings-linux-x86_64.sha256
+
+# Or verify all binaries at once
+curl -LO https://github.com/pinecone-io/rings/releases/latest/download/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
 ---
 
 ## Quickstart

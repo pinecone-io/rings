@@ -200,6 +200,9 @@ jobs:
       - name: Rename binary
         run: cp target/${{ matrix.target }}/release/rings ${{ matrix.artifact }}
 
+      - name: Compute SHA256 checksum
+        run: sha256sum ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+
       - name: Verify no dynamic library dependencies (Linux only)
         if: runner.os == 'Linux'
         run: |
@@ -218,7 +221,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
 
   release:
     name: Publish release
@@ -244,8 +249,9 @@ jobs:
             cp "$dir"/* release/
           done
           cd release
-          sha256sum rings-* > checksums-sha256.txt
-          cat checksums-sha256.txt
+          # Combined SHA256SUMS (binaries only, not the per-binary .sha256 files)
+          sha256sum rings-linux-x86_64 rings-linux-aarch64 rings-macos-x86_64 rings-macos-aarch64 > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Tag release commit
         run: |
@@ -268,10 +274,14 @@ jobs:
           target_commitish: ${{ needs.bump.outputs.sha }}
           files: |
             release/rings-linux-x86_64
+            release/rings-linux-x86_64.sha256
             release/rings-linux-aarch64
+            release/rings-linux-aarch64.sha256
             release/rings-macos-x86_64
+            release/rings-macos-x86_64.sha256
             release/rings-macos-aarch64
-            release/checksums-sha256.txt
+            release/rings-macos-aarch64.sha256
+            release/SHA256SUMS
           body: |
             **v${{ needs.bump.outputs.version }}** — built from `main` (${{ needs.bump.outputs.sha }}).
 
@@ -281,13 +291,13 @@ jobs:
             ```
 
             **Or download directly:**
-            | Platform | Binary |
-            |----------|--------|
-            | Linux x86_64 | `rings-linux-x86_64` |
-            | Linux ARM64 | `rings-linux-aarch64` |
-            | macOS Intel | `rings-macos-x86_64` |
-            | macOS Apple Silicon | `rings-macos-aarch64` |
+            | Platform | Binary | Checksum |
+            |----------|--------|----------|
+            | Linux x86_64 | `rings-linux-x86_64` | `rings-linux-x86_64.sha256` |
+            | Linux ARM64 | `rings-linux-aarch64` | `rings-linux-aarch64.sha256` |
+            | macOS Intel | `rings-macos-x86_64` | `rings-macos-x86_64.sha256` |
+            | macOS Apple Silicon | `rings-macos-aarch64` | `rings-macos-aarch64.sha256` |
 
-            Verify with `checksums-sha256.txt`.
+            Verify with `sha256sum -c rings-linux-x86_64.sha256` or check all with `SHA256SUMS`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

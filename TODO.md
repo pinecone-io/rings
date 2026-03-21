@@ -23,53 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-171/F-172: Static Binary and Multi-Platform Release
-
-**Spec:** `specs/cli/distribution.md`
-
-**Summary:** Produce static binaries with no system library dependencies for x86_64 and aarch64 on Linux and macOS. This is primarily CI/build configuration.
-
-### Task 1: Configure static linking in CI
-
-**Files:** `.github/workflows/release.yml`, `Cargo.toml`
-
-**Steps:**
-- [x] For Linux builds: use `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets for fully static binaries
-- [x] For macOS: standard builds are already effectively static (no dynamic deps beyond system frameworks)
-- [x] Add cross-compilation targets to the release workflow matrix
-- [x] Verify binary has no dynamic library dependencies: `ldd target/release/rings` shows "not a dynamic executable"
-- [x] Verify binary size is reasonable (< 10 MB target)
-
-**Tests:**
-- [x] Linux musl binary runs without any shared libraries
-- [x] macOS binary runs on both Intel and Apple Silicon (if universal)
-- [x] `just validate` clean on each target
-
----
-
-## F-176: SHA256 Checksums for Releases
-
-**Spec:** `specs/cli/distribution.md`
-
-**Summary:** Every release includes SHA256 checksums so users can verify binary integrity after download.
-
-### Task 1: Add checksum generation to release workflow
-
-**Files:** `.github/workflows/release.yml`
-
-**Steps:**
-- [ ] After building each platform binary, compute SHA256: `sha256sum rings-{target} > rings-{target}.sha256`
-- [ ] Upload checksum files alongside binaries as release assets
-- [ ] Include a combined `SHA256SUMS` file listing all binaries
-- [ ] Document verification in README: `sha256sum -c rings-x86_64-unknown-linux-musl.sha256`
-
-**Tests:**
-- [ ] Each release asset has a corresponding `.sha256` file
-- [ ] Checksum file content matches the actual binary hash
-- [ ] `just validate` clean
-
----
-
 ## F-166: OTel Span Links for Resumed Runs
 
 **Spec:** `specs/observability/opentelemetry.md`, `specs/state/run-ancestry.md`

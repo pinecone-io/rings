@@ -1455,7 +1455,7 @@ dependencies = [
 
 [[package]]
 name = "rings"
-version = "0.1.84"
+version = "0.1.85"
 dependencies = [
  "anyhow",
  "chrono",

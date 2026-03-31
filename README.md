@@ -297,6 +297,18 @@ Workflow TOML files are designed to be committed — they contain no machine-spe
 
 ---
 
+## Building from Source
+
+Requires Rust (the pinned version is in `rust-toolchain.toml` and will be installed automatically by `rustup`):
+
+```bash
+cargo build --release --locked
+```
+
+`Cargo.lock` is committed to the repository so all dependency versions are pinned. The `--locked` flag ensures the build uses exactly those versions.
+
+---
+
 ## Acknowledgments
 
 The iterative AI prompting pattern at the core of rings — running a task many times with fresh context, accumulating progress through on-disk state — was discovered and popularized by [Geoffrey Huntley](https://ghuntley.com/loop/), who calls it the Ralph loop. rings automates that pattern.

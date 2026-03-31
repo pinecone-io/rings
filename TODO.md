@@ -57,16 +57,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `rust-toolchain.toml`, `Cargo.lock`
 
 **Steps:**
-- [ ] Verify `rust-toolchain.toml` exists and pins a specific Rust version
-- [ ] Verify `Cargo.lock` is committed to the repository (not gitignored)
-- [ ] Document the build command in README or CONTRIBUTING: `cargo build --release --locked`
-- [ ] If already in place, mark as COMPLETE
+- [x] Verify `rust-toolchain.toml` exists and pins a specific Rust version
+- [x] Verify `Cargo.lock` is committed to the repository (not gitignored)
+- [x] Document the build command in README or CONTRIBUTING: `cargo build --release --locked`
+- [x] If already in place, mark as COMPLETE
 
 **Tests:**
-- [ ] `cargo build --release --locked` succeeds
-- [ ] `rust-toolchain.toml` specifies exact version
-- [ ] `Cargo.lock` is tracked in git
-- [ ] `just validate` clean
+- [x] `cargo build --release --locked` succeeds
+- [x] `rust-toolchain.toml` specifies exact version
+- [x] `Cargo.lock` is tracked in git
+- [x] `just validate` clean
 
 ---
 

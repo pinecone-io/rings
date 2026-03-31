@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-31 / F-177 Task 1: Reproducible Builds] Created `rust-toolchain.toml` pinning `channel = "1.94.0"` (the active stable toolchain). `Cargo.lock` was already committed. Added "Building from Source" section to README.md documenting `cargo build --release --locked`. All steps verified: `rust-toolchain.toml` exists, `Cargo.lock` is git-tracked, `cargo build --release --locked` succeeds, `just validate` clean.
+
 [2026-03-21 / F-173 Task 1: macOS universal binary] Added a `universal` job to `release.yml` that runs on `macos-latest` after `build`, downloads the two macOS per-arch artifacts, uses `lipo -create` to produce `rings-macos`, verifies both x86_64 and arm64 slices are present, then uploads as an artifact. The `release` job now depends on `universal` and publishes `rings-macos` + `rings-macos.sha256` alongside the per-arch binaries. The universal binary is also included in SHA256SUMS. The TODO listed the output name as `rings-macos-universal` but the spec (`specs/cli/distribution.md`) uses `rings-macos` — followed the spec.
 
 [2026-03-21 / F-169/F-170 Task 3: Verify init failure handling and endpoint config] Both features were already implemented in `src/telemetry.rs` from prior tasks. F-169: `init_tracer_inner()` prints `"Warning: OTel initialization failed: {e}. Continuing without telemetry."` and returns a no-op handle when `build_tracer_provider` fails. F-170: `OTEL_EXPORTER_OTLP_ENDPOINT` is read at lines 72-74 with fallback default `http://localhost:4317`. Marked task as COMPLETE per the task instruction "If already working (likely done in F-162), mark as COMPLETE".

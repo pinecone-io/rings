@@ -570,7 +570,7 @@ fn run_inner(
     #[cfg(unix)]
     let _lock = {
         let context_dir = PathBuf::from(&workflow.context_dir);
-        match ContextLock::acquire(&context_dir, &run_id, args.force_lock) {
+        match ContextLock::acquire(&context_dir, &run_id, args.force_lock, None) {
             Ok(result) => {
                 if let Some(stale_info) = &result.stale_removed {
                     eprintln!(
@@ -1030,7 +1030,7 @@ fn resume_inner(
     #[cfg(unix)]
     let _lock = {
         let context_dir = PathBuf::from(&workflow.context_dir);
-        match ContextLock::acquire(&context_dir, &new_run_id, args.force_lock) {
+        match ContextLock::acquire(&context_dir, &new_run_id, args.force_lock, None) {
             Ok(result) => {
                 if let Some(stale_info) = &result.stale_removed {
                     eprintln!(

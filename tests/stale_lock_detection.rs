@@ -15,7 +15,7 @@ fn stale_removed_is_some_when_stale_lock_removed() {
     std::fs::write(&lock_file, json).unwrap();
 
     // Acquire should succeed and populate stale_removed
-    let result = ContextLock::acquire(tmp.path(), "new_run", false).unwrap();
+    let result = ContextLock::acquire(tmp.path(), "new_run", false, None).unwrap();
 
     assert!(result.stale_removed.is_some());
     let stale_info = result.stale_removed.unwrap();
@@ -28,7 +28,7 @@ fn stale_removed_is_none_when_no_stale_lock_existed() {
     let tmp = TempDir::new().unwrap();
 
     // Acquire lock when no prior lock exists
-    let result = ContextLock::acquire(tmp.path(), "new_run", false).unwrap();
+    let result = ContextLock::acquire(tmp.path(), "new_run", false, None).unwrap();
 
     assert!(result.stale_removed.is_none());
 }
@@ -47,7 +47,7 @@ fn active_pid_lock_still_returns_error() {
     std::fs::write(&lock_file, json).unwrap();
 
     // Try to acquire without force should fail
-    let err = ContextLock::acquire(tmp.path(), "new_run", false).unwrap_err();
+    let err = ContextLock::acquire(tmp.path(), "new_run", false, None).unwrap_err();
 
     match err {
         rings::lock::LockError::ActiveProcess { run_id, pid, .. } => {
@@ -72,7 +72,7 @@ fn force_lock_still_bypasses_check() {
     std::fs::write(&lock_file, json).unwrap();
 
     // With force=true, should succeed
-    let result = ContextLock::acquire(tmp.path(), "new_run", true).unwrap();
+    let result = ContextLock::acquire(tmp.path(), "new_run", true, None).unwrap();
 
     // Should overwrite without reporting it as stale (force doesn't go through stale detection)
     assert!(result.stale_removed.is_none());
@@ -95,7 +95,7 @@ fn stale_lock_info_contains_correct_run_id_and_pid() {
     let json = serde_json::to_string(&stale_lock).unwrap();
     std::fs::write(&lock_file, json).unwrap();
 
-    let result = ContextLock::acquire(tmp.path(), "new_run", false).unwrap();
+    let result = ContextLock::acquire(tmp.path(), "new_run", false, None).unwrap();
 
     let stale_info = result.stale_removed.unwrap();
     assert_eq!(stale_info.run_id, "run_20240115_abc123");

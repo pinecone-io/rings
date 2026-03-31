@@ -104,25 +104,25 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/lock.rs`
 
 **Steps:**
-- [ ] Add `lock_name: Option<&str>` parameter to `ContextLock::acquire`
-- [ ] Extract helper: `fn lock_file_path(context_dir: &Path, lock_name: Option<&str>) -> PathBuf` returning `.rings.lock` or `.rings.lock.<name>`
-- [ ] Use the helper for path computation in `acquire` (the stored `ContextLock.path` already drives RAII `Drop`)
-- [ ] Add `lock_name: Option<String>` field to `LockError::ActiveProcess`
-- [ ] Update `Display` for `ActiveProcess` to branch: `None` → `"is already using"` / `Some(name)` → `"holds lock \"{name}\" on"`
-- [ ] Update all construction sites of `LockError::ActiveProcess` to pass `lock_name`
+- [x] Add `lock_name: Option<&str>` parameter to `ContextLock::acquire`
+- [x] Extract helper: `fn lock_file_path(context_dir: &Path, lock_name: Option<&str>) -> PathBuf` returning `.rings.lock` or `.rings.lock.<name>`
+- [x] Use the helper for path computation in `acquire` (the stored `ContextLock.path` already drives RAII `Drop`)
+- [x] Add `lock_name: Option<String>` field to `LockError::ActiveProcess`
+- [x] Update `Display` for `ActiveProcess` to branch: `None` → `"is already using"` / `Some(name)` → `"holds lock \"{name}\" on"`
+- [x] Update all construction sites of `LockError::ActiveProcess` to pass `lock_name`
 
 **Tests:**
-- [ ] `lock_name = Some("planner")` creates `.rings.lock.planner`, not `.rings.lock`
-- [ ] `lock_name = None` still creates `.rings.lock` (regression guard)
-- [ ] Two different names held simultaneously in the same `context_dir` — both succeed
-- [ ] Same name conflicts with itself (returns `ActiveProcess`)
-- [ ] Named lock does not conflict with unnamed lock (and vice versa)
-- [ ] Stale named lock detected and removed
-- [ ] Force-lock with a named lock overwrites the correct file
-- [ ] Drop removes the correct named lock file
-- [ ] Error message for named lock includes `holds lock "planner"`
-- [ ] Error message for unnamed lock matches existing format (regression)
-- [ ] `just validate` clean
+- [x] `lock_name = Some("planner")` creates `.rings.lock.planner`, not `.rings.lock`
+- [x] `lock_name = None` still creates `.rings.lock` (regression guard)
+- [x] Two different names held simultaneously in the same `context_dir` — both succeed
+- [x] Same name conflicts with itself (returns `ActiveProcess`)
+- [x] Named lock does not conflict with unnamed lock (and vice versa)
+- [x] Stale named lock detected and removed
+- [x] Force-lock with a named lock overwrites the correct file
+- [x] Drop removes the correct named lock file
+- [x] Error message for named lock includes `holds lock "planner"`
+- [x] Error message for unnamed lock matches existing format (regression)
+- [x] `just validate` clean
 
 ### Task 3: Wire `lock_name` through call sites in `main.rs`
 

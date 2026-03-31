@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-31 / F-199/F-200/F-201 Task 3: wire lock_name through main.rs] Both `run` and `resume` call sites now pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`. Stale-lock warning messages branch on `workflow.lock_name`: named locks print `lock "name"` in the message for clarity; unnamed locks use the original message format.
+
 [2026-03-31 / F-199/F-200/F-201 Task 2: named locks in lock.rs] Dropped `#[derive(thiserror::Error)]` from `LockError` and replaced with manual `Display`/`Error` impls to support the conditional error message for `ActiveProcess` (named vs unnamed). The `lock_file_path` helper is a module-private free function. Updated main.rs call sites with `None` (temporary) to keep compilation clean — Task 3 will replace with `workflow.lock_name.as_deref()`.
 
 [2026-03-31 / F-199/F-200/F-201 Task 1: lock_name parsing] Added `lock_name: Option<String>` to both `WorkflowConfig` (deserialized) and `Workflow` (validated). Validation uses a byte-level check per spec: `[a-z0-9_-]+`. Empty string is explicitly rejected (an empty `lock_name = ""` would otherwise silently become `None`-equivalent but produce unexpected file names). Lock name is not part of `structural_fingerprint()` per spec.

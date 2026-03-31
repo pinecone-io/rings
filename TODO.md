@@ -129,14 +129,14 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/main.rs`
 
 **Steps:**
-- [ ] At `run` call site (~line 573): pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`
-- [ ] At `resume` call site (~line 1033): pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`
-- [ ] Update stale-lock warning messages at both sites to include lock name when present
-- [ ] Update existing tests in `tests/stale_lock_detection.rs` to pass `None` as fourth arg
+- [x] At `run` call site (~line 573): pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`
+- [x] At `resume` call site (~line 1033): pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`
+- [x] Update stale-lock warning messages at both sites to include lock name when present
+- [x] Update existing tests in `tests/stale_lock_detection.rs` to pass `None` as fourth arg
 
 **Tests:**
-- [ ] Existing stale lock tests still pass with updated signature
-- [ ] `just validate` clean
+- [x] Existing stale lock tests still pass with updated signature
+- [x] `just validate` clean
 
 ---
 

@@ -570,13 +570,25 @@ fn run_inner(
     #[cfg(unix)]
     let _lock = {
         let context_dir = PathBuf::from(&workflow.context_dir);
-        match ContextLock::acquire(&context_dir, &run_id, args.force_lock, None) {
+        match ContextLock::acquire(
+            &context_dir,
+            &run_id,
+            args.force_lock,
+            workflow.lock_name.as_deref(),
+        ) {
             Ok(result) => {
                 if let Some(stale_info) = &result.stale_removed {
-                    eprintln!(
-                        "Warning: Removed stale lock file from previous run {} (PID={} no longer running).",
-                        stale_info.run_id, stale_info.pid
-                    );
+                    if let Some(name) = &workflow.lock_name {
+                        eprintln!(
+                            "Warning: Removed stale lock file (lock \"{name}\") from previous run {} (PID={} no longer running).",
+                            stale_info.run_id, stale_info.pid
+                        );
+                    } else {
+                        eprintln!(
+                            "Warning: Removed stale lock file from previous run {} (PID={} no longer running).",
+                            stale_info.run_id, stale_info.pid
+                        );
+                    }
                 }
                 result.lock
             }
@@ -1030,13 +1042,25 @@ fn resume_inner(
     #[cfg(unix)]
     let _lock = {
         let context_dir = PathBuf::from(&workflow.context_dir);
-        match ContextLock::acquire(&context_dir, &new_run_id, args.force_lock, None) {
+        match ContextLock::acquire(
+            &context_dir,
+            &new_run_id,
+            args.force_lock,
+            workflow.lock_name.as_deref(),
+        ) {
             Ok(result) => {
                 if let Some(stale_info) = &result.stale_removed {
-                    eprintln!(
-                        "Warning: Removed stale lock file from previous run {} (PID={} no longer running).",
-                        stale_info.run_id, stale_info.pid
-                    );
+                    if let Some(name) = &workflow.lock_name {
+                        eprintln!(
+                            "Warning: Removed stale lock file (lock \"{name}\") from previous run {} (PID={} no longer running).",
+                            stale_info.run_id, stale_info.pid
+                        );
+                    } else {
+                        eprintln!(
+                            "Warning: Removed stale lock file from previous run {} (PID={} no longer running).",
+                            stale_info.run_id, stale_info.pid
+                        );
+                    }
                 }
                 result.lock
             }

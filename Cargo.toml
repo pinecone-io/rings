@@ -1,6 +1,6 @@
 [package]
 name = "rings"
-version = "0.1.271"
+version = "0.1.272"
 edition = "2021"
 
 [[bin]]

@@ -2,6 +2,20 @@
 name = "rings"
 version = "0.1.279"
 edition = "2021"
+description = "Iterative AI workflows for Claude Code — run Claude in a loop with cost tracking, safe cancellation, and resumable runs"
+license = "Apache-2.0"
+repository = "https://github.com/pinecone-io/rings"
+keywords = ["claude", "ai", "workflow", "automation", "llm"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [
+    "specs/",
+    "tests/fixtures/",
+    ".github/",
+    "*.rings.toml",
+    "REVIEW.md",
+    "TODO.md",
+    "queues/",
+]
 
 [[bin]]
 name = "rings"

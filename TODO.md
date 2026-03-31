@@ -23,52 +23,6 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
-## F-173: macOS Universal Binary
-
-**Spec:** `specs/cli/distribution.md`
-
-**Summary:** On macOS, produce a single universal binary that runs natively on both Intel and Apple Silicon using `lipo` to combine x86_64 and aarch64 builds.
-
-### Task 1: Add universal binary step to release workflow
-
-**Files:** `.github/workflows/release.yml`
-
-**Steps:**
-- [x] After building both `x86_64-apple-darwin` and `aarch64-apple-darwin` targets, combine with `lipo -create -output rings-macos-universal rings-x86_64 rings-aarch64`
-- [x] Upload the universal binary as a release asset alongside the per-arch binaries
-- [x] Verify the universal binary runs on both architectures: `file rings-macos-universal` shows "Mach-O universal binary"
-
-**Tests:**
-- [x] Universal binary contains both x86_64 and arm64 slices
-- [x] `just validate` clean
-
----
-
-## F-174: Binary Size Optimization
-
-**Spec:** `specs/cli/distribution.md`
-
-**Summary:** Target < 5 MB binary size. Configure Cargo profile for release builds to minimize binary size.
-
-### Task 1: Optimize release profile
-
-**Files:** `Cargo.toml`
-
-**Steps:**
-- [ ] In `[profile.release]`, set `opt-level = "z"` (optimize for size) or `opt-level = "s"`
-- [ ] Set `lto = true` for link-time optimization
-- [ ] Set `codegen-units = 1` for better optimization (slower build, smaller binary)
-- [ ] Set `strip = true` to strip debug symbols from release binary
-- [ ] Measure binary size before and after: `ls -lh target/release/rings`
-- [ ] If size is still > 5 MB, consider `panic = "abort"` to remove unwinding code
-
-**Tests:**
-- [ ] Release binary is < 5 MB
-- [ ] Binary still passes all tests after optimization
-- [ ] `just validate` clean
-
----
-
 ## F-175: Cargo Install Support
 
 **Spec:** `specs/cli/distribution.md`
@@ -80,15 +34,15 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `Cargo.toml`
 
 **Steps:**
-- [ ] Verify `Cargo.toml` has required crates.io fields: `description`, `license`, `repository`, `keywords`, `categories`
-- [ ] Verify `cargo package` succeeds without errors (all required files included)
-- [ ] Add `exclude` patterns to keep the crate size reasonable (exclude test fixtures, specs, etc.)
-- [ ] Test with `cargo install --path .` locally
+- [x] Verify `Cargo.toml` has required crates.io fields: `description`, `license`, `repository`, `keywords`, `categories`
+- [x] Verify `cargo package` succeeds without errors (all required files included)
+- [x] Add `exclude` patterns to keep the crate size reasonable (exclude test fixtures, specs, etc.)
+- [x] Test with `cargo install --path .` locally
 
 **Tests:**
-- [ ] `cargo install --path .` builds and installs successfully
-- [ ] `cargo package` produces a valid crate
-- [ ] `just validate` clean
+- [x] `cargo install --path .` builds and installs successfully
+- [x] `cargo package` produces a valid crate
+- [x] `just validate` clean
 
 ---
 
@@ -112,6 +66,76 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 - [ ] `cargo build --release --locked` succeeds
 - [ ] `rust-toolchain.toml` specifies exact version
 - [ ] `Cargo.lock` is tracked in git
+- [ ] `just validate` clean
+
+---
+
+## F-199, F-200, F-201: Named Locks for Concurrent Workflows
+
+**Spec:** `specs/state/cancellation-resume.md`, `specs/workflow/workflow-file-format.md`
+
+**Summary:** Allow multiple rings workflows to run concurrently against the same `context_dir` by assigning each a distinct `lock_name`. The lock file becomes `.rings.lock.<name>` instead of `.rings.lock`. Workflows with different lock names never block each other.
+
+**Open Decisions:**
+- Use `Option<String>` on `Workflow` (not a `LockName` newtype) — validation happens once in `validate()`, value consumed as `&str` downstream
+- `lock_name` is not included in `structural_fingerprint()` — changing it on resume is a non-structural change
+- Include lock name in stale-lock warning message for clarity (record in REVIEW.md)
+
+### Task 1: Add `lock_name` field to workflow parsing and validation (F-201)
+
+**Files:** `src/workflow.rs`
+
+**Steps:**
+- [ ] Add `lock_name: Option<String>` with `#[serde(default)]` to `WorkflowConfig`
+- [ ] Add `lock_name: Option<String>` to `Workflow`
+- [ ] Add `WorkflowError::InvalidLockName(String)` variant with message: `invalid lock_name "<value>": must match [a-z0-9_-]+`
+- [ ] In `Workflow::validate()`, validate `lock_name` if present: reject empty string, validate with byte-level check (`!name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')`)
+- [ ] Propagate validated `lock_name` from `WorkflowConfig` to `Workflow`
+
+**Tests:**
+- [ ] Valid names accepted: `"planner"`, `"build-01"`, `"a"`, `"my_workflow_1"`, `"123"`
+- [ ] Invalid names rejected: `""` (empty), `"Planner"` (uppercase), `"my lock"` (space), `"a.b"` (dot), `"a/b"` (slash), `"a!b"` (punctuation)
+- [ ] Absent `lock_name` field → `Workflow.lock_name == None`
+- [ ] Error message includes the offending value and the allowed pattern
+- [ ] `just validate` clean
+
+### Task 2: Extend `ContextLock::acquire` for named locks (F-199, F-200)
+
+**Files:** `src/lock.rs`
+
+**Steps:**
+- [ ] Add `lock_name: Option<&str>` parameter to `ContextLock::acquire`
+- [ ] Extract helper: `fn lock_file_path(context_dir: &Path, lock_name: Option<&str>) -> PathBuf` returning `.rings.lock` or `.rings.lock.<name>`
+- [ ] Use the helper for path computation in `acquire` (the stored `ContextLock.path` already drives RAII `Drop`)
+- [ ] Add `lock_name: Option<String>` field to `LockError::ActiveProcess`
+- [ ] Update `Display` for `ActiveProcess` to branch: `None` → `"is already using"` / `Some(name)` → `"holds lock \"{name}\" on"`
+- [ ] Update all construction sites of `LockError::ActiveProcess` to pass `lock_name`
+
+**Tests:**
+- [ ] `lock_name = Some("planner")` creates `.rings.lock.planner`, not `.rings.lock`
+- [ ] `lock_name = None` still creates `.rings.lock` (regression guard)
+- [ ] Two different names held simultaneously in the same `context_dir` — both succeed
+- [ ] Same name conflicts with itself (returns `ActiveProcess`)
+- [ ] Named lock does not conflict with unnamed lock (and vice versa)
+- [ ] Stale named lock detected and removed
+- [ ] Force-lock with a named lock overwrites the correct file
+- [ ] Drop removes the correct named lock file
+- [ ] Error message for named lock includes `holds lock "planner"`
+- [ ] Error message for unnamed lock matches existing format (regression)
+- [ ] `just validate` clean
+
+### Task 3: Wire `lock_name` through call sites in `main.rs`
+
+**Files:** `src/main.rs`
+
+**Steps:**
+- [ ] At `run` call site (~line 573): pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`
+- [ ] At `resume` call site (~line 1033): pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`
+- [ ] Update stale-lock warning messages at both sites to include lock name when present
+- [ ] Update existing tests in `tests/stale_lock_detection.rs` to pass `None` as fourth arg
+
+**Tests:**
+- [ ] Existing stale lock tests still pass with updated signature
 - [ ] `just validate` clean
 
 ---

@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-03-31 / F-199/F-200/F-201 Task 1: lock_name parsing] Added `lock_name: Option<String>` to both `WorkflowConfig` (deserialized) and `Workflow` (validated). Validation uses a byte-level check per spec: `[a-z0-9_-]+`. Empty string is explicitly rejected (an empty `lock_name = ""` would otherwise silently become `None`-equivalent but produce unexpected file names). Lock name is not part of `structural_fingerprint()` per spec.
+
 [2026-03-31 / F-177 Task 1: Reproducible Builds] Created `rust-toolchain.toml` pinning `channel = "1.94.0"` (the active stable toolchain). `Cargo.lock` was already committed. Added "Building from Source" section to README.md documenting `cargo build --release --locked`. All steps verified: `rust-toolchain.toml` exists, `Cargo.lock` is git-tracked, `cargo build --release --locked` succeeds, `just validate` clean.
 
 [2026-03-21 / F-173 Task 1: macOS universal binary] Added a `universal` job to `release.yml` that runs on `macos-latest` after `build`, downloads the two macOS per-arch artifacts, uses `lipo -create` to produce `rings-macos`, verifies both x86_64 and arm64 slices are present, then uploads as an artifact. The `release` job now depends on `universal` and publishes `rings-macos` + `rings-macos.sha256` alongside the per-arch binaries. The universal binary is also included in SHA256SUMS. The TODO listed the output name as `rings-macos-universal` but the spec (`specs/cli/distribution.md`) uses `rings-macos` — followed the spec.

@@ -86,18 +86,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/workflow.rs`
 
 **Steps:**
-- [ ] Add `lock_name: Option<String>` with `#[serde(default)]` to `WorkflowConfig`
-- [ ] Add `lock_name: Option<String>` to `Workflow`
-- [ ] Add `WorkflowError::InvalidLockName(String)` variant with message: `invalid lock_name "<value>": must match [a-z0-9_-]+`
-- [ ] In `Workflow::validate()`, validate `lock_name` if present: reject empty string, validate with byte-level check (`!name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')`)
-- [ ] Propagate validated `lock_name` from `WorkflowConfig` to `Workflow`
+- [x] Add `lock_name: Option<String>` with `#[serde(default)]` to `WorkflowConfig`
+- [x] Add `lock_name: Option<String>` to `Workflow`
+- [x] Add `WorkflowError::InvalidLockName(String)` variant with message: `invalid lock_name "<value>": must match [a-z0-9_-]+`
+- [x] In `Workflow::validate()`, validate `lock_name` if present: reject empty string, validate with byte-level check (`!name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')`)
+- [x] Propagate validated `lock_name` from `WorkflowConfig` to `Workflow`
 
 **Tests:**
-- [ ] Valid names accepted: `"planner"`, `"build-01"`, `"a"`, `"my_workflow_1"`, `"123"`
-- [ ] Invalid names rejected: `""` (empty), `"Planner"` (uppercase), `"my lock"` (space), `"a.b"` (dot), `"a/b"` (slash), `"a!b"` (punctuation)
-- [ ] Absent `lock_name` field → `Workflow.lock_name == None`
-- [ ] Error message includes the offending value and the allowed pattern
-- [ ] `just validate` clean
+- [x] Valid names accepted: `"planner"`, `"build-01"`, `"a"`, `"my_workflow_1"`, `"123"`
+- [x] Invalid names rejected: `""` (empty), `"Planner"` (uppercase), `"my lock"` (space), `"a.b"` (dot), `"a/b"` (slash), `"a!b"` (punctuation)
+- [x] Absent `lock_name` field → `Workflow.lock_name == None`
+- [x] Error message includes the offending value and the allowed pattern
+- [x] `just validate` clean
 
 ### Task 2: Extend `ContextLock::acquire` for named locks (F-199, F-200)
 

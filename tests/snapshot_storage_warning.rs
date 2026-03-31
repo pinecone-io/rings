@@ -43,6 +43,7 @@ fn make_snapshot_workflow(context_dir: &str, max_cycles: u32, snapshot_cycles: b
         manifest_mtime_optimization: false,
         snapshot_cycles,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        lock_name: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,

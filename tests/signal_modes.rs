@@ -101,6 +101,7 @@ fn make_workflow_regex(signal: &str) -> (Workflow, tempfile::TempDir) {
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        lock_name: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -178,6 +179,7 @@ fn continue_signal_uses_substring_not_regex() {
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        lock_name: None,
         phases: vec![
             PhaseConfig {
                 name: "builder".to_string(),

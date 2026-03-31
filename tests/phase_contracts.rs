@@ -38,6 +38,7 @@ fn make_workflow_with_consumes(context_dir: &str, consumes: Vec<String>) -> Work
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        lock_name: None,
         phases: vec![PhaseConfig {
             name: "reviewer".to_string(),
             prompt: None,
@@ -81,6 +82,7 @@ fn make_workflow_with_contracts(
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        lock_name: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,

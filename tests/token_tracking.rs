@@ -36,6 +36,7 @@ fn make_workflow(signal: &str) -> Workflow {
         manifest_mtime_optimization: false,
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
+        lock_name: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,

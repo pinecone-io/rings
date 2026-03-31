@@ -114,6 +114,9 @@ pub struct WorkflowConfig {
     /// Capture directory snapshot at each cycle boundary.
     #[serde(default)]
     pub snapshot_cycles: bool,
+    /// Named lock for concurrent workflow support.
+    #[serde(default)]
+    pub lock_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -199,6 +202,8 @@ pub struct Workflow {
     pub snapshot_cycles: bool,
     /// Compiled cost parser for this workflow.
     pub compiled_cost_parser: CompiledCostParser,
+    /// Named lock for concurrent workflow support.
+    pub lock_name: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -245,6 +250,8 @@ pub enum WorkflowError {
     },
     #[error("output_dir contains path traversal ('..') which is not allowed")]
     OutputDirContainsParentDir,
+    #[error("invalid lock_name \"{0}\": must match [a-z0-9_-]+")]
+    InvalidLockName(String),
     #[error(
         "phase '{0}': --model appears in both executor.args and executor.extra_args; remove it from one"
     )]
@@ -419,6 +426,17 @@ impl Workflow {
             }
         }
 
+        // Validate lock_name if present.
+        if let Some(ref name) = file.workflow.lock_name {
+            if name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+            {
+                return Err(WorkflowError::InvalidLockName(name.clone()));
+            }
+        }
+
         // Validate and resolve global budget_cap_usd.
         if let Some(cap) = file.workflow.budget_cap_usd {
             if cap.is_nan() || cap.is_infinite() || cap <= 0.0 {
@@ -583,6 +601,7 @@ impl Workflow {
             manifest_mtime_optimization: file.workflow.manifest_mtime_optimization,
             snapshot_cycles: file.workflow.snapshot_cycles,
             compiled_cost_parser,
+            lock_name: file.workflow.lock_name,
         })
     }
 }
@@ -1268,5 +1287,73 @@ prompt_text = "Do work."
         );
         let err = Workflow::from_str(&toml).unwrap_err();
         assert!(matches!(err, WorkflowError::InvalidCostParserPattern(_)));
+    }
+
+    #[test]
+    fn lock_name_absent_is_none() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.lock_name, None);
+    }
+
+    #[test]
+    fn lock_name_valid_names_accepted() {
+        let dir = tempdir().unwrap();
+        for name in &["planner", "build-01", "a", "my_workflow_1", "123"] {
+            let toml = make_toml(
+                dir.path().to_str().unwrap(),
+                &format!(r#"lock_name = "{}""#, name),
+            );
+            let wf = Workflow::from_str(&toml)
+                .unwrap_or_else(|e| panic!("expected '{}' to be valid, got: {}", name, e));
+            assert_eq!(wf.lock_name.as_deref(), Some(*name));
+        }
+    }
+
+    #[test]
+    fn lock_name_invalid_empty_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), r#"lock_name = """#);
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(
+            matches!(&err, WorkflowError::InvalidLockName(v) if v.is_empty()),
+            "expected InvalidLockName for empty string, got: {err}"
+        );
+    }
+
+    #[test]
+    fn lock_name_invalid_uppercase_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), r#"lock_name = "Planner""#);
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(
+            matches!(&err, WorkflowError::InvalidLockName(v) if v == "Planner"),
+            "expected InvalidLockName for 'Planner', got: {err}"
+        );
+    }
+
+    #[test]
+    fn lock_name_invalid_names_produce_error_with_value_and_pattern() {
+        let dir = tempdir().unwrap();
+        for name in &["my lock", "a.b", "a/b", "a!b"] {
+            let toml = make_toml(
+                dir.path().to_str().unwrap(),
+                &format!(r#"lock_name = "{}""#, name),
+            );
+            let err =
+                Workflow::from_str(&toml).expect_err(&format!("expected '{}' to be invalid", name));
+            let msg = err.to_string();
+            assert!(
+                msg.contains(*name),
+                "error for '{}' should include the offending value: {msg}",
+                name
+            );
+            assert!(
+                msg.contains("[a-z0-9_-]+"),
+                "error for '{}' should include the allowed pattern: {msg}",
+                name
+            );
+        }
     }
 }

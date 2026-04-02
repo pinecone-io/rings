@@ -44,6 +44,7 @@ fn make_snapshot_workflow(context_dir: &str, max_cycles: u32, snapshot_cycles: b
         snapshot_cycles,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -55,6 +56,8 @@ fn make_snapshot_workflow(context_dir: &str, max_cycles: u32, snapshot_cycles: b
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     }
 }

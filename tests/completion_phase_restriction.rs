@@ -36,6 +36,7 @@ fn two_phase_workflow(completion_signal_phases: Vec<String>, max_cycles: u32) ->
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![
             PhaseConfig {
                 name: "builder".to_string(),
@@ -48,6 +49,8 @@ fn two_phase_workflow(completion_signal_phases: Vec<String>, max_cycles: u32) ->
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
             PhaseConfig {
                 name: "reviewer".to_string(),
@@ -60,6 +63,8 @@ fn two_phase_workflow(completion_signal_phases: Vec<String>, max_cycles: u32) ->
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
         ],
     }

@@ -39,6 +39,7 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {
@@ -52,6 +53,8 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             })
             .collect(),
     }
@@ -282,6 +285,7 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![
             PhaseConfig {
                 name: "phase_a".to_string(),
@@ -294,6 +298,8 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
             PhaseConfig {
                 name: "phase_b".to_string(),
@@ -306,6 +312,8 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
             PhaseConfig {
                 name: "phase_c".to_string(),
@@ -318,6 +326,8 @@ fn continue_signal_skips_remaining_phases_in_cycle() {
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
         ],
     };
@@ -390,6 +400,7 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![
             PhaseConfig {
                 name: "review".to_string(),
@@ -402,6 +413,8 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
             PhaseConfig {
                 name: "synthesize".to_string(),
@@ -414,6 +427,8 @@ fn completion_signal_phases_restricts_completion_to_named_phases() {
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
         ],
     };
@@ -473,6 +488,7 @@ fn line_mode_completion_requires_signal_on_own_line() {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -484,6 +500,8 @@ fn line_mode_completion_requires_signal_on_own_line() {
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     };
     // First output: "DONE" embedded mid-line (should NOT fire in line mode)
@@ -1337,6 +1355,7 @@ fn manifest_diff_data_appears_in_costs_jsonl() {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -1348,6 +1367,8 @@ fn manifest_diff_data_appears_in_costs_jsonl() {
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     };
 

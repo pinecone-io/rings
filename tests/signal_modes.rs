@@ -102,6 +102,7 @@ fn make_workflow_regex(signal: &str) -> (Workflow, tempfile::TempDir) {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -113,6 +114,8 @@ fn make_workflow_regex(signal: &str) -> (Workflow, tempfile::TempDir) {
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     };
     (workflow, dir)
@@ -180,6 +183,7 @@ fn continue_signal_uses_substring_not_regex() {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![
             PhaseConfig {
                 name: "builder".to_string(),
@@ -192,6 +196,8 @@ fn continue_signal_uses_substring_not_regex() {
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
             PhaseConfig {
                 name: "reviewer".to_string(),
@@ -204,6 +210,8 @@ fn continue_signal_uses_substring_not_regex() {
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             },
         ],
     };

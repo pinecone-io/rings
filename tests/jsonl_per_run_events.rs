@@ -55,6 +55,7 @@ fn make_workflow_with_profile(
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {
@@ -68,6 +69,8 @@ fn make_workflow_with_profile(
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             })
             .collect(),
     }

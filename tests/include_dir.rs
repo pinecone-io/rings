@@ -202,6 +202,7 @@ fn engine_prepends_preamble_when_include_dirs_set() {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -213,6 +214,8 @@ fn engine_prepends_preamble_when_include_dirs_set() {
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     };
 

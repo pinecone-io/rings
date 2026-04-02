@@ -140,4 +140,151 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 
 ---
 
+## F-202 through F-207: Deterministic Gates
+
+**Spec:** `specs/workflow/workflow-file-format.md` (Deterministic Gates section)
+
+**Summary:** Allow workflow authors to attach shell command gates to phases and cycles. A gate runs before execution and its exit code determines whether to proceed, skip, stop, or error. Gates provide deterministic control flow (e.g., "stop planning if TODO.md exceeds 50 lines") without consuming an AI invocation.
+
+### Task 1: Add `GateConfig` type and parse gates from TOML (F-202, F-203, F-204, F-205)
+
+**Files:** `src/workflow.rs`
+
+**Steps:**
+- [x] Define `GateConfig` struct: `command: String`, `on_fail: Option<GateAction>`, `timeout: Option<DurationField>`
+- [x] Define `GateAction` enum: `Skip`, `Stop`, `Error` with serde deserialization from lowercase strings
+- [x] Add `cycle_gate: Option<GateConfig>` with `#[serde(default)]` to `WorkflowConfig`
+- [x] Add `gate: Option<GateConfig>` with `#[serde(default)]` to `PhaseConfig`
+- [x] Add `gate_each_run: bool` with `#[serde(default)]` to `PhaseConfig`
+- [x] Propagate parsed gate fields to `Workflow` struct (add `cycle_gate: Option<GateConfig>`)
+- [x] Add validation in `Workflow::validate()`:
+  - Gate `command` must be non-empty if gate is present
+  - `on_fail` must be `skip`, `stop`, or `error` (enforced by enum deserialization)
+  - `skip` on `cycle_gate` is valid: skips all phases for that cycle, applies `delay_between_cycles`, then retries next cycle
+  - `timeout` must be a valid duration if present
+- [x] Add `WorkflowError` variant: `EmptyGateCommand { scope: String }`
+- [x] Default `on_fail` for `cycle_gate`: `Stop`. Default for phase `gate`: `Skip`
+- [x] Default `timeout`: 30 seconds
+- [x] Include gate config in `structural_fingerprint()` computation
+
+**Tests:**
+- [x] Parse a workflow with `cycle_gate = { command = "true", on_fail = "stop" }` — fields present on `Workflow`
+- [x] Parse a workflow with phase `gate = { command = "test -f foo" }` — default `on_fail` is `Skip`
+- [x] Parse `cycle_gate` without explicit `on_fail` — default is `Stop`
+- [x] `cycle_gate` with `on_fail = "skip"` — valid, skips all phases for that cycle
+- [x] Reject gate with empty command — `EmptyGateCommand` error
+- [x] Parse gate with `timeout = "10s"` — resolves to 10
+- [x] Parse gate with `timeout = 60` — resolves to 60
+- [x] Gate absent → `None` on both `Workflow` and `PhaseConfig`
+- [x] `gate_each_run = true` parses correctly
+- [x] `gate_each_run` defaults to `false`
+- [x] Structural fingerprint changes when gate is added/removed/modified
+- [x] `just validate` clean
+
+### Task 2: Implement gate execution logic (F-202, F-203, F-205)
+
+**Files:** `src/gate.rs` (new), `src/lib.rs`
+
+**Steps:**
+- [ ] Create `src/gate.rs` module with `pub struct GateResult { pub command: String, pub exit_code: i32, pub passed: bool, pub stdout: String, pub stderr: String }`
+- [ ] Implement `pub fn evaluate_gate(gate: &GateConfig, context_dir: &Path) -> Result<GateResult>`:
+  - Spawn `sh -c <command>` in `context_dir`
+  - Capture stdout and stderr
+  - Apply timeout: SIGTERM → 5s → SIGKILL (reuse existing timeout pattern from executor)
+  - Timeout counts as failure (exit_code = -1 or similar sentinel)
+  - Return `GateResult` with exit code and pass/fail
+- [ ] Ensure gate commands inherit the process environment (same as executor)
+- [ ] No prompt content in command args (gate commands are author-defined, not user input — but document this)
+
+**Tests:**
+- [ ] `evaluate_gate` with `command = "true"` → passed, exit_code 0
+- [ ] `evaluate_gate` with `command = "false"` → not passed, exit_code 1
+- [ ] `evaluate_gate` with `command = "echo hello"` → passed, stdout contains "hello"
+- [ ] `evaluate_gate` with `command = "exit 42"` → not passed, exit_code 42
+- [ ] `evaluate_gate` with timeout exceeded → not passed (use `sleep 60` with 1s timeout)
+- [ ] `evaluate_gate` runs in the specified `context_dir`
+- [ ] `just validate` clean
+
+### Task 3: Integrate cycle gate into engine loop (F-203)
+
+**Files:** `src/engine.rs` (or wherever the main cycle loop lives)
+
+**Steps:**
+- [ ] At the top of each cycle iteration, before any phases run, check `workflow.cycle_gate`
+- [ ] If present, call `evaluate_gate()` with the gate config and `context_dir`
+- [ ] If the gate passes (exit 0), continue normally
+- [ ] If the gate fails:
+  - `on_fail = "stop"` → save state, exit with code 0 (same as completion signal)
+  - `on_fail = "error"` → save state, exit with code 2
+- [ ] Log the gate result (human and JSONL — see Task 5)
+
+**Tests:**
+- [ ] Workflow with `cycle_gate = { command = "true" }` — cycles run normally
+- [ ] Workflow with `cycle_gate = { command = "false", on_fail = "stop" }` — exits gracefully after gate fails on first cycle
+- [ ] Workflow with `cycle_gate = { command = "false", on_fail = "error" }` — exits with error code 2
+- [ ] Workflow with `cycle_gate = { command = "false", on_fail = "skip" }` and `delay_between_cycles` — skips phases, waits delay, retries next cycle
+- [ ] Cycle gate that passes on first cycle but fails on second — first cycle's phases all execute, second cycle does not start
+- [ ] `just validate` clean
+
+### Task 4: Integrate phase gate into engine loop (F-202, F-207)
+
+**Files:** `src/engine.rs`
+
+**Steps:**
+- [ ] Before running a phase's first invocation in a cycle, check `phase.gate`
+- [ ] If present, call `evaluate_gate()` with the gate config and `context_dir`
+- [ ] If the gate passes, run the phase normally
+- [ ] If the gate fails:
+  - `on_fail = "skip"` → skip all runs of this phase for this cycle, advance to next phase
+  - `on_fail = "stop"` → save state, exit with code 0
+  - `on_fail = "error"` → save state, exit with code 2
+- [ ] If `gate_each_run = true`, evaluate the gate before every individual run within `runs_per_cycle`, not just the first
+- [ ] Log the gate result for each evaluation
+
+**Tests:**
+- [ ] Phase with `gate = { command = "true" }` — phase runs normally
+- [ ] Phase with `gate = { command = "false" }` — phase skipped (default `on_fail = "skip"`), next phase runs
+- [ ] Phase with `gate = { command = "false", on_fail = "stop" }` — workflow stops gracefully
+- [ ] Phase with `gate = { command = "false", on_fail = "error" }` — workflow exits with code 2
+- [ ] Phase with `runs_per_cycle = 3` and gate — gate checked once before first run (default)
+- [ ] Phase with `runs_per_cycle = 3`, `gate_each_run = true`, and a gate that fails on the second check — first run executes, second is skipped/stopped
+- [ ] Two phases: first has failing gate (skip), second has no gate — second phase still runs
+- [ ] `just validate` clean
+
+### Task 5: Gate logging in human and JSONL output (F-206)
+
+**Files:** `src/output.rs` (or equivalent output/event module)
+
+**Steps:**
+- [ ] Human output format: `[cycle N] cycle gate: \`<command>\` → exit <code> (pass|fail → <action>)`
+- [ ] Human output format: `[cycle N] phase "<name>" gate: \`<command>\` → exit <code> (pass|fail → <action>)`
+- [ ] Truncate displayed command to 80 chars if longer, with `...` suffix
+- [ ] JSONL `gate_result` event: `{"event":"gate_result","run_id":"...","timestamp":"...","scope":"cycle"|"phase","phase":null|"<name>","command":"...","exit_code":<int>,"passed":<bool>,"action":"stop"|"skip"|"error"|null}`
+- [ ] Gate stdout/stderr captured in run log directory (e.g., `runs/NNN-gate-cycle.log` or `runs/NNN-gate-<phase>.log`)
+
+**Tests:**
+- [ ] Human output contains gate command and exit code for cycle gate
+- [ ] Human output contains phase name for phase gate
+- [ ] JSONL event has correct schema for passing gate
+- [ ] JSONL event has correct schema for failing gate with action
+- [ ] `just validate` clean
+
+### Task 6: Dry-run support for gates (F-202, F-203)
+
+**Files:** `src/engine.rs`, `src/output.rs`
+
+**Steps:**
+- [ ] In `--dry-run` mode, display gate configuration without executing the command
+- [ ] Format: `[cycle gate] command: \`<command>\`, on_fail: <action>, timeout: <duration>`
+- [ ] Format: `[phase "<name>" gate] command: \`<command>\`, on_fail: <action>, timeout: <duration>`
+- [ ] Include gates in startup header display when present
+
+**Tests:**
+- [ ] Dry run with cycle gate shows gate config
+- [ ] Dry run with phase gate shows gate config per phase
+- [ ] Dry run does not execute any gate commands
+- [ ] `just validate` clean
+
+---
+
 ---

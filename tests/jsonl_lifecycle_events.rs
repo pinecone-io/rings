@@ -39,6 +39,7 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: phases
             .iter()
             .map(|(name, runs)| PhaseConfig {
@@ -52,6 +53,8 @@ fn make_workflow(signal: &str, phases: &[(&str, u32)], max_cycles: u32) -> Workf
                 produces: vec![],
                 produces_required: false,
                 executor: None,
+                gate: None,
+                gate_each_run: false,
             })
             .collect(),
     }

@@ -38,6 +38,7 @@ fn make_workflow() -> Workflow {
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -49,6 +50,8 @@ fn make_workflow() -> Workflow {
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     }
 }

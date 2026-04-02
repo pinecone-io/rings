@@ -39,6 +39,7 @@ fn make_workflow_with_consumes(context_dir: &str, consumes: Vec<String>) -> Work
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "reviewer".to_string(),
             prompt: None,
@@ -50,6 +51,8 @@ fn make_workflow_with_consumes(context_dir: &str, consumes: Vec<String>) -> Work
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     }
 }
@@ -83,6 +86,7 @@ fn make_workflow_with_contracts(
         snapshot_cycles: false,
         compiled_cost_parser: rings::cost::CompiledCostParser::ClaudeCode,
         lock_name: None,
+        cycle_gate: None,
         phases: vec![PhaseConfig {
             name: "builder".to_string(),
             prompt: None,
@@ -94,6 +98,8 @@ fn make_workflow_with_contracts(
             produces,
             produces_required,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         }],
     }
 }

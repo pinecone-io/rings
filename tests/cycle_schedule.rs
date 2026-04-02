@@ -16,6 +16,8 @@ fn phases(specs: &[(&str, u32)]) -> Vec<PhaseConfig> {
             produces: vec![],
             produces_required: false,
             executor: None,
+            gate: None,
+            gate_each_run: false,
         })
         .collect()
 }

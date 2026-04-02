@@ -19,6 +19,35 @@ pub enum CompletionSignalMode {
     Regex(Regex),
 }
 
+/// Action taken when a gate command exits non-zero.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum GateAction {
+    Skip,
+    Stop,
+    Error,
+}
+
+impl std::fmt::Display for GateAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GateAction::Skip => write!(f, "skip"),
+            GateAction::Stop => write!(f, "stop"),
+            GateAction::Error => write!(f, "error"),
+        }
+    }
+}
+
+/// Deterministic gate checked before a phase or cycle executes.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GateConfig {
+    pub command: String,
+    #[serde(default)]
+    pub on_fail: Option<GateAction>,
+    #[serde(default)]
+    pub timeout: Option<DurationField>,
+}
+
 /// Named cost parser profile.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -117,6 +146,9 @@ pub struct WorkflowConfig {
     /// Named lock for concurrent workflow support.
     #[serde(default)]
     pub lock_name: Option<String>,
+    /// Deterministic gate checked before each cycle begins.
+    #[serde(default)]
+    pub cycle_gate: Option<GateConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -163,6 +195,12 @@ pub struct PhaseConfig {
     /// Per-phase executor override (currently only extra_args is supported).
     #[serde(default)]
     pub executor: Option<PhaseExecutorConfig>,
+    /// Deterministic gate checked before this phase runs in each cycle.
+    #[serde(default)]
+    pub gate: Option<GateConfig>,
+    /// If true, gate is evaluated before every individual run, not just the first.
+    #[serde(default)]
+    pub gate_each_run: bool,
 }
 
 fn default_runs_per_cycle() -> u32 {
@@ -204,6 +242,8 @@ pub struct Workflow {
     pub compiled_cost_parser: CompiledCostParser,
     /// Named lock for concurrent workflow support.
     pub lock_name: Option<String>,
+    /// Deterministic gate checked before each cycle begins.
+    pub cycle_gate: Option<GateConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -252,6 +292,8 @@ pub enum WorkflowError {
     OutputDirContainsParentDir,
     #[error("invalid lock_name \"{0}\": must match [a-z0-9_-]+")]
     InvalidLockName(String),
+    #[error("gate command must not be empty (scope: {scope})")]
+    EmptyGateCommand { scope: String },
     #[error(
         "phase '{0}': --model appears in both executor.args and executor.extra_args; remove it from one"
     )]
@@ -268,6 +310,15 @@ fn args_contain_model(args: &[String]) -> bool {
         i += 1;
     }
     false
+}
+
+/// Returns a deterministic string representation of an optional DurationField for fingerprinting.
+fn gate_timeout_repr(d: Option<&DurationField>) -> String {
+    match d {
+        None => "?".to_string(),
+        Some(DurationField::Secs(n)) => n.to_string(),
+        Some(DurationField::Str(s)) => s.clone(),
+    }
 }
 
 /// Compile an error profile into regex patterns.
@@ -356,9 +407,39 @@ impl std::str::FromStr for Workflow {
 }
 
 impl Workflow {
-    /// Return the structural fingerprint: phase names in declaration order.
+    /// Return the structural fingerprint: phase names (with gate info) in declaration order,
+    /// plus cycle gate if present. Changing gate config constitutes a structural change.
     pub fn structural_fingerprint(&self) -> Vec<String> {
-        self.phases.iter().map(|p| p.name.clone()).collect()
+        let mut entries = Vec::new();
+        if let Some(ref cg) = self.cycle_gate {
+            entries.push(format!(
+                "cycle_gate:cmd={}:on_fail={}:timeout={}",
+                cg.command,
+                cg.on_fail
+                    .as_ref()
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|| "?".to_string()),
+                gate_timeout_repr(cg.timeout.as_ref()),
+            ));
+        }
+        for phase in &self.phases {
+            let gate_suffix = if let Some(ref g) = phase.gate {
+                format!(
+                    "|gate:cmd={}:on_fail={}:timeout={}:each_run={}",
+                    g.command,
+                    g.on_fail
+                        .as_ref()
+                        .map(|a| a.to_string())
+                        .unwrap_or_else(|| "?".to_string()),
+                    gate_timeout_repr(g.timeout.as_ref()),
+                    phase.gate_each_run,
+                )
+            } else {
+                String::new()
+            };
+            entries.push(format!("{}{}", phase.name, gate_suffix));
+        }
+        entries
     }
 
     /// Return the effective extra_args for a phase at `phase_index`.
@@ -434,6 +515,21 @@ impl Workflow {
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
             {
                 return Err(WorkflowError::InvalidLockName(name.clone()));
+            }
+        }
+
+        // Validate cycle_gate if present.
+        if let Some(ref cg) = file.workflow.cycle_gate {
+            if cg.command.is_empty() {
+                return Err(WorkflowError::EmptyGateCommand {
+                    scope: "cycle_gate".to_string(),
+                });
+            }
+            if let Some(ref t) = cg.timeout {
+                t.to_secs().map_err(|e| WorkflowError::InvalidDuration {
+                    field: "cycle_gate.timeout".to_string(),
+                    message: e.to_string(),
+                })?;
             }
         }
 
@@ -537,6 +633,20 @@ impl Workflow {
                     message: e.to_string(),
                 })?;
             }
+            // Validate phase gate if present.
+            if let Some(ref gate) = phase.gate {
+                if gate.command.is_empty() {
+                    return Err(WorkflowError::EmptyGateCommand {
+                        scope: format!("phase '{}'", phase.name),
+                    });
+                }
+                if let Some(ref t) = gate.timeout {
+                    t.to_secs().map_err(|e| WorkflowError::InvalidDuration {
+                        field: format!("phase '{}' gate.timeout", phase.name),
+                        message: e.to_string(),
+                    })?;
+                }
+            }
             // Validate that --model does not appear in both effective args and extra_args.
             let effective_args = file
                 .executor
@@ -602,6 +712,7 @@ impl Workflow {
             snapshot_cycles: file.workflow.snapshot_cycles,
             compiled_cost_parser,
             lock_name: file.workflow.lock_name,
+            cycle_gate: file.workflow.cycle_gate,
         })
     }
 }
@@ -1355,5 +1466,249 @@ prompt_text = "Do work."
                 name
             );
         }
+    }
+
+    // ─── F-202 through F-205: Gate parsing tests ─────────────────────────────
+
+    #[test]
+    fn cycle_gate_with_on_fail_stop_parses() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "true", on_fail = "stop" }"#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let cg = wf.cycle_gate.unwrap();
+        assert_eq!(cg.command, "true");
+        assert_eq!(cg.on_fail, Some(GateAction::Stop));
+    }
+
+    #[test]
+    fn phase_gate_default_on_fail_is_none() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+gate = {{ command = "test -f foo" }}
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let gate = wf.phases[0].gate.as_ref().unwrap();
+        assert_eq!(gate.command, "test -f foo");
+        // on_fail absent → None (default Skip applied at execution time)
+        assert_eq!(gate.on_fail, None);
+    }
+
+    #[test]
+    fn cycle_gate_without_on_fail_defaults_to_none() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "true" }"#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let cg = wf.cycle_gate.unwrap();
+        // on_fail absent → None (default Stop applied at execution time)
+        assert_eq!(cg.on_fail, None);
+    }
+
+    #[test]
+    fn cycle_gate_with_on_fail_skip_is_valid() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "check.sh", on_fail = "skip" }"#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let cg = wf.cycle_gate.unwrap();
+        assert_eq!(cg.on_fail, Some(GateAction::Skip));
+    }
+
+    #[test]
+    fn cycle_gate_empty_command_is_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "" }"#,
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(matches!(&err, WorkflowError::EmptyGateCommand { scope } if scope == "cycle_gate"));
+    }
+
+    #[test]
+    fn phase_gate_empty_command_is_rejected() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+gate = {{ command = "" }}
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let err = Workflow::from_str(&toml).unwrap_err();
+        assert!(
+            matches!(&err, WorkflowError::EmptyGateCommand { scope } if scope.contains("builder"))
+        );
+    }
+
+    #[test]
+    fn gate_timeout_string_parses() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "true", timeout = "10s" }"#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let cg = wf.cycle_gate.unwrap();
+        let t = cg.timeout.unwrap();
+        assert_eq!(t.to_secs().unwrap(), 10);
+    }
+
+    #[test]
+    fn gate_timeout_integer_parses() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "true", timeout = 60 }"#,
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        let cg = wf.cycle_gate.unwrap();
+        let t = cg.timeout.unwrap();
+        assert_eq!(t.to_secs().unwrap(), 60);
+    }
+
+    #[test]
+    fn no_gate_produces_none() {
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(wf.cycle_gate.is_none());
+        assert!(wf.phases[0].gate.is_none());
+    }
+
+    #[test]
+    fn gate_each_run_parses_true() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+gate = {{ command = "true" }}
+gate_each_run = true
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(wf.phases[0].gate_each_run);
+    }
+
+    #[test]
+    fn gate_each_run_defaults_to_false() {
+        let dir = tempdir().unwrap();
+        let toml = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+gate = {{ command = "true" }}
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert!(!wf.phases[0].gate_each_run);
+    }
+
+    #[test]
+    fn structural_fingerprint_changes_when_cycle_gate_added() {
+        let dir = tempdir().unwrap();
+        let toml_no_gate = make_toml(dir.path().to_str().unwrap(), "");
+        let toml_with_gate = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "true" }"#,
+        );
+        let wf_no_gate = Workflow::from_str(&toml_no_gate).unwrap();
+        let wf_with_gate = Workflow::from_str(&toml_with_gate).unwrap();
+        assert_ne!(
+            wf_no_gate.structural_fingerprint(),
+            wf_with_gate.structural_fingerprint()
+        );
+    }
+
+    #[test]
+    fn structural_fingerprint_changes_when_phase_gate_modified() {
+        let dir = tempdir().unwrap();
+        let toml_no_gate = make_toml(dir.path().to_str().unwrap(), "");
+        let toml_with_gate = format!(
+            r#"
+[workflow]
+completion_signal = "DONE"
+context_dir = "{}"
+max_cycles = 3
+
+[[phases]]
+name = "builder"
+prompt_text = "Do work."
+gate = {{ command = "test -f foo" }}
+"#,
+            dir.path().to_str().unwrap()
+        );
+        let wf_no_gate = Workflow::from_str(&toml_no_gate).unwrap();
+        let wf_with_gate = Workflow::from_str(&toml_with_gate).unwrap();
+        assert_ne!(
+            wf_no_gate.structural_fingerprint(),
+            wf_with_gate.structural_fingerprint()
+        );
+    }
+
+    #[test]
+    fn structural_fingerprint_changes_when_gate_command_changes() {
+        let dir = tempdir().unwrap();
+        let toml_a = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "test -f a" }"#,
+        );
+        let toml_b = make_toml(
+            dir.path().to_str().unwrap(),
+            r#"cycle_gate = { command = "test -f b" }"#,
+        );
+        let wf_a = Workflow::from_str(&toml_a).unwrap();
+        let wf_b = Workflow::from_str(&toml_b).unwrap();
+        assert_ne!(wf_a.structural_fingerprint(), wf_b.structural_fingerprint());
+    }
+
+    #[test]
+    fn structural_fingerprint_no_gate_unchanged() {
+        // A workflow with no gate should still have the same fingerprint
+        // as before this feature (just phase names).
+        let dir = tempdir().unwrap();
+        let toml = make_toml(dir.path().to_str().unwrap(), "");
+        let wf = Workflow::from_str(&toml).unwrap();
+        assert_eq!(wf.structural_fingerprint(), vec!["builder"]);
     }
 }

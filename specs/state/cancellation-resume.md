@@ -155,16 +155,58 @@ To prevent data corruption when two rings processes target the same `context_dir
 
 ### Lock file behavior
 
-When rings starts a run, it creates `<context_dir>/.rings.lock` containing the run ID and PID of the rings process. On exit (normal, canceled, or error), the lock file is removed.
+When rings starts a run, it creates a lock file in `context_dir` containing the run ID and PID of the rings process. On exit (normal, canceled, or error), the lock file is removed.
+
+The lock file name depends on whether a `lock_name` is configured:
+
+| Configuration | Lock file path |
+|---------------|---------------|
+| No `lock_name` (default) | `<context_dir>/.rings.lock` |
+| `lock_name = "planner"` | `<context_dir>/.rings.lock.planner` |
+
+### Named locks for concurrent workflows
+
+By default, only one rings process can run against a given `context_dir` at a time. To run multiple workflows concurrently in the same directory, assign each workflow a distinct `lock_name`:
+
+```toml
+# planner.rings.toml
+[workflow]
+lock_name = "planner"
+context_dir = "."
+# ...
+
+# builder.rings.toml
+[workflow]
+lock_name = "builder"
+context_dir = "."
+# ...
+```
+
+Each named lock is independent — `lock_name = "planner"` only conflicts with other runs that also use `lock_name = "planner"` (or have no `lock_name` if the name is omitted). Two workflows with different `lock_name` values can run concurrently against the same `context_dir` without blocking each other.
+
+**Important:** Named locks provide *coordination*, not *safety*. rings does not verify that concurrent workflows avoid writing to the same files. Users are responsible for ensuring that concurrently running workflows operate on disjoint file sets, or coordinate through their prompts (e.g., one writes `PLAN.md`, the other reads it). The `consumes`/`produces` declarations can help document the intended data flow, but are not enforced across workflow boundaries.
+
+A workflow with no `lock_name` uses the default `.rings.lock` and blocks any other workflow that also has no `lock_name`. It does **not** block workflows that have a `lock_name` set, and vice versa — named and unnamed locks are independent namespaces.
+
+### `lock_name` validation
+
+- Must consist of lowercase alphanumeric characters, hyphens, and underscores only: `[a-z0-9_-]+`.
+- Must not be empty (use no `lock_name` field to get the default behavior).
+- Invalid names are a validation error at startup (exit code 2).
 
 ### Startup lock check
 
-If `.rings.lock` exists when rings tries to start:
+If the relevant lock file (`.rings.lock` or `.rings.lock.<name>`) exists when rings tries to start:
 
 1. rings reads the PID from the lock file.
 2. If the PID is still running: rings exits with code 2:
    ```
    Error: Another rings run (run_ID, PID=X) is already using context_dir.
+   Wait for it to finish or use --force-lock to override.
+   ```
+   When `lock_name` is set, the error message includes the lock name:
+   ```
+   Error: Another rings run (run_ID, PID=X) holds lock "planner" on context_dir.
    Wait for it to finish or use --force-lock to override.
    ```
 3. If the PID is no longer running (stale lock from a previously killed process): rings removes the stale lock, emits a warning, and proceeds:

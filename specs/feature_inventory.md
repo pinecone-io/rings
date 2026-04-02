@@ -267,9 +267,9 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-165 | Span Status | Spans are marked ERROR on non-zero executor exit so I can alert on failures in my tracing tool (requires F-163) | COMPLETE | [opentelemetry.md](observability/opentelemetry.md) |
 | F-166 | Span Links | When I resume a run, the new trace is linked to the parent run's trace so I can navigate the full history (requires F-163, F-058) | COMPLETE | [run-ancestry.md](state/run-ancestry.md) |
 | F-167 | OTel Metrics | rings emits counters and histograms for cost, duration, and token counts so I can dashboard and alert on them (requires F-162) | COMPLETE | [opentelemetry.md](observability/opentelemetry.md) |
-| F-168 | OTel Path Stripping | I can set `RINGS_OTEL_STRIP_PATHS=1` to redact filesystem paths from telemetry for privacy (requires F-162) | PRIORITIZED | [opentelemetry.md](observability/opentelemetry.md) |
-| F-169 | OTel Init Failure Handling | If the OTel exporter fails to initialize, rings continues with a no-op tracer instead of aborting (requires F-162) | PRIORITIZED | [opentelemetry.md](observability/opentelemetry.md) |
-| F-170 | OTel Endpoint Configuration | I configure my collector endpoint via the standard `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable (requires F-162) | PRIORITIZED | [opentelemetry.md](observability/opentelemetry.md) |
+| F-168 | OTel Path Stripping | I can set `RINGS_OTEL_STRIP_PATHS=1` to redact filesystem paths from telemetry for privacy (requires F-162) | COMPLETE | [opentelemetry.md](observability/opentelemetry.md) |
+| F-169 | OTel Init Failure Handling | If the OTel exporter fails to initialize, rings continues with a no-op tracer instead of aborting (requires F-162) | COMPLETE | [opentelemetry.md](observability/opentelemetry.md) |
+| F-170 | OTel Endpoint Configuration | I configure my collector endpoint via the standard `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable (requires F-162) | COMPLETE | [opentelemetry.md](observability/opentelemetry.md) |
 
 ## Distribution & Shell Integration
 
@@ -277,8 +277,8 @@ Summaries are written from the user's perspective. Features with dependencies no
 |---|---------|---------|--------|------|
 | F-171 | Static Binary | I can download a single binary with no system library dependencies and run it immediately | COMPLETE | [distribution.md](cli/distribution.md) |
 | F-172 | Multi-Platform Release | I can get native binaries for x86_64 and aarch64 on both Linux and macOS | COMPLETE | [distribution.md](cli/distribution.md) |
-| F-173 | macOS Universal Binary | On macOS, I get a single universal binary that runs natively on both Intel and Apple Silicon | PRIORITIZED | [distribution.md](cli/distribution.md) |
-| F-174 | Binary Size Optimization | The rings binary targets < 5 MB so downloads and distributions stay lightweight | PRIORITIZED | [distribution.md](cli/distribution.md) |
+| F-173 | macOS Universal Binary | On macOS, I get a single universal binary that runs natively on both Intel and Apple Silicon | COMPLETE | [distribution.md](cli/distribution.md) |
+| F-174 | Binary Size Optimization | The rings binary targets < 5 MB so downloads and distributions stay lightweight | COMPLETE | [distribution.md](cli/distribution.md) |
 | F-175 | Cargo Install Support | Rust users can install rings with `cargo install rings` without needing pre-built binaries | PRIORITIZED | [distribution.md](cli/distribution.md) |
 | F-176 | SHA256 Checksums | Every release includes checksums I can verify to confirm binary integrity | COMPLETE | [distribution.md](cli/distribution.md) |
 | F-177 | Reproducible Builds | The Rust toolchain is pinned and Cargo.lock is committed so I can reproduce any release binary myself | PRIORITIZED | [distribution.md](cli/distribution.md) |
@@ -333,3 +333,22 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-196 | Stream-JSON Executor Default | The default executor uses `--output-format stream-json` so verbose mode can stream events in real time instead of dumping a blob at the end | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 | F-197 | Verbose Event Renderer | In verbose mode, stream-json events are parsed and rendered as human-friendly output: assistant text, tool call summaries, suppressed noise | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 | F-198 | Pinned Status Bar | In verbose mode on a TTY, the rings status bar is pinned at the terminal bottom via ANSI scroll regions while executor output scrolls above | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
+
+## Concurrent Workflow Support
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-199 | Named Locks | I can assign a `lock_name` to a workflow so multiple workflows with different names can run concurrently against the same `context_dir` | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-200 | Named Lock Error Messages | When a named lock is held by another process, the error message includes the lock name so I know which workflow is conflicting | PLANNED | [cancellation-resume.md](state/cancellation-resume.md) |
+| F-201 | Lock Name Validation | rings rejects invalid `lock_name` values at startup so I catch typos before any Claude calls | PLANNED | [workflow-file-format.md](workflow/workflow-file-format.md) |
+
+## Deterministic Gates
+
+| # | Feature | Summary | Status | Spec |
+|---|---------|---------|--------|------|
+| F-202 | Phase Gate | I can attach a shell command to a phase that must exit 0 before the phase runs, skipping or stopping the workflow on failure | PLANNED | [workflow-file-format.md](workflow/workflow-file-format.md) |
+| F-203 | Cycle Gate | I can attach a shell command to the workflow that must exit 0 before each cycle begins, stopping or erroring on failure | PLANNED | [workflow-file-format.md](workflow/workflow-file-format.md) |
+| F-204 | Gate Failure Actions | I can choose what happens when a gate fails: skip the phase, stop gracefully, or exit with an error | PLANNED | [workflow-file-format.md](workflow/workflow-file-format.md) |
+| F-205 | Gate Timeout | I can set a timeout on gate commands so a hung check doesn't stall the workflow indefinitely (default: 30s) | PLANNED | [workflow-file-format.md](workflow/workflow-file-format.md) |
+| F-206 | Gate Logging | Gate evaluations are logged with command, exit code, and action in both human and JSONL output | PLANNED | [workflow-file-format.md](workflow/workflow-file-format.md) |
+| F-207 | Gate Each Run | I can set `gate_each_run = true` on a phase to check the gate before every individual run, not just the first | PLANNED | [workflow-file-format.md](workflow/workflow-file-format.md) |

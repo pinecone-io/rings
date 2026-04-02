@@ -77,6 +77,20 @@ delay_between_cycles = 30
 # timeout_per_run_secs = 300
 # timeout_per_run_secs = "5m"  # equivalent
 
+# Optional: named lock for concurrent workflow support.
+# By default, only one rings process can run against this context_dir at a time.
+# Set lock_name to allow multiple workflows to run concurrently in the same directory,
+# each with its own independent lock. Two workflows with different lock_name values
+# never block each other. See cancellation-resume.md for details.
+# Must match [a-z0-9_-]+ if set.
+# lock_name = "planner"
+
+# Optional: deterministic gate checked before each cycle begins.
+# If the command exits non-zero, the on_fail action is taken.
+# The command runs in context_dir with a default timeout of 30 seconds.
+# cycle_gate = { command = "test $(wc -l < TODO.md) -lt 50", on_fail = "stop" }
+# cycle_gate = { command = "./scripts/pre-check.sh", on_fail = "error", timeout = "10s" }
+
 # Optional: file manifest behavior
 manifest_enabled = true        # set false to disable entirely
 manifest_ignore = [            # glob patterns to exclude from manifests
@@ -134,6 +148,12 @@ name = "builder"
 # Optional: per-phase subprocess timeout. Overrides the global timeout_per_run_secs for
 # this phase only. Accepts integer seconds or duration string.
 # timeout_per_run_secs = 120
+
+# Optional: deterministic gate checked before this phase runs.
+# If the command exits non-zero, the on_fail action is taken.
+# The command runs in context_dir with a default timeout of 30 seconds.
+# gate = { command = "test -f NEEDS_REVIEW.md", on_fail = "skip" }
+# gate = { command = "just validate", on_fail = "error", timeout = "60s" }
 
 # Prompt source: exactly one of `prompt` (file path) or `prompt_text` (inline) is required.
 #
@@ -230,6 +250,107 @@ This single file is everything needed to run the workflow — no `prompts/` dire
 11. `executor.binary` must be a non-empty string if specified.
 12. `executor.cost_parser` must be `"claude-code"`, `"none"`, or a valid custom pattern table if specified.
 13. `executor.error_profile` must be `"claude-code"`, `"none"`, or a valid custom pattern table if specified.
+14. `lock_name` must match `[a-z0-9_-]+` if specified.
+15. Gate `command` must be a non-empty string if a gate is specified.
+16. Gate `on_fail` must be one of `skip`, `stop`, or `error` if specified.
+17. Gate `timeout` must be a valid duration string or positive integer if specified.
+18. `cycle_gate.on_fail` defaults to `stop`. Phase `gate.on_fail` defaults to `skip`.
+
+## Deterministic Gates
+
+Gates are shell commands that run before a phase or cycle to decide whether execution should proceed. They provide deterministic control flow without consuming an AI invocation.
+
+### Gate Configuration
+
+A gate is a TOML inline table with the following fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `command` | string | yes | — | Shell command executed via `sh -c`. Exit 0 = pass, non-zero = fail. |
+| `on_fail` | string | no | `"stop"` (cycle) / `"skip"` (phase) | Action when the command exits non-zero: `"skip"`, `"stop"`, or `"error"`. |
+| `timeout` | duration | no | `"30s"` | Maximum time the gate command may run. Accepts integer seconds or duration string. |
+
+**`on_fail` actions:**
+
+| Action | Behavior |
+|--------|----------|
+| `skip` | **Phase gate:** skip this phase, continue to the next phase in the cycle. **Cycle gate:** skip all phases this cycle, apply `delay_between_cycles`, then start the next cycle (useful for polling patterns). |
+| `stop` | Graceful exit: save state and exit with code 0 (same as completion signal). |
+| `error` | Hard exit: save state and exit with code 2 (configuration error). |
+
+**Execution details:**
+
+- Gate commands run in `context_dir` with the same environment as the executor.
+- Gate commands inherit the process's stdin/stdout/stderr. Stdout and stderr are captured in the run log.
+- If a gate command exceeds its timeout, it is killed (SIGTERM → 5s → SIGKILL) and treated as a failure.
+- Gate evaluation is logged: the command, exit code, and resulting action are recorded in both human and JSONL output.
+
+### Cycle Gate
+
+`cycle_gate` is set on the `[workflow]` table. It runs once at the top of each cycle, before any phases execute. If it fails, no phases in that cycle run.
+
+Default `on_fail`: **`stop`** — the most common intent is "stop iterating when the precondition no longer holds."
+
+```toml
+# Stop planning when TODO.md is big enough
+[workflow]
+completion_signal = "PLANNING_COMPLETE"
+context_dir = "."
+cycle_gate = { command = "test $(wc -l < TODO.md) -lt 50", on_fail = "stop" }
+```
+
+With `on_fail = "skip"` and `delay_between_cycles`, the cycle gate becomes a polling gate — rings waits for the condition to become true before running phases:
+
+```toml
+# Only run phases when there's uncommitted work; poll every 5 minutes
+[workflow]
+completion_signal = "DONE"
+context_dir = "."
+delay_between_cycles = "5m"
+cycle_gate = { command = "git diff --quiet HEAD && exit 1 || exit 0", on_fail = "skip" }
+```
+
+### Phase Gate
+
+`gate` is set on a `[[phases]]` entry. It runs once before the phase's first run in each cycle (not before every individual run within `runs_per_cycle`). If it fails, the entire phase is skipped for that cycle and execution advances to the next phase.
+
+Default `on_fail`: **`skip`** — the most common intent is "conditionally include this phase."
+
+```toml
+[[phases]]
+name = "reviewer"
+prompt = "./prompts/reviewer.md"
+gate = { command = "test -f NEEDS_REVIEW.md", on_fail = "skip" }
+```
+
+To run the gate before every individual run (not just the first), set `gate_each_run = true` on the phase:
+
+```toml
+[[phases]]
+name = "builder"
+prompt = "./prompts/builder.md"
+runs_per_cycle = 5
+gate = { command = "test $(wc -l < TODO.md) -lt 50" }
+gate_each_run = true
+```
+
+### Gate Logging
+
+Human output:
+```
+[cycle 3] cycle gate: `test $(wc -l < TODO.md) -lt 50` → exit 1 (fail → stop)
+[cycle 3] phase "reviewer" gate: `test -f NEEDS_REVIEW.md` → exit 0 (pass)
+```
+
+JSONL output emits a `gate_result` event:
+```json
+{"event":"gate_result","run_id":"...","timestamp":"...","scope":"cycle","phase":null,"command":"test $(wc -l < TODO.md) -lt 50","exit_code":1,"passed":false,"action":"stop"}
+{"event":"gate_result","run_id":"...","timestamp":"...","scope":"phase","phase":"reviewer","command":"test -f NEEDS_REVIEW.md","exit_code":0,"passed":true,"action":null}
+```
+
+### Structural Fingerprint
+
+Gate configuration is included in the workflow's structural fingerprint. Changing a gate command, `on_fail` action, or adding/removing a gate constitutes a structural change that prevents resume with the old state.
 
 ## Completion Signal Warning
 

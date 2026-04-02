@@ -277,7 +277,8 @@ to completion.
 - `[executor]` section showing how to configure the model choice:
   `args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]`
   with a comment explaining how to change the model
-- One `[[phases]]` named `"builder"` with a `prompt_text` that:
+- Commented-out `cycle_gate` example showing how to stop when TODO.md grows too large
+- One `[[phases]]` named `"builder"` with a commented-out phase `gate` example and a `prompt_text` that:
   - Reads a `TODO.md` for the next unchecked task (`- [ ]`)
   - Works through all steps of that task
   - Marks steps done (`- [x]`) when complete

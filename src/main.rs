@@ -2090,6 +2090,11 @@ context_dir = "."
 max_cycles = 20
 budget_cap_usd = 5.00
 
+# Deterministic gates: shell commands that control whether a cycle or phase runs.
+# Exit 0 = proceed, non-zero = take the on_fail action (skip, stop, or error).
+# Uncomment to stop the workflow when TODO.md grows beyond 50 lines:
+# cycle_gate = { command = "test $(wc -l < TODO.md) -lt 50", on_fail = "stop" }
+
 [executor]
 binary = "claude"
 # Change --model to use a different model (e.g. claude-opus-4-6, claude-haiku-4-5)
@@ -2097,6 +2102,8 @@ args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", 
 
 [[phases]]
 name = "builder"
+# Gates can also be set per-phase. Uncomment to skip this phase if tests are failing:
+# gate = { command = "cargo test --quiet", on_fail = "skip" }
 prompt_text = """
 Complete ONE task from the TODO list, then stop.
 

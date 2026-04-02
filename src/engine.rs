@@ -317,6 +317,21 @@ impl<'a> RunSchedule<'a> {
         }
         // If current_cycle has already rolled over, we're already at the right position.
     }
+
+    /// Skip remaining iterations of `current_phase_index`, positioning at the start of the next
+    /// phase (or the next cycle if this was the last phase). If the schedule has already advanced
+    /// past `current_phase_index`, this is a no-op.
+    pub fn skip_to_next_phase(&mut self, current_phase_index: usize) {
+        if self.current_phase_index == current_phase_index {
+            self.current_phase_index += 1;
+            self.current_iteration = 1;
+            if self.current_phase_index >= self.phases.len() {
+                self.current_phase_index = 0;
+                self.current_cycle += 1;
+            }
+        }
+        // If the schedule has already advanced past current_phase_index, we're in the right place.
+    }
 }
 
 impl<'a> Iterator for RunSchedule<'a> {
@@ -1177,6 +1192,124 @@ pub fn run_workflow(
                             // at the start of the next cycle boundary.
                             schedule.skip_to_next_cycle(run_spec.cycle);
                             continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Phase gate: evaluate before running a phase (or before each run if gate_each_run = true).
+        {
+            let phase = &workflow.phases[run_spec.phase_index];
+            if let Some(ref gate) = phase.gate {
+                use crate::workflow::GateAction;
+                let should_evaluate = phase.gate_each_run || run_spec.phase_iteration == 1;
+                if should_evaluate {
+                    let context_dir = PathBuf::from(&workflow.context_dir);
+                    let gate_result = crate::gate::evaluate_gate(gate, &context_dir)?;
+                    let effective_action = gate.on_fail.as_ref().unwrap_or(&GateAction::Skip);
+                    let action_str = if gate_result.passed {
+                        None
+                    } else {
+                        Some(effective_action.to_string())
+                    };
+
+                    // Human output
+                    if config.output_format == crate::cli::OutputFormat::Human {
+                        let status = if gate_result.passed {
+                            "pass".to_string()
+                        } else {
+                            format!("fail → {}", effective_action)
+                        };
+                        println!(
+                            "[cycle {}] phase \"{}\" gate: `{}` → exit {} ({})",
+                            run_spec.cycle,
+                            run_spec.phase_name,
+                            gate_result.command,
+                            gate_result.exit_code,
+                            status
+                        );
+                    }
+
+                    // JSONL output
+                    if config.output_format == crate::cli::OutputFormat::Jsonl {
+                        crate::events::emit_jsonl(&crate::events::GateResultEvent::new(
+                            &config.run_id,
+                            run_spec.cycle as u64,
+                            "phase",
+                            Some(run_spec.phase_name.clone()),
+                            &gate_result.command,
+                            gate_result.exit_code,
+                            gate_result.passed,
+                            action_str.as_deref(),
+                        ));
+                    }
+
+                    if !gate_result.passed {
+                        match effective_action {
+                            GateAction::Skip => {
+                                schedule.skip_to_next_phase(run_spec.phase_index);
+                                continue;
+                            }
+                            GateAction::Stop => {
+                                if config.output_format == crate::cli::OutputFormat::Human
+                                    && ctx.current_display_cycle > 0
+                                {
+                                    crate::display::print_cycle_cost(cycle_cost);
+                                }
+                                emit_summary_if_jsonl(
+                                    config,
+                                    &ctx,
+                                    &workflow.phases,
+                                    "completed",
+                                    workflow_start,
+                                );
+                                run_tracer.set_run_status("completed", false);
+                                return Ok(EngineResult {
+                                    exit_code: 0,
+                                    completed_cycles: ctx.last_cycle.saturating_sub(1),
+                                    total_cost_usd: ctx.budget.cumulative_cost,
+                                    total_runs: ctx.total_runs,
+                                    total_input_tokens: ctx.budget.cumulative_input_tokens,
+                                    total_output_tokens: ctx.budget.cumulative_output_tokens,
+                                    parse_warnings: ctx.parse_warnings,
+                                    failure_reason: None,
+                                    phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
+                                });
+                            }
+                            GateAction::Error => {
+                                if config.output_format == crate::cli::OutputFormat::Human
+                                    && ctx.current_display_cycle > 0
+                                {
+                                    crate::display::print_cycle_cost(cycle_cost);
+                                }
+                                let state = make_state_snapshot(
+                                    &ctx,
+                                    config,
+                                    &run_spec,
+                                    ExitReason::Success,
+                                );
+                                state.write_atomic(&state_path)?;
+                                emit_summary_if_jsonl(
+                                    config,
+                                    &ctx,
+                                    &workflow.phases,
+                                    "gate_error",
+                                    workflow_start,
+                                );
+                                run_tracer.set_run_status("gate_error", true);
+                                return Ok(EngineResult {
+                                    exit_code: 2,
+                                    completed_cycles: ctx.last_cycle.saturating_sub(1),
+                                    total_cost_usd: ctx.budget.cumulative_cost,
+                                    total_runs: ctx.total_runs,
+                                    total_input_tokens: ctx.budget.cumulative_input_tokens,
+                                    total_output_tokens: ctx.budget.cumulative_output_tokens,
+                                    parse_warnings: ctx.parse_warnings,
+                                    failure_reason: None,
+                                    phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
+                                });
+                            }
                         }
                     }
                 }

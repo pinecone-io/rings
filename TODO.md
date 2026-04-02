@@ -231,25 +231,25 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`
 
 **Steps:**
-- [ ] Before running a phase's first invocation in a cycle, check `phase.gate`
-- [ ] If present, call `evaluate_gate()` with the gate config and `context_dir`
-- [ ] If the gate passes, run the phase normally
-- [ ] If the gate fails:
+- [x] Before running a phase's first invocation in a cycle, check `phase.gate`
+- [x] If present, call `evaluate_gate()` with the gate config and `context_dir`
+- [x] If the gate passes, run the phase normally
+- [x] If the gate fails:
   - `on_fail = "skip"` → skip all runs of this phase for this cycle, advance to next phase
   - `on_fail = "stop"` → save state, exit with code 0
   - `on_fail = "error"` → save state, exit with code 2
-- [ ] If `gate_each_run = true`, evaluate the gate before every individual run within `runs_per_cycle`, not just the first
-- [ ] Log the gate result for each evaluation
+- [x] If `gate_each_run = true`, evaluate the gate before every individual run within `runs_per_cycle`, not just the first
+- [x] Log the gate result for each evaluation
 
 **Tests:**
-- [ ] Phase with `gate = { command = "true" }` — phase runs normally
-- [ ] Phase with `gate = { command = "false" }` — phase skipped (default `on_fail = "skip"`), next phase runs
-- [ ] Phase with `gate = { command = "false", on_fail = "stop" }` — workflow stops gracefully
-- [ ] Phase with `gate = { command = "false", on_fail = "error" }` — workflow exits with code 2
-- [ ] Phase with `runs_per_cycle = 3` and gate — gate checked once before first run (default)
-- [ ] Phase with `runs_per_cycle = 3`, `gate_each_run = true`, and a gate that fails on the second check — first run executes, second is skipped/stopped
-- [ ] Two phases: first has failing gate (skip), second has no gate — second phase still runs
-- [ ] `just validate` clean
+- [x] Phase with `gate = { command = "true" }` — phase runs normally
+- [x] Phase with `gate = { command = "false" }` — phase skipped (default `on_fail = "skip"`), next phase runs
+- [x] Phase with `gate = { command = "false", on_fail = "stop" }` — workflow stops gracefully
+- [x] Phase with `gate = { command = "false", on_fail = "error" }` — workflow exits with code 2
+- [x] Phase with `runs_per_cycle = 3` and gate — gate checked once before first run (default)
+- [x] Phase with `runs_per_cycle = 3`, `gate_each_run = true`, and a gate that fails on the second check — first run executes, second is skipped/stopped
+- [x] Two phases: first has failing gate (skip), second has no gate — second phase still runs
+- [x] `just validate` clean
 
 ### Task 5: Gate logging in human and JSONL output (F-206)
 

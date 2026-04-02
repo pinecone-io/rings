@@ -242,6 +242,28 @@ fn run_inner(
                 phase.prompt_source
             );
         }
+        // Gates section: show gate config if any gates are present (no execution)
+        let has_cycle_gate = workflow.cycle_gate.is_some();
+        let has_phase_gate = workflow.phases.iter().any(|p| p.gate.is_some());
+        if has_cycle_gate || has_phase_gate {
+            println!();
+            println!("  {}", style::bold("Gates (not executed in dry-run):"));
+            if let Some(ref cg) = workflow.cycle_gate {
+                println!(
+                    "    [cycle gate] {}",
+                    dry_run::format_gate_config_line(cg, "stop")
+                );
+            }
+            for phase in &workflow.phases {
+                if let Some(ref gate) = phase.gate {
+                    println!(
+                        "    [phase \"{}\" gate] {}",
+                        phase.name,
+                        dry_run::format_gate_config_line(gate, "skip")
+                    );
+                }
+            }
+        }
         println!();
         println!(
             "  {}  {}",

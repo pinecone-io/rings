@@ -274,16 +274,16 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs`, `src/output.rs`
 
 **Steps:**
-- [ ] In `--dry-run` mode, display gate configuration without executing the command
-- [ ] Format: `[cycle gate] command: \`<command>\`, on_fail: <action>, timeout: <duration>`
-- [ ] Format: `[phase "<name>" gate] command: \`<command>\`, on_fail: <action>, timeout: <duration>`
-- [ ] Include gates in startup header display when present
+- [x] In `--dry-run` mode, display gate configuration without executing the command
+- [x] Format: `[cycle gate] command: \`<command>\`, on_fail: <action>, timeout: <duration>`
+- [x] Format: `[phase "<name>" gate] command: \`<command>\`, on_fail: <action>, timeout: <duration>`
+- [x] Include gates in startup header display when present
 
 **Tests:**
-- [ ] Dry run with cycle gate shows gate config
-- [ ] Dry run with phase gate shows gate config per phase
-- [ ] Dry run does not execute any gate commands
-- [ ] `just validate` clean
+- [x] Dry run with cycle gate shows gate config
+- [x] Dry run with phase gate shows gate config per phase
+- [x] Dry run does not execute any gate commands
+- [x] `just validate` clean
 
 ---
 

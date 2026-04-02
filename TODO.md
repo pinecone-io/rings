@@ -210,21 +210,21 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/engine.rs` (or wherever the main cycle loop lives)
 
 **Steps:**
-- [ ] At the top of each cycle iteration, before any phases run, check `workflow.cycle_gate`
-- [ ] If present, call `evaluate_gate()` with the gate config and `context_dir`
-- [ ] If the gate passes (exit 0), continue normally
-- [ ] If the gate fails:
+- [x] At the top of each cycle iteration, before any phases run, check `workflow.cycle_gate`
+- [x] If present, call `evaluate_gate()` with the gate config and `context_dir`
+- [x] If the gate passes (exit 0), continue normally
+- [x] If the gate fails:
   - `on_fail = "stop"` → save state, exit with code 0 (same as completion signal)
   - `on_fail = "error"` → save state, exit with code 2
-- [ ] Log the gate result (human and JSONL — see Task 5)
+- [x] Log the gate result (human and JSONL — see Task 5)
 
 **Tests:**
-- [ ] Workflow with `cycle_gate = { command = "true" }` — cycles run normally
-- [ ] Workflow with `cycle_gate = { command = "false", on_fail = "stop" }` — exits gracefully after gate fails on first cycle
-- [ ] Workflow with `cycle_gate = { command = "false", on_fail = "error" }` — exits with error code 2
-- [ ] Workflow with `cycle_gate = { command = "false", on_fail = "skip" }` and `delay_between_cycles` — skips phases, waits delay, retries next cycle
-- [ ] Cycle gate that passes on first cycle but fails on second — first cycle's phases all execute, second cycle does not start
-- [ ] `just validate` clean
+- [x] Workflow with `cycle_gate = { command = "true" }` — cycles run normally
+- [x] Workflow with `cycle_gate = { command = "false", on_fail = "stop" }` — exits gracefully after gate fails on first cycle
+- [x] Workflow with `cycle_gate = { command = "false", on_fail = "error" }` — exits with error code 2
+- [x] Workflow with `cycle_gate = { command = "false", on_fail = "skip" }` and `delay_between_cycles` — skips phases, waits delay, retries next cycle
+- [x] Cycle gate that passes on first cycle but fails on second — first cycle's phases all execute, second cycle does not start
+- [x] `just validate` clean
 
 ### Task 4: Integrate phase gate into engine loop (F-202, F-207)
 

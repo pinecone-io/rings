@@ -419,6 +419,48 @@ impl SummaryEvent {
     }
 }
 
+/// `gate_result` — emitted when a deterministic gate is evaluated.
+#[derive(Debug, Serialize)]
+pub struct GateResultEvent {
+    pub event: &'static str,
+    pub run_id: String,
+    pub timestamp: String,
+    pub scope: &'static str,
+    pub phase: Option<String>,
+    pub command: String,
+    pub exit_code: i32,
+    pub passed: bool,
+    pub action: Option<String>,
+    pub cycle: u64,
+}
+
+impl GateResultEvent {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        run_id: impl Into<String>,
+        cycle: u64,
+        scope: &'static str,
+        phase: Option<String>,
+        command: impl Into<String>,
+        exit_code: i32,
+        passed: bool,
+        action: Option<impl Into<String>>,
+    ) -> Self {
+        Self {
+            event: "gate_result",
+            run_id: run_id.into(),
+            timestamp: now_iso8601(),
+            scope,
+            phase,
+            command: command.into(),
+            exit_code,
+            passed,
+            action: action.map(|a| a.into()),
+            cycle,
+        }
+    }
+}
+
 /// `fatal_error` — emitted when rings itself cannot continue.
 /// `run_id` is `None` if the error occurred before a run ID was assigned.
 #[derive(Debug, Serialize)]

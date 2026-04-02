@@ -1075,6 +1075,112 @@ pub fn run_workflow(
             }
             cycle_cost = 0.0;
             ctx.current_display_cycle = run_spec.cycle;
+
+            // Cycle gate: evaluate before any phases run this cycle.
+            if let Some(ref gate) = workflow.cycle_gate {
+                use crate::workflow::GateAction;
+                let context_dir = PathBuf::from(&workflow.context_dir);
+                let gate_result = crate::gate::evaluate_gate(gate, &context_dir)?;
+                let effective_action = gate.on_fail.as_ref().unwrap_or(&GateAction::Stop);
+                let action_str = if gate_result.passed {
+                    None
+                } else {
+                    Some(effective_action.to_string())
+                };
+
+                // Human output
+                if config.output_format == crate::cli::OutputFormat::Human {
+                    let status = if gate_result.passed {
+                        "pass".to_string()
+                    } else {
+                        format!("fail → {}", effective_action)
+                    };
+                    println!(
+                        "[cycle {}] cycle gate: `{}` → exit {} ({})",
+                        run_spec.cycle, gate_result.command, gate_result.exit_code, status
+                    );
+                }
+
+                // JSONL output
+                if config.output_format == crate::cli::OutputFormat::Jsonl {
+                    crate::events::emit_jsonl(&crate::events::GateResultEvent::new(
+                        &config.run_id,
+                        run_spec.cycle as u64,
+                        "cycle",
+                        None,
+                        &gate_result.command,
+                        gate_result.exit_code,
+                        gate_result.passed,
+                        action_str.as_deref(),
+                    ));
+                }
+
+                if !gate_result.passed {
+                    match effective_action {
+                        GateAction::Stop => {
+                            if config.output_format == crate::cli::OutputFormat::Human
+                                && ctx.current_display_cycle > 0
+                            {
+                                crate::display::print_cycle_cost(cycle_cost);
+                            }
+                            emit_summary_if_jsonl(
+                                config,
+                                &ctx,
+                                &workflow.phases,
+                                "completed",
+                                workflow_start,
+                            );
+                            run_tracer.set_run_status("completed", false);
+                            return Ok(EngineResult {
+                                exit_code: 0,
+                                completed_cycles: ctx.last_cycle.saturating_sub(1),
+                                total_cost_usd: ctx.budget.cumulative_cost,
+                                total_runs: ctx.total_runs,
+                                total_input_tokens: ctx.budget.cumulative_input_tokens,
+                                total_output_tokens: ctx.budget.cumulative_output_tokens,
+                                parse_warnings: ctx.parse_warnings,
+                                failure_reason: None,
+                                phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
+                            });
+                        }
+                        GateAction::Error => {
+                            if config.output_format == crate::cli::OutputFormat::Human
+                                && ctx.current_display_cycle > 0
+                            {
+                                crate::display::print_cycle_cost(cycle_cost);
+                            }
+                            let state =
+                                make_state_snapshot(&ctx, config, &run_spec, ExitReason::Success);
+                            state.write_atomic(&state_path)?;
+                            emit_summary_if_jsonl(
+                                config,
+                                &ctx,
+                                &workflow.phases,
+                                "gate_error",
+                                workflow_start,
+                            );
+                            run_tracer.set_run_status("gate_error", true);
+                            return Ok(EngineResult {
+                                exit_code: 2,
+                                completed_cycles: ctx.last_cycle.saturating_sub(1),
+                                total_cost_usd: ctx.budget.cumulative_cost,
+                                total_runs: ctx.total_runs,
+                                total_input_tokens: ctx.budget.cumulative_input_tokens,
+                                total_output_tokens: ctx.budget.cumulative_output_tokens,
+                                parse_warnings: ctx.parse_warnings,
+                                failure_reason: None,
+                                phase_costs: build_phase_costs(&workflow.phases, &ctx.budget),
+                            });
+                        }
+                        GateAction::Skip => {
+                            // Skip all phases for this cycle. The inter-cycle delay will fire
+                            // at the start of the next cycle boundary.
+                            schedule.skip_to_next_cycle(run_spec.cycle);
+                            continue;
+                        }
+                    }
+                }
+            }
         }
 
         // Resolve prompt text

@@ -130,6 +130,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-073 | `rings lineage` | I can see the full chain of parent/child runs that led to any given run ID (requires F-058) | COMPLETE | [inspect-command.md](cli/inspect-command.md) |
 | F-074 | `rings cleanup` | I can remove old run data to free disk space | COMPLETE | [commands-and-flags.md](cli/commands-and-flags.md) |
 | F-075 | `rings completions` | I can generate shell completion scripts for bash, zsh, or fish with `rings completions <shell>` | COMPLETE | [completion-and-manpage.md](cli/completion-and-manpage.md) |
+| F-209 | `rings schema` | I can print an annotated reference of all workflow TOML fields with `rings schema` | COMPLETE | [completion-and-manpage.md](cli/completion-and-manpage.md) |
 
 ## CLI Flags
 

@@ -104,6 +104,7 @@ fn main() {
         Command::Lineage(args) => cmd_lineage(args, cli.output_format, cfg_output_dir.as_deref()),
         Command::Completions(args) => cmd_completions(args),
         Command::GenerateMan => cmd_generate_man(),
+        Command::Schema => cmd_schema(),
         Command::Init(args) => cmd_init(args, cli.output_format),
         Command::Update => cmd_update(),
         Command::Cleanup(args) => cmd_cleanup(args, cli.output_format, cfg_output_dir.as_deref()),
@@ -2047,6 +2048,74 @@ fn cmd_completions(args: cli::CompletionsArgs) -> i32 {
     generate_completions(args.shell, &mut std::io::stdout());
     0
 }
+
+fn cmd_schema() -> i32 {
+    print!("{SCHEMA_REFERENCE}");
+    0
+}
+
+const SCHEMA_REFERENCE: &str = r#"# rings workflow TOML reference
+# Run `rings schema` to regenerate this output.
+
+[workflow]
+completion_signal = <string>                # Required. Text that signals the workflow is done.
+completion_signal_mode = <string>           # "line" (must be on its own line) or "substring" (default).
+completion_signal_phases = [<string>, ...]  # Phases that can trigger completion. Default: any phase.
+continue_signal = <string>                  # If a phase emits this, skip remaining phases in the cycle.
+context_dir = <string>                      # Required. Working directory for the workflow.
+max_cycles = <integer>                      # Max cycles before stopping. Default: unlimited.
+budget_cap_usd = <float>                    # Stop if cumulative cost exceeds this amount in USD.
+output_dir = <string>                       # Directory for run output. Default: ~/.local/share/rings/runs/
+timeout_per_run_secs = <duration>           # Timeout per executor subprocess. Accepts integer or string ("30s", "5m").
+delay_between_runs = <duration>             # Delay between runs within a cycle.
+delay_between_cycles = <duration>           # Delay between full cycles.
+quota_backoff = <bool>                      # Enable retry on quota errors. Default: false.
+quota_backoff_delay = <integer>             # Seconds between quota retries. Default: 0.
+quota_backoff_max_retries = <integer>       # Max quota retry attempts. Default: 0.
+manifest_enabled = <bool>                   # Track file changes via manifest. Default: false.
+manifest_ignore = [<string>, ...]           # Glob patterns to exclude from manifests. Default: [].
+manifest_mtime_optimization = <bool>        # Skip hashing unchanged files (by mtime). Default: false.
+snapshot_cycles = <bool>                    # Capture directory snapshot at each cycle boundary. Default: false.
+lock_name = <string>                        # Named lock for concurrent workflow support.
+cycle_gate = <gate>                         # Gate checked before each cycle begins. See [gate] below.
+
+[executor]
+binary = <string>                           # Required. Path to executor binary (e.g. "claude").
+args = [<string>, ...]                      # Arguments passed to the executor. Default: [].
+extra_args = [<string>, ...]                # Additional args appended after args. Default: [].
+cost_parser = <string|table>                # Cost parser: "claude-code", "none", or { pattern = "<regex>" }.
+error_profile = <string|table>              # Error classifier: "claude-code", "none", or custom pattern table.
+                                            #   Custom: { quota_patterns = ["..."], auth_patterns = ["..."] }
+
+[[phases]]
+name = <string>                             # Required. Phase identifier (unique within workflow).
+prompt = <string>                           # Path to a prompt file. Mutually exclusive with prompt_text.
+prompt_text = <string>                      # Inline prompt text. Mutually exclusive with prompt.
+runs_per_cycle = <integer>                  # How many times to run this phase per cycle. Default: 1.
+budget_cap_usd = <float>                    # Per-phase budget cap in USD.
+timeout_per_run_secs = <duration>           # Per-phase timeout. Overrides workflow-level timeout.
+consumes = [<string>, ...]                  # Glob patterns expected to exist before this phase runs.
+produces = [<string>, ...]                  # Glob patterns this phase is expected to create or modify.
+produces_required = <bool>                  # If true, missing produces patterns cause a hard exit. Default: false.
+gate = <gate>                               # Gate checked before this phase runs. See [gate] below.
+gate_each_run = <bool>                      # Re-evaluate gate before every run, not just the first. Default: false.
+
+  [phases.executor]                         # Per-phase executor override.
+  extra_args = [<string>, ...]              # Additional args for this phase only. Default: [].
+
+# Gate configuration (used in cycle_gate, or per-phase gate):
+#   command = <string>                      # Required. Shell command to run. Exit 0 = proceed.
+#   on_fail = <string>                      # "skip", "stop", or "error". Default: "error".
+#   timeout = <duration>                    # Timeout for the gate command.
+
+# Duration fields accept an integer (seconds) or a string: "30s", "5m", "2h", "1d".
+
+# Template variables available in prompt_text:
+#   {{cycle}}           — current cycle number
+#   {{max_cycles}}      — max cycles configured
+#   {{run}}             — global run number
+#   {{cost_so_far_usd}} — cumulative cost so far
+"#;
 
 fn cmd_generate_man() -> i32 {
     use clap::CommandFactory;
@@ -4484,5 +4553,138 @@ mod generate_man_tests {
             generate_man_cmd.unwrap().is_hide_set(),
             "generate-man subcommand should be hidden"
         );
+    }
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+
+    #[test]
+    fn schema_output_is_non_empty() {
+        assert!(
+            !SCHEMA_REFERENCE.is_empty(),
+            "SCHEMA_REFERENCE must not be empty"
+        );
+    }
+
+    #[test]
+    fn schema_output_contains_section_headers() {
+        for header in ["[workflow]", "[executor]", "[[phases]]"] {
+            assert!(
+                SCHEMA_REFERENCE.contains(header),
+                "SCHEMA_REFERENCE missing section header: {header}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_covers_all_workflow_config_fields() {
+        let fields = [
+            "completion_signal",
+            "completion_signal_mode",
+            "completion_signal_phases",
+            "continue_signal",
+            "context_dir",
+            "max_cycles",
+            "budget_cap_usd",
+            "output_dir",
+            "timeout_per_run_secs",
+            "delay_between_runs",
+            "delay_between_cycles",
+            "quota_backoff",
+            "quota_backoff_delay",
+            "quota_backoff_max_retries",
+            "manifest_enabled",
+            "manifest_ignore",
+            "manifest_mtime_optimization",
+            "snapshot_cycles",
+            "lock_name",
+            "cycle_gate",
+        ];
+        for field in fields {
+            assert!(
+                SCHEMA_REFERENCE.contains(field),
+                "SCHEMA_REFERENCE missing WorkflowConfig field: {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_covers_all_executor_config_fields() {
+        // "binary" and "args" appear in the [executor] section.
+        // "extra_args" appears in both [executor] and [[phases]].
+        for field in [
+            "binary",
+            "args",
+            "extra_args",
+            "cost_parser",
+            "error_profile",
+        ] {
+            assert!(
+                SCHEMA_REFERENCE.contains(field),
+                "SCHEMA_REFERENCE missing ExecutorConfig field: {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_covers_all_phase_config_fields() {
+        let fields = [
+            "name",
+            "prompt",
+            "prompt_text",
+            "runs_per_cycle",
+            "budget_cap_usd",
+            "timeout_per_run_secs",
+            "consumes",
+            "produces",
+            "produces_required",
+            "gate",
+            "gate_each_run",
+        ];
+        for field in fields {
+            assert!(
+                SCHEMA_REFERENCE.contains(field),
+                "SCHEMA_REFERENCE missing PhaseConfig field: {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_covers_all_gate_config_fields() {
+        for field in ["command", "on_fail", "timeout"] {
+            assert!(
+                SCHEMA_REFERENCE.contains(field),
+                "SCHEMA_REFERENCE missing GateConfig field: {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_subcommand_is_visible() {
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let schema_cmd = cmd.get_subcommands().find(|c| c.get_name() == "schema");
+        assert!(schema_cmd.is_some(), "schema subcommand should exist");
+        assert!(
+            !schema_cmd.unwrap().is_hide_set(),
+            "schema subcommand should be visible in help"
+        );
+    }
+
+    #[test]
+    fn schema_includes_template_variables() {
+        for var in [
+            "{{cycle}}",
+            "{{max_cycles}}",
+            "{{run}}",
+            "{{cost_so_far_usd}}",
+        ] {
+            assert!(
+                SCHEMA_REFERENCE.contains(var),
+                "SCHEMA_REFERENCE missing template variable: {var}"
+            );
+        }
     }
 }

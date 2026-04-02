@@ -55,6 +55,8 @@ If you encounter a bug you can't fix within the current task, or notice an impro
 - Features removed or marked deprecated
 - New spec files added to `specs/`
 
+**Whenever you add, rename, or remove a field in any workflow config struct (`WorkflowConfig`, `ExecutorConfig`, `PhaseConfig`, `GateConfig` in `src/workflow.rs`), also update the `SCHEMA_REFERENCE` string in `src/main.rs`** so `rings schema` stays accurate.
+
 ### REVIEW.md structure
 
 Three fixed sections. Append entries within each section — never overwrite or delete prior entries. Each entry should begin with a date or task reference so entries can be distinguished.

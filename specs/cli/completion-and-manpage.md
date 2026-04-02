@@ -61,6 +61,25 @@ man rings-run
 
 Man pages are generated at build time via a `build.rs` script that calls `clap_mangen` to emit `.1` files into `target/man/`. The packaging step copies these into the installation directory.
 
+## Schema Reference
+
+The `rings schema` subcommand prints an annotated reference of every workflow TOML field to stdout. It is visible in `--help` so that new users and AI agents can discover it when exploring the CLI.
+
+### Usage
+
+```bash
+rings schema
+rings schema | grep budget
+```
+
+### Output Format
+
+The output is a commented TOML-like reference grouped by section (`[workflow]`, `[executor]`, `[[phases]]`). Each field shows its name, type hint, default value, and a one-line description. Gate configuration and template variables are documented at the end.
+
+### Maintenance
+
+The schema text is a hardcoded string (`SCHEMA_REFERENCE` in `src/main.rs`). When workflow config fields are added, renamed, or removed in `src/workflow.rs`, the schema string must be updated to match. Tests in `schema_tests` verify that every field in each config struct appears in the output.
+
 ## Help String Requirements
 
 Every flag, argument, and subcommand must have a help string. Review checklist:

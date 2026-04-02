@@ -139,6 +139,8 @@ pub enum Command {
     /// Print man page to stdout
     #[command(name = "generate-man", hide = true)]
     GenerateMan,
+    /// Print annotated workflow TOML reference
+    Schema,
     /// Scaffold a new workflow TOML file
     Init(InitArgs),
     /// Update rings to the latest nightly release

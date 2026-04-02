@@ -2,6 +2,8 @@
 <!-- Architectural or design choices made during implementation. -->
 <!-- Format: `[YYYY-MM-DD / task name] description` -->
 
+[2026-04-02 / F-202-205 Task 2: gate execution logic] Created `src/gate.rs` with `evaluate_gate(gate, context_dir) -> Result<GateResult>`. Spawns `sh -c <command>` using process_group(0) so the child is its own group leader; on timeout, signals the entire group (kill(-pgid, SIGTERM/SIGKILL)) to ensure subprocesses forked by `sh` (e.g. `sleep`) are also killed. Without process group signaling, `sh` might exit but leave forked children holding the stdout/stderr pipes open, blocking the reader threads for the full sleep duration. Default timeout: 30 seconds. Timeout sentinel: exit_code = -1 (per spec "exit_code = -1 or similar sentinel").
+
 [2026-04-02 / F-202-205 Task 1: GateConfig parsing] Added `GateAction` enum, `GateConfig` struct, `cycle_gate` on `WorkflowConfig`/`Workflow`, and `gate`/`gate_each_run` on `PhaseConfig`. `on_fail` is stored as `Option<GateAction>` (not resolved to a default during parsing) — defaults (Stop for cycle gate, Skip for phase gate) will be applied at execution time in later tasks. The structural fingerprint includes gate info using a deterministic string encoding; workflows without any gate retain the old fingerprint format (just phase names) for backward compatibility on the no-gate path.
 
 [2026-03-31 / F-199/F-200/F-201 Task 3: wire lock_name through main.rs] Both `run` and `resume` call sites now pass `workflow.lock_name.as_deref()` to `ContextLock::acquire`. Stale-lock warning messages branch on `workflow.lock_name`: named locks print `lock "name"` in the message for clarity; unnamed locks use the original message format.

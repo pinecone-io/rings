@@ -13,6 +13,7 @@ pub mod engine;
 pub mod error_classify;
 pub mod events;
 pub mod executor;
+pub mod gate;
 pub mod inspect;
 pub mod list;
 #[cfg(unix)]

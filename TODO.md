@@ -186,24 +186,24 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/gate.rs` (new), `src/lib.rs`
 
 **Steps:**
-- [ ] Create `src/gate.rs` module with `pub struct GateResult { pub command: String, pub exit_code: i32, pub passed: bool, pub stdout: String, pub stderr: String }`
-- [ ] Implement `pub fn evaluate_gate(gate: &GateConfig, context_dir: &Path) -> Result<GateResult>`:
+- [x] Create `src/gate.rs` module with `pub struct GateResult { pub command: String, pub exit_code: i32, pub passed: bool, pub stdout: String, pub stderr: String }`
+- [x] Implement `pub fn evaluate_gate(gate: &GateConfig, context_dir: &Path) -> Result<GateResult>`:
   - Spawn `sh -c <command>` in `context_dir`
   - Capture stdout and stderr
   - Apply timeout: SIGTERM → 5s → SIGKILL (reuse existing timeout pattern from executor)
   - Timeout counts as failure (exit_code = -1 or similar sentinel)
   - Return `GateResult` with exit code and pass/fail
-- [ ] Ensure gate commands inherit the process environment (same as executor)
-- [ ] No prompt content in command args (gate commands are author-defined, not user input — but document this)
+- [x] Ensure gate commands inherit the process environment (same as executor)
+- [x] No prompt content in command args (gate commands are author-defined, not user input — but document this)
 
 **Tests:**
-- [ ] `evaluate_gate` with `command = "true"` → passed, exit_code 0
-- [ ] `evaluate_gate` with `command = "false"` → not passed, exit_code 1
-- [ ] `evaluate_gate` with `command = "echo hello"` → passed, stdout contains "hello"
-- [ ] `evaluate_gate` with `command = "exit 42"` → not passed, exit_code 42
-- [ ] `evaluate_gate` with timeout exceeded → not passed (use `sleep 60` with 1s timeout)
-- [ ] `evaluate_gate` runs in the specified `context_dir`
-- [ ] `just validate` clean
+- [x] `evaluate_gate` with `command = "true"` → passed, exit_code 0
+- [x] `evaluate_gate` with `command = "false"` → not passed, exit_code 1
+- [x] `evaluate_gate` with `command = "echo hello"` → passed, stdout contains "hello"
+- [x] `evaluate_gate` with `command = "exit 42"` → not passed, exit_code 42
+- [x] `evaluate_gate` with timeout exceeded → not passed (use `sleep 60` with 1s timeout)
+- [x] `evaluate_gate` runs in the specified `context_dir`
+- [x] `just validate` clean
 
 ### Task 3: Integrate cycle gate into engine loop (F-203)
 

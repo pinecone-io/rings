@@ -1,6 +1,6 @@
 use crate::audit::{
-    append_cost_entry, append_event, extract_resume_commands, write_run_log, BudgetCapEvent,
-    BudgetWarningEvent, CostEntry,
+    append_cost_entry, append_event, extract_resume_commands, write_gate_log, write_run_log,
+    BudgetCapEvent, BudgetWarningEvent, CostEntry,
 };
 use crate::backoff::QuotaBackoff;
 use crate::cancel::CancelState;
@@ -688,6 +688,53 @@ fn step_pause(
     }
 }
 
+/// Truncate a gate command string to at most `max_len` chars for display,
+/// appending `...` if it was longer.
+pub fn truncate_gate_command(cmd: &str, max_len: usize) -> String {
+    if cmd.len() > max_len {
+        format!("{}...", &cmd[..max_len])
+    } else {
+        cmd.to_string()
+    }
+}
+
+/// Format the human-readable output line for a cycle gate evaluation.
+pub fn format_cycle_gate_line(
+    cycle: u32,
+    command: &str,
+    exit_code: i32,
+    passed: bool,
+    action: Option<&str>,
+) -> String {
+    let truncated = truncate_gate_command(command, 80);
+    let status = if passed {
+        "pass".to_string()
+    } else {
+        format!("fail → {}", action.unwrap_or("stop"))
+    };
+    format!("[cycle {cycle}] cycle gate: `{truncated}` → exit {exit_code} ({status})")
+}
+
+/// Format the human-readable output line for a phase gate evaluation.
+pub fn format_phase_gate_line(
+    cycle: u32,
+    phase_name: &str,
+    command: &str,
+    exit_code: i32,
+    passed: bool,
+    action: Option<&str>,
+) -> String {
+    let truncated = truncate_gate_command(command, 80);
+    let status = if passed {
+        "pass".to_string()
+    } else {
+        format!("fail → {}", action.unwrap_or("skip"))
+    };
+    format!(
+        "[cycle {cycle}] phase \"{phase_name}\" gate: `{truncated}` → exit {exit_code} ({status})"
+    )
+}
+
 /// Run a workflow to completion (or until max_cycles, error, or cancellation).
 /// Returns the exit code: 0 = signal detected, 1 = max_cycles, 3 = executor error, 130 = canceled.
 pub fn run_workflow(
@@ -1103,16 +1150,26 @@ pub fn run_workflow(
                     Some(effective_action.to_string())
                 };
 
+                // Write gate stdout/stderr to run log
+                let _ = write_gate_log(
+                    &runs_dir,
+                    run_spec.global_run_number,
+                    "cycle",
+                    &gate_result.stdout,
+                    &gate_result.stderr,
+                );
+
                 // Human output
                 if config.output_format == crate::cli::OutputFormat::Human {
-                    let status = if gate_result.passed {
-                        "pass".to_string()
-                    } else {
-                        format!("fail → {}", effective_action)
-                    };
                     println!(
-                        "[cycle {}] cycle gate: `{}` → exit {} ({})",
-                        run_spec.cycle, gate_result.command, gate_result.exit_code, status
+                        "{}",
+                        format_cycle_gate_line(
+                            run_spec.cycle,
+                            &gate_result.command,
+                            gate_result.exit_code,
+                            gate_result.passed,
+                            action_str.as_deref(),
+                        )
                     );
                 }
 
@@ -1214,20 +1271,27 @@ pub fn run_workflow(
                         Some(effective_action.to_string())
                     };
 
+                    // Write gate stdout/stderr to run log
+                    let _ = write_gate_log(
+                        &runs_dir,
+                        run_spec.global_run_number,
+                        &run_spec.phase_name,
+                        &gate_result.stdout,
+                        &gate_result.stderr,
+                    );
+
                     // Human output
                     if config.output_format == crate::cli::OutputFormat::Human {
-                        let status = if gate_result.passed {
-                            "pass".to_string()
-                        } else {
-                            format!("fail → {}", effective_action)
-                        };
                         println!(
-                            "[cycle {}] phase \"{}\" gate: `{}` → exit {} ({})",
-                            run_spec.cycle,
-                            run_spec.phase_name,
-                            gate_result.command,
-                            gate_result.exit_code,
-                            status
+                            "{}",
+                            format_phase_gate_line(
+                                run_spec.cycle,
+                                &run_spec.phase_name,
+                                &gate_result.command,
+                                gate_result.exit_code,
+                                gate_result.passed,
+                                action_str.as_deref(),
+                            )
                         );
                     }
 

@@ -256,18 +256,18 @@ Implementation tasks, ready to build. The `/build` command picks up the next tas
 **Files:** `src/output.rs` (or equivalent output/event module)
 
 **Steps:**
-- [ ] Human output format: `[cycle N] cycle gate: \`<command>\` → exit <code> (pass|fail → <action>)`
-- [ ] Human output format: `[cycle N] phase "<name>" gate: \`<command>\` → exit <code> (pass|fail → <action>)`
-- [ ] Truncate displayed command to 80 chars if longer, with `...` suffix
-- [ ] JSONL `gate_result` event: `{"event":"gate_result","run_id":"...","timestamp":"...","scope":"cycle"|"phase","phase":null|"<name>","command":"...","exit_code":<int>,"passed":<bool>,"action":"stop"|"skip"|"error"|null}`
-- [ ] Gate stdout/stderr captured in run log directory (e.g., `runs/NNN-gate-cycle.log` or `runs/NNN-gate-<phase>.log`)
+- [x] Human output format: `[cycle N] cycle gate: \`<command>\` → exit <code> (pass|fail → <action>)`
+- [x] Human output format: `[cycle N] phase "<name>" gate: \`<command>\` → exit <code> (pass|fail → <action>)`
+- [x] Truncate displayed command to 80 chars if longer, with `...` suffix
+- [x] JSONL `gate_result` event: `{"event":"gate_result","run_id":"...","timestamp":"...","scope":"cycle"|"phase","phase":null|"<name>","command":"...","exit_code":<int>,"passed":<bool>,"action":"stop"|"skip"|"error"|null}`
+- [x] Gate stdout/stderr captured in run log directory (e.g., `runs/NNN-gate-cycle.log` or `runs/NNN-gate-<phase>.log`)
 
 **Tests:**
-- [ ] Human output contains gate command and exit code for cycle gate
-- [ ] Human output contains phase name for phase gate
-- [ ] JSONL event has correct schema for passing gate
-- [ ] JSONL event has correct schema for failing gate with action
-- [ ] `just validate` clean
+- [x] Human output contains gate command and exit code for cycle gate
+- [x] Human output contains phase name for phase gate
+- [x] JSONL event has correct schema for passing gate
+- [x] JSONL event has correct schema for failing gate with action
+- [x] `just validate` clean
 
 ### Task 6: Dry-run support for gates (F-202, F-203)
 

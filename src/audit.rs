@@ -324,6 +324,26 @@ pub fn append_event(events_path: &Path, event: &serde_json::Value) -> Result<()>
         .with_context(|| format!("Failed to write to events.jsonl: {}", events_path.display()))
 }
 
+/// Write gate stdout/stderr to a log file in the runs directory.
+/// File name: `{run_number:03}-gate-cycle.log` for cycle gates,
+/// or `{run_number:03}-gate-{phase_name}.log` for phase gates.
+/// The `scope` parameter is either `"cycle"` or the phase name.
+pub fn write_gate_log(
+    runs_dir: &Path,
+    run_number: u32,
+    scope: &str,
+    stdout: &str,
+    stderr: &str,
+) -> Result<()> {
+    std::fs::create_dir_all(runs_dir)
+        .with_context(|| format!("Failed to create runs dir: {}", runs_dir.display()))?;
+    let filename = format!("{run_number:03}-gate-{scope}.log");
+    let path = runs_dir.join(filename);
+    let content = format!("stdout:\n{stdout}\n\nstderr:\n{stderr}\n");
+    std::fs::write(&path, &content)
+        .with_context(|| format!("Failed to write gate log: {}", path.display()))
+}
+
 /// Write the full raw output of one run to its log file (e.g. runs/001.log).
 /// When `retry_count` is None, writes to `{run_number:03}.log`.
 /// When `retry_count` is Some(n), writes to `{run_number:03}-retry-{n}.log`.

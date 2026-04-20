@@ -77,6 +77,19 @@ You'll want to customize the prompt's **Context** section to point at your proje
 
 ---
 
+## Examples
+
+The [`examples/`](examples/) directory has ready-to-run workflows demonstrating common patterns:
+
+- [`review-loop`](examples/review-loop.rings.toml) — builder + reviewer, only the reviewer can approve
+- [`multi-phase-audit`](examples/multi-phase-audit.rings.toml) — diff-gated specialized auditors with per-phase model routing
+- [`experiment-loop`](examples/experiment-loop.rings.toml) — baseline → change → measure → commit-or-revert
+- [`readiness-report`](examples/readiness-report.rings.toml) — one-shot pipeline producing a release-readiness report
+
+Each file is self-contained, opens with a comment explaining what it teaches, and passes `rings run --dry-run` out of the box.
+
+---
+
 ## How it works
 
 You write a workflow file. rings runs it in cycles.

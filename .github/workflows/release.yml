@@ -5,6 +5,11 @@ on:
     - cron: '0 * * * *'  # every hour on the hour
   workflow_dispatch:
     # Manual trigger — always runs the full build+release pipeline
+    inputs:
+      stable:
+        description: "Publish as a non-prerelease (true) on the v{VERSION} tag, instead of overwriting the nightly prerelease"
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -302,12 +307,16 @@ jobs:
           git tag -a "v${{ needs.bump.outputs.version }}" -m "Release v${{ needs.bump.outputs.version }}"
           git push origin "v${{ needs.bump.outputs.version }}"
 
-      - name: Delete existing nightly tag
+      # Nightly path: cron runs + manual dispatches without stable=true.
+      # Overwrites the floating `nightly` tag on every run.
+      - name: Delete existing nightly release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.stable) }}
         run: gh release delete nightly --cleanup-tag -y || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish nightly release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.stable) }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
@@ -328,6 +337,53 @@ jobs:
             release/SHA256SUMS
           body: |
             **v${{ needs.bump.outputs.version }}** — built from `main` (${{ needs.bump.outputs.sha }}).
+
+            This is a nightly/prerelease build from `main`. For a stable release, see the [latest release](https://github.com/${{ github.repository }}/releases/latest).
+
+            **One-line install:**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+            ```
+
+            **Or download directly:**
+            | Platform | Binary | Checksum |
+            |----------|--------|----------|
+            | Linux x86_64 | `rings-linux-x86_64` | `rings-linux-x86_64.sha256` |
+            | Linux ARM64 | `rings-linux-aarch64` | `rings-linux-aarch64.sha256` |
+            | macOS (universal) | `rings-macos` | `rings-macos.sha256` |
+            | macOS Intel | `rings-macos-x86_64` | `rings-macos-x86_64.sha256` |
+            | macOS Apple Silicon | `rings-macos-aarch64` | `rings-macos-aarch64.sha256` |
+
+            Verify with `sha256sum -c rings-linux-x86_64.sha256` or check all with `SHA256SUMS`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Stable path: manual dispatch with stable=true.
+      # Publishes a non-prerelease on the v{VERSION} tag so that
+      # /releases/latest resolves to this build. Leaves `nightly` untouched.
+      - name: Publish stable release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.stable }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ needs.bump.outputs.version }}"
+          name: "v${{ needs.bump.outputs.version }}"
+          prerelease: false
+          make_latest: true
+          target_commitish: ${{ needs.bump.outputs.sha }}
+          files: |
+            release/rings-linux-x86_64
+            release/rings-linux-x86_64.sha256
+            release/rings-linux-aarch64
+            release/rings-linux-aarch64.sha256
+            release/rings-macos
+            release/rings-macos.sha256
+            release/rings-macos-x86_64
+            release/rings-macos-x86_64.sha256
+            release/rings-macos-aarch64
+            release/rings-macos-aarch64.sha256
+            release/SHA256SUMS
+          body: |
+            **v${{ needs.bump.outputs.version }}** — stable release, built from `main` (${{ needs.bump.outputs.sha }}).
 
             **One-line install:**
             ```bash

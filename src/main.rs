@@ -2736,7 +2736,10 @@ fn format_human_duration(secs: u64) -> String {
 fn available_disk_space_bytes(path: &std::path::Path) -> Option<u64> {
     use nix::sys::statvfs::statvfs;
     let stat = statvfs(path).ok()?;
-    Some(stat.blocks_available() * stat.block_size())
+    // blocks_available() / block_size() have different integer widths across
+    // platforms (both u64 on Linux and macOS ARM; blocks_available is u32 on
+    // macOS x86_64). Widen both to u64 so the multiply compiles everywhere.
+    Some(stat.blocks_available() as u64 * stat.block_size() as u64)
 }
 
 #[cfg(not(unix))]

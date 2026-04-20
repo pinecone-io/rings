@@ -218,7 +218,18 @@ jobs:
       - name: Verify no dynamic library dependencies (Linux only)
         if: runner.os == 'Linux'
         run: |
-          ldd ${{ matrix.artifact }} && echo "ERROR: binary has dynamic dependencies" && exit 1 || echo "OK: not a dynamic executable"
+          # A musl-static binary makes `ldd` print either "statically linked"
+          # or "not a dynamic executable" (the latter on older ldd builds) and
+          # exit 0. The previous check relied on ldd's exit code alone, which
+          # incorrectly treated a clean static binary as "has dynamic deps."
+          output=$(ldd ${{ matrix.artifact }} 2>&1 || true)
+          echo "$output"
+          if echo "$output" | grep -qE "statically linked|not a dynamic executable"; then
+            echo "OK: static binary"
+          else
+            echo "ERROR: binary has dynamic dependencies"
+            exit 1
+          fi
 
       - name: Verify binary size (< 10 MB)
         run: |

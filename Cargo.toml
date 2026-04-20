@@ -1,6 +1,6 @@
 [package]
 name = "rings"
-version = "0.1.280"
+version = "0.1.281"
 edition = "2021"
 description = "Iterative AI workflows for Claude Code — run Claude in a loop with cost tracking, safe cancellation, and resumable runs"
 license = "Apache-2.0"

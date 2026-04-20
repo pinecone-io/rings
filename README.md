@@ -309,6 +309,12 @@ cargo build --release --locked
 
 ---
 
+## Versioning
+
+rings is pre-1.0 and publishes nightly releases from `main`. The patch number bumps automatically whenever `main` has new code, so a high patch (e.g. `0.1.279`) reflects CI cadence rather than instability or churn. Breaking changes, if any, will bump the minor version and be called out in the release notes.
+
+---
+
 ## Acknowledgments
 
 The iterative AI prompting pattern at the core of rings — running a task many times with fresh context, accumulating progress through on-disk state — was discovered and popularized by [Geoffrey Huntley](https://ghuntley.com/loop/), who calls it the Ralph loop. rings automates that pattern.

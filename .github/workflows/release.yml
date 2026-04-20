@@ -172,10 +172,17 @@ jobs:
         with:
           ref: ${{ needs.bump.outputs.sha }}
 
-      - name: Install Rust stable
+      - name: Install Rust stable (for tooling)
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+
+      # rust-toolchain.toml pins 1.94.0, so cargo activates that toolchain
+      # regardless of what dtolnay/rust-toolchain@stable installs. We need
+      # to explicitly add the build target to the *pinned* toolchain, or
+      # the build fails with "can't find crate for `core`".
+      - name: Add target to pinned toolchain
+        run: |
+          rustup show active-toolchain   # triggers install of the pinned 1.94.0
+          rustup target add ${{ matrix.target }}
 
       - name: Install musl tools (Linux x86_64)
         if: matrix.target == 'x86_64-unknown-linux-musl'

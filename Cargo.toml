@@ -44,11 +44,9 @@ globset = "0.4"
 walkdir = "2"
 hex = "0.4"
 owo-colors = "4"
-opentelemetry = { version = "0.24", optional = true }
-opentelemetry-otlp = { version = "0.17", features = ["http-proto", "reqwest-blocking-client"], optional = true }
-opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"], optional = true }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "sync"], optional = true }
-tokio-stream = { version = "0.1", optional = true }
+opentelemetry = { version = "0.31", optional = true }
+opentelemetry-otlp = { version = "0.31", features = ["http-proto", "reqwest-blocking-client"], optional = true }
+opentelemetry_sdk = { version = "0.31", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process", "fs"] }
@@ -57,7 +55,7 @@ libc = "0.2"
 [features]
 default = ["otel"]
 testing = []
-otel = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:tokio", "dep:tokio-stream"]
+otel = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk"]
 
 [build-dependencies]
 clap = { version = "4", features = ["derive"] }

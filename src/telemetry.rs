@@ -11,11 +11,9 @@
 /// Call `shutdown()` before process exit to flush any buffered spans and metrics.
 pub struct TracerHandle {
     #[cfg(feature = "otel")]
-    provider: Option<opentelemetry_sdk::trace::TracerProvider>,
+    provider: Option<opentelemetry_sdk::trace::SdkTracerProvider>,
     #[cfg(feature = "otel")]
     meter_provider: Option<opentelemetry_sdk::metrics::SdkMeterProvider>,
-    #[cfg(feature = "otel")]
-    otel_rt: Option<tokio::runtime::Runtime>,
     _private: (),
 }
 
@@ -34,9 +32,6 @@ impl TracerHandle {
                     eprintln!("Warning: OTel meter shutdown error: {e}");
                 }
             }
-            // Drop the tokio runtime last; this blocks until the PeriodicReader
-            // background task finishes its final export flush.
-            drop(self.otel_rt);
         }
     }
 }
@@ -64,7 +59,6 @@ fn init_tracer_inner() -> TracerHandle {
         return TracerHandle {
             provider: None,
             meter_provider: None,
-            otel_rt: None,
             _private: (),
         };
     }
@@ -83,52 +77,28 @@ fn init_tracer_inner() -> TracerHandle {
             return TracerHandle {
                 provider: None,
                 meter_provider: None,
-                otel_rt: None,
                 _private: (),
             };
         }
     };
     opentelemetry::global::set_tracer_provider(tracer_provider.clone());
 
-    // Build a dedicated tokio runtime for the metrics PeriodicReader background task.
-    let otel_rt = match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("rings-otel-metrics")
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(e) => {
-            eprintln!("Warning: OTel metrics runtime failed to start: {e}. Metrics disabled.");
-            return TracerHandle {
-                provider: Some(tracer_provider),
-                meter_provider: None,
-                otel_rt: None,
-                _private: (),
-            };
+    // Build meter provider — in 0.31 the default PeriodicReader uses a dedicated
+    // OS thread, so we no longer need a tokio runtime here.
+    let meter_provider = match build_meter_provider(&endpoint, resource) {
+        Ok(mp) => {
+            opentelemetry::global::set_meter_provider(mp.clone());
+            Some(mp)
         }
-    };
-
-    // Build meter provider — the PeriodicReader spawns a background task, so we enter
-    // the runtime to make `tokio::task::spawn` route to our runtime.
-    let meter_provider = {
-        let _guard = otel_rt.enter();
-        match build_meter_provider(&endpoint, resource) {
-            Ok(mp) => {
-                opentelemetry::global::set_meter_provider(mp.clone());
-                Some(mp)
-            }
-            Err(e) => {
-                eprintln!("Warning: OTel metrics init failed: {e}. Metrics disabled.");
-                None
-            }
+        Err(e) => {
+            eprintln!("Warning: OTel metrics init failed: {e}. Metrics disabled.");
+            None
         }
     };
 
     TracerHandle {
         provider: Some(tracer_provider),
         meter_provider,
-        otel_rt: Some(otel_rt),
         _private: (),
     }
 }
@@ -136,30 +106,30 @@ fn init_tracer_inner() -> TracerHandle {
 #[cfg(feature = "otel")]
 fn build_resource(service_name: String) -> opentelemetry_sdk::Resource {
     use opentelemetry::KeyValue;
-    opentelemetry_sdk::Resource::new(vec![
-        KeyValue::new("service.name", service_name),
-        KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
-    ])
+    opentelemetry_sdk::Resource::builder()
+        .with_attributes([
+            KeyValue::new("service.name", service_name),
+            KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
+        ])
+        .build()
 }
 
 #[cfg(feature = "otel")]
 fn build_tracer_provider(
     endpoint: &str,
     resource: opentelemetry_sdk::Resource,
-) -> anyhow::Result<opentelemetry_sdk::trace::TracerProvider> {
-    use opentelemetry_otlp::WithExportConfig;
+) -> anyhow::Result<opentelemetry_sdk::trace::SdkTracerProvider> {
+    use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 
-    let exporter = opentelemetry_otlp::new_exporter()
-        .http()
+    let exporter = SpanExporter::builder()
+        .with_http()
         .with_endpoint(endpoint)
-        .build_span_exporter()
+        .build()
         .map_err(|e| anyhow::anyhow!("failed to build OTLP span exporter: {e}"))?;
 
-    let config = opentelemetry_sdk::trace::Config::default().with_resource(resource);
-
-    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
         .with_simple_exporter(exporter)
-        .with_config(config)
+        .with_resource(resource)
         .build();
 
     Ok(provider)
@@ -170,20 +140,16 @@ fn build_meter_provider(
     endpoint: &str,
     resource: opentelemetry_sdk::Resource,
 ) -> anyhow::Result<opentelemetry_sdk::metrics::SdkMeterProvider> {
-    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_otlp::{MetricExporter, WithExportConfig};
     use opentelemetry_sdk::metrics::PeriodicReader;
-    use opentelemetry_sdk::runtime::Tokio;
 
-    let exporter = opentelemetry_otlp::new_exporter()
-        .http()
+    let exporter = MetricExporter::builder()
+        .with_http()
         .with_endpoint(endpoint)
-        .build_metrics_exporter(
-            Box::new(opentelemetry_sdk::metrics::reader::DefaultAggregationSelector::new()),
-            Box::new(opentelemetry_sdk::metrics::reader::DefaultTemporalitySelector::new()),
-        )
+        .build()
         .map_err(|e| anyhow::anyhow!("failed to build OTLP metrics exporter: {e}"))?;
 
-    let reader = PeriodicReader::builder(exporter, Tokio).build();
+    let reader = PeriodicReader::builder(exporter).build();
 
     let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
         .with_reader(reader)
@@ -366,37 +332,37 @@ impl RunTracer {
                 .u64_histogram("rings.phase.run.duration")
                 .with_unit("ms")
                 .with_description("Wall time per phase run in milliseconds")
-                .init();
+                .build();
             let cost_hist = meter
                 .f64_histogram("rings.cost.usd")
                 .with_unit("{USD}")
                 .with_description("Cost per phase run in USD")
-                .init();
+                .build();
             let tokens_input_hist = meter
                 .u64_histogram("rings.tokens.input")
                 .with_unit("{token}")
                 .with_description("Input tokens per phase run")
-                .init();
+                .build();
             let tokens_output_hist = meter
                 .u64_histogram("rings.tokens.output")
                 .with_unit("{token}")
                 .with_description("Output tokens per phase run")
-                .init();
+                .build();
             let runs_completed_counter = meter
                 .u64_counter("rings.runs.completed")
                 .with_unit("{run}")
                 .with_description("Incremented on each successful workflow completion")
-                .init();
+                .build();
             let runs_canceled_counter = meter
                 .u64_counter("rings.runs.canceled")
                 .with_unit("{run}")
                 .with_description("Incremented on each Ctrl+C cancellation")
-                .init();
+                .build();
             let cycles_per_run_hist = meter
                 .u64_histogram("rings.cycles.per_run")
                 .with_unit("{cycle}")
                 .with_description("Number of cycles to completion")
-                .init();
+                .build();
 
             RunTracer {
                 inner: Some(RunTracerInner {
@@ -651,7 +617,6 @@ mod tests {
         let handle = TracerHandle {
             provider: None,
             meter_provider: None,
-            otel_rt: None,
             _private: (),
         };
         handle.shutdown(); // Must not panic.

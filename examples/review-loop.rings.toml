@@ -1,0 +1,71 @@
+# review-loop.rings.toml
+#
+# Builder + reviewer pattern. A builder phase runs three times per cycle to
+# make steady progress, then a reviewer phase critiques the result. Only the
+# reviewer can trigger workflow completion, so the builder can't declare
+# victory prematurely.
+#
+# Customize:
+# - Change `context_dir` to point at your project.
+# - Replace the TASK.md path with whatever describes your work.
+# - Adjust `runs_per_cycle` on the builder to tune review cadence.
+#
+# Usage:
+#   rings run examples/review-loop.rings.toml --dry-run   # preview
+#   rings run examples/review-loop.rings.toml             # execute
+#   rings resume <run-id>                                 # continue after ^C
+
+[workflow]
+completion_signal = "APPROVED"
+completion_signal_mode = "line"
+# Only the reviewer is allowed to declare completion. If the builder echoes
+# "APPROVED" in its own output, it's ignored.
+completion_signal_phases = ["reviewer"]
+context_dir = "."
+max_cycles = 10
+budget_cap_usd = 5.00
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]
+
+[[phases]]
+name = "builder"
+runs_per_cycle = 3
+consumes = ["TASK.md", "REVIEW_NOTES.md"]
+produces = ["**/*"]
+prompt_text = """
+You are the **builder**. Make concrete progress on the task in TASK.md.
+
+If REVIEW_NOTES.md exists, read it first — it contains specific feedback from the
+last review cycle. Address each point before starting new work.
+
+Rules:
+- Small, focused diffs. One concern per change.
+- Write or update tests for anything non-trivial you add.
+- Don't mark work as "done" in your output — the reviewer decides that.
+
+When you finish this run, briefly summarise what changed and what's next.
+"""
+
+[[phases]]
+name = "reviewer"
+runs_per_cycle = 1
+consumes = ["TASK.md"]
+produces = ["REVIEW_NOTES.md"]
+prompt_text = """
+You are the **reviewer**. Evaluate the current state of the code against TASK.md.
+
+Check:
+- Does the implementation actually do what the task asks?
+- Are tests present and meaningful (not just asserting `is not None`)?
+- Are there obvious correctness, safety, or clarity issues?
+
+If the work is incomplete or flawed, write specific, actionable feedback to
+REVIEW_NOTES.md. Cite file paths and line numbers. Do NOT print APPROVED.
+
+If the work is complete and correct, delete REVIEW_NOTES.md (or leave a note
+explaining why it's approved) and print exactly on its own line:
+
+APPROVED
+"""

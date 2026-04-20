@@ -1,0 +1,161 @@
+# readiness-report.rings.toml
+#
+# One-shot pipeline that produces a single release-readiness report. Each
+# phase runs exactly once (max_cycles = 1) and feeds the next via files.
+# The final phase decides PASS / FAIL based on convergence thresholds.
+#
+# This is a useful pattern for any "gather → analyze → decide" workflow:
+#   - Incident postmortems
+#   - Dependency upgrade reports
+#   - Pre-deploy sanity checks
+#   - Experiment write-ups
+#
+# Key rings features demonstrated:
+#
+#   - max_cycles = 1: pipeline, not loop.
+#   - consumes / produces on every phase so rings can warn at startup if the
+#     pipeline is wired wrong (e.g. a downstream phase references a file the
+#     upstream phase never writes).
+#   - Phase gates with on_fail = "error" for hard prerequisites.
+#   - Only the final phase can trigger the completion signal.
+#
+# Customize:
+# - Change the thresholds in the decide phase to match your release criteria.
+# - Add/remove gather phases — each one just needs to write to a file that
+#   the later phases consume.
+#
+# Usage:
+#   rings run examples/readiness-report.rings.toml
+
+[workflow]
+completion_signal = "REPORT_READY"
+completion_signal_mode = "line"
+completion_signal_phases = ["decide"]
+context_dir = "."
+max_cycles = 1
+budget_cap_usd = 10.00
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]
+
+# =============================================================================
+# Phase 1 — Gather test results.
+# =============================================================================
+
+[[phases]]
+name = "gather-tests"
+# Hard prerequisite: if the test runner isn't on PATH, there's no point
+# spending tokens. Exit with error so the operator fixes the environment.
+gate = { command = "command -v cargo >/dev/null 2>&1", on_fail = "error" }
+produces = [".rings-report/tests.md"]
+prompt_text = """
+Run the test suite and summarise the results in `.rings-report/tests.md`.
+
+    cargo test --all 2>&1 | tee /tmp/test-output.txt
+
+Record:
+- Total tests run
+- Passed / failed / skipped
+- Full names of any failing tests with a one-line diagnosis
+- Runtime in seconds
+
+Keep the summary to under 40 lines. The point is a digest, not a dump.
+"""
+
+# =============================================================================
+# Phase 2 — Gather changelog / diff since last release.
+# =============================================================================
+
+[[phases]]
+name = "gather-changes"
+produces = [".rings-report/changes.md"]
+prompt_text = """
+Summarise what's changed since the last release tag.
+
+    git describe --tags --abbrev=0 2>/dev/null || echo "no tags"
+    git log --oneline $(git describe --tags --abbrev=0 2>/dev/null)..HEAD
+
+Write a human-readable changelog to `.rings-report/changes.md`, grouped by
+type (feat / fix / refactor / docs / chore). For each commit, include a
+one-line rationale that a release-note reader would care about — the raw
+commit subject alone is not enough.
+"""
+
+# =============================================================================
+# Phase 3 — Gather open issues / TODOs.
+# =============================================================================
+
+[[phases]]
+name = "gather-todos"
+produces = [".rings-report/todos.md"]
+prompt_text = """
+Find open work items in the repository:
+
+    grep -rn 'TODO\\|FIXME\\|XXX' src/ tests/ 2>/dev/null
+    test -f TODO.md && grep -c '^- \\[ \\]' TODO.md
+
+Write `.rings-report/todos.md` with:
+- Count of TODO/FIXME/XXX markers by file
+- Unchecked items in TODO.md (if present)
+- Any item you'd consider a release blocker, with rationale
+
+If nothing is open, say so explicitly — don't leave the file empty.
+"""
+
+# =============================================================================
+# Phase 4 — Synthesize into a final report with a verdict.
+# =============================================================================
+
+[[phases]]
+name = "decide"
+# This phase reads everything the earlier phases produced.
+consumes = [
+    ".rings-report/tests.md",
+    ".rings-report/changes.md",
+    ".rings-report/todos.md",
+]
+produces = [".rings-report/README.md"]
+prompt_text = """
+Produce the final release-readiness report at `.rings-report/README.md`.
+
+Read all three upstream files:
+- `.rings-report/tests.md`
+- `.rings-report/changes.md`
+- `.rings-report/todos.md`
+
+Apply these convergence thresholds. You're writing a recommendation, not a
+command — a human makes the final call, but your verdict should be clear.
+
+| Check | Threshold |
+|-------|-----------|
+| All tests passing | required |
+| No release-blocker TODOs | required |
+| At least one user-visible change since last tag | required |
+
+Structure the report:
+
+    # Release Readiness Report
+    Generated: <today's date>
+
+    ## Verdict: READY | NOT READY
+
+    ## Summary
+    <one paragraph>
+
+    ## Test status
+    <from tests.md>
+
+    ## Changes since last release
+    <from changes.md>
+
+    ## Open blockers
+    <from todos.md, filtered to blockers only>
+
+    ## Recommendation
+    <what the operator should do next>
+
+When the report is written, print exactly on its own line:
+
+REPORT_READY
+"""

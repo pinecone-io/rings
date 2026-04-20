@@ -1,0 +1,130 @@
+# experiment-loop.rings.toml
+#
+# Autonomous experiment runner. Each cycle:
+#   1. Measures a baseline by running a benchmark command.
+#   2. Picks ONE focused change to try.
+#   3. Measures again.
+#   4. Commits if the change is a clear improvement; reverts otherwise.
+#   5. Appends a row to EXPERIMENTS.md — every attempt, win or loss, is logged.
+#
+# This pattern is general: the "benchmark" can be anything deterministic
+# (pytest-benchmark, `hyperfine`, a custom script, test suite runtime) as long
+# as it produces numbers the agent can compare. The agent is told NOT to touch
+# the benchmark itself — so it can't game its own scorecard.
+#
+# The cycle_gate stops the loop once experiments stop producing wins: if the
+# last 5 log entries are all DISCARDED, there's no point burning more cycles.
+#
+# Customize:
+# - Replace the benchmark command in the prompt with your own.
+# - Change the allowed-edit path (the directory the agent may modify).
+# - Tune the improvement/regression thresholds (currently 5% / 2%).
+#
+# Usage:
+#   rings run examples/experiment-loop.rings.toml
+
+[workflow]
+completion_signal = "EXPERIMENTS_COMPLETE"
+completion_signal_mode = "line"
+context_dir = "."
+max_cycles = 30
+budget_cap_usd = 40.00
+delay_between_cycles = "2m"
+
+# Stop the loop once five consecutive experiments have been discarded —
+# the search space is probably exhausted, no point spending more.
+cycle_gate = { command = "test $(tail -n 50 EXPERIMENTS.md 2>/dev/null | grep -c '^- Decision: DISCARDED') -lt 5", on_fail = "stop" }
+
+[executor]
+binary = "claude"
+args = ["--dangerously-skip-permissions", "--output-format", "json", "--model", "claude-sonnet-4-6", "-p", "-"]
+
+[[phases]]
+name = "experimenter"
+runs_per_cycle = 1
+consumes = ["EXPERIMENTS.md"]
+produces = ["EXPERIMENTS.md"]
+prompt_text = """
+You are the **experimenter**. In this cycle (#{{cycle}} of {{max_cycles}}) you
+will attempt exactly ONE optimization. Follow every step in order.
+
+## Ground rules
+
+- You may edit files under `src/` only. Do NOT touch `benchmarks/`, tests, or
+  build config — those are the measurement contract.
+- ONE change per cycle. Keep the diff small and focused.
+- Always finish by appending a row to EXPERIMENTS.md, whether you commit or
+  discard. The log is the record of what's been tried.
+
+## Step 1 — Read prior experiments
+
+Read EXPERIMENTS.md (it may not exist yet). Do NOT repeat anything already
+tried — even if it was discarded. The log tells you what doesn't work.
+
+## Step 2 — Baseline
+
+Run the benchmark and capture the numbers:
+
+    ./scripts/bench.sh > /tmp/baseline.txt
+
+(If you use a different benchmark tool, substitute here. It just needs to
+produce reproducible numbers.)
+
+## Step 3 — Pick one change
+
+Propose a single, specific hypothesis. Good: "replace list() copy in
+resolve_path with slice assignment". Bad: "refactor config module".
+
+State what you're changing, why it should help, and which benchmark number
+you expect to move.
+
+## Step 4 — Implement
+
+Make the change. Keep it minimal.
+
+## Step 5 — Correctness gate
+
+Run the existing test suite. If anything fails, skip to Step 7 (DISCARD).
+
+    ./scripts/test.sh
+
+## Step 6 — Measure
+
+Re-run the benchmark:
+
+    ./scripts/bench.sh > /tmp/experiment.txt
+
+Compare against baseline. Decision rule:
+- COMMIT: at least one metric improved by >5% AND no metric regressed by >2%.
+- DISCARD: otherwise.
+
+## Step 7 — Commit or revert
+
+### If COMMIT:
+    git add -A && git commit -m "perf: <one-line summary of the change>"
+
+### If DISCARD:
+    git restore src/
+
+## Step 8 — Log the experiment
+
+Append a new entry to EXPERIMENTS.md using this exact shape:
+
+    ## Experiment — cycle {{cycle}}, {{phase_name}}
+    - Hypothesis: <what and why>
+    - Files changed: <paths>
+    - Baseline metric: <name>=<value>
+    - Experiment metric: <name>=<value>
+    - Tests: PASS | FAIL
+    - Decision: COMMITTED <sha> | DISCARDED <reason>
+
+## Step 9 — Stop
+
+Print a one-line summary and stop. Do NOT start another experiment — the
+workflow runner will invoke you again next cycle.
+
+If the work is clearly complete (e.g. the benchmark hit its target or there
+are no more obvious opportunities) print exactly on its own line:
+
+EXPERIMENTS_COMPLETE
+"""

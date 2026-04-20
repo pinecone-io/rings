@@ -1,0 +1,149 @@
+# multi-phase-audit.rings.toml
+#
+# Sequential, multi-lens audit loop. Each cycle runs several specialized
+# auditors in order, each looking at the code through one lens (security,
+# performance, tests, docs). Each auditor writes findings to its own file
+# and appends unresolved issues to a shared FINDINGS.md.
+#
+# Two rings features carry most of the weight here:
+#
+#   1. Per-phase `gate` — each auditor only runs if `git diff` shows changes
+#      since its last run, so expensive audits don't repeat on unchanged code.
+#      State is kept in .rings-audit/<auditor>.sha files.
+#
+#   2. Per-phase `executor.extra_args` — cheap mechanical phases run on
+#      haiku; phases that need deep reasoning run on sonnet.
+#
+# Customize:
+# - Drop or add auditor phases. Each one is independent.
+# - Change the gate commands to match your VCS / build setup.
+# - Swap `cargo`/`npm`/etc. into the pre-scan commands inside each prompt.
+#
+# Usage:
+#   rings run examples/multi-phase-audit.rings.toml
+
+[workflow]
+completion_signal = "AUDIT_COMPLETE"
+completion_signal_mode = "line"
+completion_signal_phases = ["coordinator"]
+context_dir = "."
+max_cycles = 5
+budget_cap_usd = 20.00
+delay_between_cycles = "5m"
+
+# Skip the whole cycle if the FINDINGS backlog is already large — don't pile
+# on new findings faster than they get resolved.
+cycle_gate = { command = "test $(grep -c '^## ' FINDINGS.md 2>/dev/null || echo 0) -lt 30", on_fail = "skip" }
+
+[executor]
+binary = "claude"
+# Base args do not pin a model — each phase appends its own --model via
+# executor.extra_args so we can route cheap phases to haiku without having
+# to repeat the full flag set.
+args = ["--dangerously-skip-permissions", "--output-format", "json", "-p", "-"]
+
+# =============================================================================
+# Security auditor — deep-reasoning, runs on sonnet (default).
+# =============================================================================
+
+[[phases]]
+name = "security-auditor"
+# Reasoning-heavy — run on sonnet.
+executor.extra_args = ["--model", "claude-sonnet-4-6"]
+# Skip if no source files have changed since this auditor last ran.
+gate = { command = "mkdir -p .rings-audit && test ! -f .rings-audit/security.sha || test -n \"$(git diff $(cat .rings-audit/security.sha) HEAD -- src/ 2>/dev/null)\"", on_fail = "skip" }
+consumes = ["src/**/*"]
+produces = [".rings-audit/security-findings.md", "FINDINGS.md"]
+prompt_text = """
+You are the **security auditor**. Lens: credential handling, input validation,
+and information exposure.
+
+Look for:
+- Credentials in logs, error messages, repr output, or serialized state.
+- User input flowing into URLs, shell commands, or SQL without sanitization.
+- Error messages leaking internal paths, stack traces, or schema details.
+- Hardcoded secrets in non-test code.
+
+Write findings to `.rings-audit/security-findings.md`. For each finding,
+include: severity (P0/P1/P2), file:line, a 2-sentence description, and a
+concrete fix. Append any P0/P1 items as a new section to `FINDINGS.md`.
+
+When done (or when no new issues found), record the current HEAD so the next
+cycle can diff against it:
+
+    git rev-parse HEAD > .rings-audit/security.sha
+"""
+
+# =============================================================================
+# Performance auditor — also runs on sonnet.
+# =============================================================================
+
+[[phases]]
+name = "perf-auditor"
+executor.extra_args = ["--model", "claude-sonnet-4-6"]
+gate = { command = "test ! -f .rings-audit/perf.sha || test -n \"$(git diff $(cat .rings-audit/perf.sha) HEAD -- src/ 2>/dev/null)\"", on_fail = "skip" }
+consumes = ["src/**/*"]
+produces = [".rings-audit/perf-findings.md", "FINDINGS.md"]
+prompt_text = """
+You are the **performance auditor**. Lens: unnecessary work on hot paths.
+
+Look for:
+- Allocations in tight loops that could be hoisted or reused.
+- Redundant copies, unnecessary serialization round-trips.
+- Blocking calls in async code.
+- Resources (connections, file handles) not reused where they should be.
+
+Write findings to `.rings-audit/perf-findings.md` and append P0/P1 items to
+FINDINGS.md. Record HEAD:
+
+    git rev-parse HEAD > .rings-audit/perf.sha
+"""
+
+# =============================================================================
+# Style / tests auditor — cheap mechanical checks, run on haiku.
+# =============================================================================
+
+[[phases]]
+name = "style-auditor"
+gate = { command = "test ! -f .rings-audit/style.sha || test -n \"$(git diff $(cat .rings-audit/style.sha) HEAD -- src/ tests/ 2>/dev/null)\"", on_fail = "skip" }
+# Override the default model for this phase: haiku is plenty for mechanical lints.
+executor.extra_args = ["--model", "claude-haiku-4-5"]
+# Give the cheap phase a tight per-phase budget so a runaway can't dominate cost.
+budget_cap_usd = 2.00
+consumes = ["src/**/*", "tests/**/*"]
+produces = [".rings-audit/style-findings.md", "FINDINGS.md"]
+prompt_text = """
+You are the **style/tests auditor**. Lens: small, mechanical consistency issues.
+
+Look for:
+- Public functions with no test.
+- Weak assertions (`assert x is not None` and nothing else).
+- Inconsistent naming across peer modules.
+- Dead code — functions defined but never called.
+
+Write findings to `.rings-audit/style-findings.md`. Append only the highest-
+severity ones to FINDINGS.md. Record HEAD:
+
+    git rev-parse HEAD > .rings-audit/style.sha
+"""
+
+# =============================================================================
+# Coordinator — decides if the audit is complete.
+# =============================================================================
+
+[[phases]]
+name = "coordinator"
+# Coordinator just reads a file and makes a decision — haiku is fine.
+executor.extra_args = ["--model", "claude-haiku-4-5"]
+consumes = ["FINDINGS.md"]
+prompt_text = """
+Review FINDINGS.md. Count open P0 and P1 items.
+
+If FINDINGS.md is empty or contains zero P0 and zero P1 items, print exactly
+on its own line:
+
+AUDIT_COMPLETE
+
+Otherwise, print a one-line summary of what's still open (counts per severity)
+and stop. The workflow will run another cycle.
+"""

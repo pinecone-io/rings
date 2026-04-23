@@ -8,6 +8,9 @@ rings runs Claude Code in a loop — cycling through your defined phases until w
 ⠹  Cycle 4/20  │  builder  2/3  │  $0.34 total  │  1.2k in · 340 out  │  01:12
 ```
 
+> [!WARNING]
+> **Run rings in a sandbox.** Because rings invokes Claude Code with `--dangerously-skip-permissions`, the agent can modify files and run commands without confirmation. A container, VM, or dedicated remote environment keeps a bad prompt or hallucinated command from impacting anything important.
+
 ---
 
 ## Install

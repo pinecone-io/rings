@@ -15,7 +15,7 @@ use rings::display;
 use rings::dry_run;
 use rings::duration;
 use rings::engine::{run_workflow, EngineConfig, ResumePoint};
-use rings::executor::{ClaudeExecutor, ConfigurableExecutor};
+use rings::executor::{self, ClaudeExecutor, ConfigurableExecutor};
 use rings::list;
 #[cfg(unix)]
 use rings::lock::ContextLock;
@@ -24,6 +24,21 @@ use rings::style;
 use rings::telemetry;
 use rings::template;
 use rings::workflow;
+
+/// Best-effort read of the final assistant response text from the last run's log.
+///
+/// Returns `None` if the log cannot be read or contains no extractable text.
+fn read_final_response_text(run_dir: &std::path::Path, run_number: u32) -> Option<String> {
+    let path = run_dir.join("runs").join(format!("{run_number:03}.log"));
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let text = executor::extract_response_text(&raw);
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
 
 fn main() {
     // Handle shell completion requests made via the COMPLETE env var (e.g. `COMPLETE=zsh rings`).
@@ -687,6 +702,8 @@ fn run_inner(
                 if let Ok(state) = state::StateFile::read(&state_path) {
                     let phase = workflow.phases.get(state.last_completed_phase_index);
                     let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                    let summary_text = read_final_response_text(&run_dir, state.last_completed_run);
+                    let summary_log_path = format!("runs/{:03}.log", state.last_completed_run);
                     display::print_completion(
                         state.last_completed_cycle,
                         state.last_completed_run,
@@ -699,6 +716,8 @@ fn run_inner(
                         workflow.budget_cap_usd,
                         result.total_input_tokens,
                         result.total_output_tokens,
+                        summary_text.as_deref(),
+                        Some(summary_log_path.as_str()),
                     );
                 }
             }
@@ -1194,6 +1213,8 @@ fn resume_inner(
                 if let Ok(state) = state::StateFile::read(&state_path) {
                     let phase = workflow.phases.get(state.last_completed_phase_index);
                     let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
+                    let summary_text = read_final_response_text(&run_dir, state.last_completed_run);
+                    let summary_log_path = format!("runs/{:03}.log", state.last_completed_run);
                     display::print_completion(
                         state.last_completed_cycle,
                         state.last_completed_run,
@@ -1206,6 +1227,8 @@ fn resume_inner(
                         workflow.budget_cap_usd,
                         result.total_input_tokens,
                         result.total_output_tokens,
+                        summary_text.as_deref(),
+                        Some(summary_log_path.as_str()),
                     );
                 }
             }

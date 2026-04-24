@@ -489,6 +489,105 @@ pub fn render_budget_gauge(spent: f64, cap: f64, width: usize) -> String {
     format!("{}  {}  ({})", colored_bar, cost_str, pct_str)
 }
 
+/// Word-wrap a single logical line at `width` columns. Preserves words; breaks
+/// only at whitespace. A word longer than `width` is emitted on its own line.
+fn wrap_line(line: &str, width: usize) -> Vec<String> {
+    if line.trim().is_empty() {
+        return vec![String::new()];
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for word in line.split_whitespace() {
+        if current.is_empty() {
+            current.push_str(word);
+        } else if current.chars().count() + 1 + word.chars().count() > width {
+            out.push(std::mem::take(&mut current));
+            current.push_str(word);
+        } else {
+            current.push(' ');
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    out
+}
+
+/// Render a final-summary block for the completion output.
+///
+/// Word-wraps the text at ~76 columns, collapses runs of blank lines, truncates
+/// to at most `max_lines` lines, and formats each line under a dim `Summary`
+/// label with subsequent lines indented to align with the value column. When
+/// truncation occurs, the trailing `…` line includes `truncation_hint` (if
+/// provided) so the reader knows where to find the full response.
+/// Returns an empty vec for empty input.
+pub fn render_final_summary(
+    text: &str,
+    max_lines: usize,
+    truncation_hint: Option<&str>,
+) -> Vec<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+
+    const WRAP_WIDTH: usize = 76;
+    // Indent for continuation lines: 3 leading spaces + 10-char label + 2-space
+    // separator = 15 columns, matching the value column used elsewhere.
+    const INDENT: &str = "               ";
+
+    let mut wrapped: Vec<String> = Vec::new();
+    for raw in trimmed.lines() {
+        for w in wrap_line(raw, WRAP_WIDTH) {
+            wrapped.push(w);
+        }
+    }
+
+    let mut dedup: Vec<String> = Vec::new();
+    let mut last_blank = false;
+    for line in wrapped {
+        let is_blank = line.trim().is_empty();
+        if is_blank && (dedup.is_empty() || last_blank) {
+            continue;
+        }
+        dedup.push(line);
+        last_blank = is_blank;
+    }
+    while dedup.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
+        dedup.pop();
+    }
+
+    let truncated: Vec<String> = if dedup.len() > max_lines {
+        let mut t: Vec<String> = dedup.into_iter().take(max_lines).collect();
+        let ellipsis_line = match truncation_hint {
+            Some(hint) => format!("…  {}", style::muted(&format!("(full response in {hint})"))),
+            None => "…".to_string(),
+        };
+        t.push(ellipsis_line);
+        t
+    } else {
+        dedup
+    };
+
+    let lw = 10usize;
+    let mut out: Vec<String> = Vec::new();
+    for (i, line) in truncated.iter().enumerate() {
+        if i == 0 {
+            out.push(format!(
+                "   {}  {}",
+                style::dim(&format!("{:<lw$}", "Summary")),
+                line
+            ));
+        } else if line.is_empty() {
+            out.push(String::new());
+        } else {
+            out.push(format!("{}{}", INDENT, line));
+        }
+    }
+    out
+}
+
 /// Format the completion summary as a string (for testing).
 #[allow(clippy::too_many_arguments)]
 fn format_completion(
@@ -503,6 +602,8 @@ fn format_completion(
     budget_cap_usd: Option<f64>,
     total_input_tokens: u64,
     total_output_tokens: u64,
+    summary_text: Option<&str>,
+    summary_log_path: Option<&str>,
 ) -> String {
     let check = style::success("✓");
     let completed = style::bold("Completed");
@@ -571,6 +672,17 @@ fn format_completion(
         ));
     }
 
+    // Final agent summary (last phase's response text, trimmed).
+    if let Some(text) = summary_text {
+        let summary_lines = render_final_summary(text, 10, summary_log_path);
+        if !summary_lines.is_empty() {
+            lines.push(String::new());
+            for line in summary_lines {
+                lines.push(line);
+            }
+        }
+    }
+
     lines.push(String::new());
     lines.push(format!(
         "   {}  {}",
@@ -595,6 +707,8 @@ pub fn print_completion(
     budget_cap_usd: Option<f64>,
     total_input_tokens: u64,
     total_output_tokens: u64,
+    summary_text: Option<&str>,
+    summary_log_path: Option<&str>,
 ) {
     eprintln!(
         "{}",
@@ -610,6 +724,8 @@ pub fn print_completion(
             budget_cap_usd,
             total_input_tokens,
             total_output_tokens,
+            summary_text,
+            summary_log_path,
         )
     );
 }
@@ -1494,6 +1610,8 @@ mod tests {
             Some(5.0),
             0,
             0,
+            None,
+            None,
         );
         assert!(s.contains("Completed"), "missing Completed: {s}");
         assert!(s.contains("cycle 2"), "missing cycle: {s}");
@@ -1526,6 +1644,8 @@ mod tests {
             None,
             0,
             0,
+            None,
+            None,
         );
         assert!(
             !s.contains("Budget"),
@@ -1588,6 +1708,8 @@ mod tests {
             None,
             0,
             0,
+            None,
+            None,
         );
         assert!(s.contains('✓'), "missing checkmark: {s}");
         crate::style::set_color_enabled();
@@ -1610,6 +1732,8 @@ mod tests {
             None,
             18204,
             4102,
+            None,
+            None,
         );
         assert!(s.contains("Tokens"), "missing Tokens label: {s}");
         assert!(s.contains("18,204 input"), "missing input tokens: {s}");
@@ -1634,6 +1758,8 @@ mod tests {
             None,
             0,
             0,
+            None,
+            None,
         );
         assert!(
             !s.contains("Tokens"),
@@ -1649,6 +1775,163 @@ mod tests {
         assert_eq!(format_number_with_commas(1000), "1,000");
         assert_eq!(format_number_with_commas(18204), "18,204");
         assert_eq!(format_number_with_commas(1_100_000), "1,100,000");
+    }
+
+    #[test]
+    fn render_final_summary_empty_input_returns_empty() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        assert!(render_final_summary("", 10, None).is_empty());
+        assert!(render_final_summary("   \n\n  ", 10, None).is_empty());
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn render_final_summary_labels_first_line_and_indents_rest() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let lines = render_final_summary("line one\nline two\nline three", 10, None);
+        assert!(lines[0].contains("Summary"), "missing label: {:?}", lines);
+        assert!(
+            lines[0].contains("line one"),
+            "missing first line: {:?}",
+            lines
+        );
+        assert!(
+            lines[1].starts_with("               "),
+            "continuation not indented: {:?}",
+            lines
+        );
+        assert!(lines[1].contains("line two"));
+        assert!(lines[2].contains("line three"));
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn render_final_summary_truncates_with_ellipsis() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let long: String = (1..=20)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let lines = render_final_summary(&long, 5, None);
+        // 5 content lines + 1 ellipsis line
+        assert_eq!(lines.len(), 6, "unexpected length: {:?}", lines);
+        assert!(
+            lines.last().unwrap().trim() == "…",
+            "missing ellipsis: {:?}",
+            lines
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn render_final_summary_truncation_hint_points_to_log() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let long: String = (1..=20)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let lines = render_final_summary(&long, 5, Some("runs/004.log"));
+        let last = lines.last().unwrap();
+        assert!(last.contains('…'), "missing ellipsis: {last}");
+        assert!(
+            last.contains("runs/004.log"),
+            "missing log path hint: {last}"
+        );
+        assert!(
+            last.contains("full response"),
+            "missing full-response phrasing: {last}"
+        );
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn render_final_summary_hint_ignored_when_not_truncated() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let lines = render_final_summary("short text", 10, Some("runs/004.log"));
+        for line in &lines {
+            assert!(
+                !line.contains("runs/004.log"),
+                "hint should not appear when not truncated: {line}"
+            );
+        }
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn render_final_summary_wraps_long_lines() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let long_word_line = "word ".repeat(40); // ~200 chars, must wrap
+        let lines = render_final_summary(long_word_line.trim(), 20, None);
+        assert!(lines.len() > 1, "expected wrapped output: {:?}", lines);
+        for line in &lines {
+            // continuation lines (after first) should not exceed indent + 76
+            // and label line should contain "Summary"
+            assert!(
+                line.chars().count() <= 15 + 76 + 8, // +8 slack for ANSI / label padding
+                "line too long: {:?} ({} chars)",
+                line,
+                line.chars().count()
+            );
+        }
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_output_includes_summary_when_provided() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let phase_costs: Vec<(String, f64, u32)> = vec![];
+        let s = format_completion(
+            1,
+            5,
+            "reviewer",
+            0.50,
+            5,
+            120,
+            "/tmp/run",
+            &phase_costs,
+            None,
+            0,
+            0,
+            Some("All tests pass. Implementation looks correct."),
+            None,
+        );
+        assert!(s.contains("Summary"), "missing Summary label: {s}");
+        assert!(s.contains("All tests pass"), "missing summary content: {s}");
+        crate::style::set_color_enabled();
+    }
+
+    #[test]
+    fn completion_output_omits_summary_when_none() {
+        let _guard = COLOR_LOCK.lock().unwrap();
+        crate::style::set_no_color();
+        let phase_costs: Vec<(String, f64, u32)> = vec![];
+        let s = format_completion(
+            1,
+            5,
+            "reviewer",
+            0.50,
+            5,
+            120,
+            "/tmp/run",
+            &phase_costs,
+            None,
+            0,
+            0,
+            None,
+            None,
+        );
+        assert!(
+            !s.contains("Summary"),
+            "Summary line should be absent when text is None: {s}"
+        );
+        crate::style::set_color_enabled();
     }
 
     fn make_parse_warning(
@@ -1847,6 +2130,8 @@ mod tests {
             None,
             0,
             0,
+            None,
+            None,
         );
         assert!(
             s.contains('█'),

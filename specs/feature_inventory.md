@@ -300,6 +300,7 @@ Summaries are written from the user's perspective. Features with dependencies no
 | F-189 | Styled Dry Run Output | `rings run --dry-run` uses the same color system as live runs for visual consistency | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 | F-190 | Cumulative Token Display | The status line and summaries show cumulative input/output token counts that update after each completed run | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 | F-191 | Model Name Display | The startup header shows the detected model name or "(default)" so I always know which model is being used | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
+| F-210 | Final Agent Summary | The completion output shows the completing run's plain-text response (word-wrapped, truncated to 10 lines) so I can see what the agent concluded without opening the audit log | COMPLETE | [runtime-output.md](observability/runtime-output.md) |
 
 ## Executor Args Ergonomics
 

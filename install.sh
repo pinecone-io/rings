@@ -2,7 +2,6 @@
 set -euo pipefail
 
 REPO="pinecone-io/rings"
-RELEASE="nightly"
 
 # Detect OS and architecture
 OS="$(uname -s)"
@@ -13,7 +12,7 @@ case "${OS}" in
   Darwin) OS_TAG="macos" ;;
   *)
     echo "Error: Unsupported OS: ${OS}"
-    echo "Download manually from: https://github.com/${REPO}/releases/tag/${RELEASE}"
+    echo "Download manually from: https://github.com/${REPO}/releases/latest"
     exit 1
     ;;
 esac
@@ -23,7 +22,7 @@ case "${ARCH}" in
   aarch64|arm64) ARCH_TAG="aarch64" ;;
   *)
     echo "Error: Unsupported architecture: ${ARCH}"
-    echo "Download manually from: https://github.com/${REPO}/releases/tag/${RELEASE}"
+    echo "Download manually from: https://github.com/${REPO}/releases/latest"
     exit 1
     ;;
 esac
@@ -35,7 +34,9 @@ else
   BINARY="rings-${OS_TAG}-${ARCH_TAG}"
 fi
 DEST="${1:-/usr/local/bin/rings}"
-BASE_URL="https://github.com/${REPO}/releases/download/${RELEASE}"
+# Use the floating /releases/latest/download/ URL so installs always fetch the
+# most recent stable release, and so re-releases don't require updating this script.
+BASE_URL="https://github.com/${REPO}/releases/latest/download"
 
 echo "Installing rings (${OS_TAG}-${ARCH_TAG})..."
 

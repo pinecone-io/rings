@@ -703,6 +703,7 @@ fn run_inner(
                     let phase = workflow.phases.get(state.last_completed_phase_index);
                     let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
                     let summary_text = read_final_response_text(&run_dir, state.last_completed_run);
+                    let summary_log_path = format!("runs/{:03}.log", state.last_completed_run);
                     display::print_completion(
                         state.last_completed_cycle,
                         state.last_completed_run,
@@ -716,6 +717,7 @@ fn run_inner(
                         result.total_input_tokens,
                         result.total_output_tokens,
                         summary_text.as_deref(),
+                        Some(summary_log_path.as_str()),
                     );
                 }
             }
@@ -1212,6 +1214,7 @@ fn resume_inner(
                     let phase = workflow.phases.get(state.last_completed_phase_index);
                     let phase_name = phase.map(|p| p.name.as_str()).unwrap_or("unknown");
                     let summary_text = read_final_response_text(&run_dir, state.last_completed_run);
+                    let summary_log_path = format!("runs/{:03}.log", state.last_completed_run);
                     display::print_completion(
                         state.last_completed_cycle,
                         state.last_completed_run,
@@ -1225,6 +1228,7 @@ fn resume_inner(
                         result.total_input_tokens,
                         result.total_output_tokens,
                         summary_text.as_deref(),
+                        Some(summary_log_path.as_str()),
                     );
                 }
             }

@@ -136,7 +136,7 @@ The completion output includes the plain-text response from the **completing** r
 
 - Source: `extract_response_text` applied to `runs/NNN.log` where `NNN` is `state.last_completed_run`.
 - Word-wrap at 76 columns; runs of blank lines collapsed to a single blank.
-- Truncated to 10 lines; a trailing `…` line indicates content was dropped.
+- Truncated to 10 lines; when truncation occurs the trailing `…` line appends a dim hint like `…  (full response in runs/004.log)` so the reader can open the audit log for the complete text.
 - Best-effort: if the log cannot be read or the response text is empty, the `Summary` block is omitted silently.
 - Not emitted in JSONL output mode — the `summary` event already carries structured data.
 

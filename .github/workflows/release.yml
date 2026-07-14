@@ -14,6 +14,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Least-privilege default: most jobs only read the repo. The bump and release
+# jobs opt into contents: write below (push the version bump; create tag/release).
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Check, lint, test
@@ -87,6 +92,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # pushes the version-bump commit back to the repo
     outputs:
       version: ${{ steps.bump.outputs.version }}
       sha: ${{ steps.push.outputs.sha }}
@@ -335,7 +342,7 @@ jobs:
 
       - name: Publish nightly release
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.stable) }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: nightly
           name: "v${{ needs.bump.outputs.version }} (nightly)"
@@ -381,7 +388,7 @@ jobs:
       # /releases/latest resolves to this build. Leaves `nightly` untouched.
       - name: Publish stable release
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.stable }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: "v${{ needs.bump.outputs.version }}"
           name: "v${{ needs.bump.outputs.version }}"

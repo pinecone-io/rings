@@ -49,7 +49,7 @@ opentelemetry-otlp = { version = "0.32", features = ["http-proto", "reqwest-bloc
 opentelemetry_sdk = { version = "0.32", optional = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process", "fs"] }
+nix = { version = "0.31", features = ["signal", "process", "fs"] }
 libc = "0.2"
 
 [features]

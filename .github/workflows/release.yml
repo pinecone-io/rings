@@ -24,7 +24,7 @@ jobs:
     name: Check, lint, test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -56,7 +56,7 @@ jobs:
     outputs:
       should_release: ${{ steps.detect.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # full history so tags are available
 
@@ -98,7 +98,7 @@ jobs:
       version: ${{ steps.bump.outputs.version }}
       sha: ${{ steps.push.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Use default GITHUB_TOKEN — pushes with this token do NOT
           # trigger new workflow runs (GitHub's built-in loop protection)
@@ -175,7 +175,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.bump.outputs.sha }}
 
@@ -305,7 +305,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.bump.outputs.sha }}
 

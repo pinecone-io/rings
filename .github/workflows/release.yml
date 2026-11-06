@@ -262,13 +262,13 @@ jobs:
 
     steps:
       - name: Download macOS x86_64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: rings-macos-x86_64
           path: macos-x86_64
 
       - name: Download macOS aarch64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: rings-macos-aarch64
           path: macos-aarch64
@@ -310,7 +310,7 @@ jobs:
           ref: ${{ needs.bump.outputs.sha }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
